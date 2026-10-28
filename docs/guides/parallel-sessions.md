@@ -27,6 +27,7 @@ Not busy → work in the main folder as usual.
 - The skills apply unchanged inside the worktree. `ticket-claim` creates the branch with `add` instead of `git checkout -b`; the claim note says the ticket is in a worktree.
 - `node scripts/tickets.mjs` sees every local branch, worktree or not: ticket statuses stay correct.
 - Hooks run in worktrees only because `core.hooksPath` is absolute (README, *Set up a clone*). `add` and `review` refuse to run otherwise. A relative path would skip every hook silently.
+- Hooks run from a worktree export an absolute `GIT_DIR`. `scripts/check.sh` and `worktree.mjs` drop it, and any new script or test that runs git in another folder must drop it too ([solution](../solutions/repo/2026-10-28-git-dir-from-hooks-in-worktrees.md)).
 - **End-to-end tests use port 1420 and reuse any server already running there.** Two worktrees running `pnpm e2e` at the same time would test each other's code. Before `pnpm e2e`, check that nothing else serves the port: `lsof -iTCP:1420 -sTCP:LISTEN`.
 
 ## Cleaning up
