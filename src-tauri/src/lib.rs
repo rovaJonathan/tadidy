@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod macos;
 pub mod state;
 
