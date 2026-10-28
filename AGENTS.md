@@ -177,7 +177,7 @@ Full index: [docs/README.md](docs/README.md).
 
 - `cargo fmt`, `cargo clippy --all-targets -- -D warnings` clean. `unsafe` only in `src/macos/`, each block with a `// SAFETY:` comment.
 - **Errors**: a `thiserror` enum per module; IPC commands return `Result<T, AppError>` where `AppError` serializes to `{ code, message }` (never clip content, never a path under the user's home in clear). No `unwrap()` / `expect()` outside tests and `main` setup.
-- **Layers**: `commands.rs` (thin IPC, no logic) → services (`watcher`, `paster`, `purger`, `storage::*`) → `macos/` (thin FFI behind traits). Services depend on traits, not on `macos/` directly, so tests inject fakes.
+- **Layers**: `commands.rs` (thin IPC, no logic) → services (`watcher`, `paster`, `purger`, `storage::*`) → `macos/` (thin FFI behind traits). Services depend on traits, not on `macos/` directly, so tests inject fakes. `main.rs` and `lib.rs` only wire Tauri (plugins, state, command registration): no logic there, since the coverage gate does not look at them.
 - **Threads**: the watcher runs on its own thread; AppKit calls that need the main thread go through `app.run_on_main_thread`. Never block the main thread on SQLite.
 - **SQL**: parameters only (`params![]`), never string formatting. Migrations are append-only (skill `db-migration`).
 - **Tests**: unit tests in a `#[cfg(test)] mod tests` next to the code; integration tests in `src-tauri/tests/`. Temporary databases in `tempfile` dirs; a fixed test key, never the Keychain.
