@@ -201,4 +201,48 @@ mod tests {
             assert_eq!(menu_action(id), None, "{id}");
         }
     }
+
+    fn click(button: MouseButton, button_state: MouseButtonState) -> TrayIconEvent {
+        TrayIconEvent::Click {
+            id: tauri::tray::TrayIconId::new(TRAY_ID),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect: tauri::Rect::default(),
+            button,
+            button_state,
+        }
+    }
+
+    #[test]
+    fn a_left_click_release_toggles_the_popover() {
+        assert!(toggles_the_popover(&click(
+            MouseButton::Left,
+            MouseButtonState::Up
+        )));
+    }
+
+    #[test]
+    fn other_clicks_do_not_toggle_the_popover() {
+        // The press is ignored (the release acts), and the right click opens the menu.
+        for (button, state) in [
+            (MouseButton::Left, MouseButtonState::Down),
+            (MouseButton::Right, MouseButtonState::Up),
+            (MouseButton::Right, MouseButtonState::Down),
+        ] {
+            assert!(
+                !toggles_the_popover(&click(button, state)),
+                "{button:?} {state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pointer_movement_does_not_toggle_the_popover() {
+        let event = TrayIconEvent::Leave {
+            id: tauri::tray::TrayIconId::new(TRAY_ID),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect: tauri::Rect::default(),
+        };
+
+        assert!(!toggles_the_popover(&event));
+    }
 }
