@@ -118,4 +118,36 @@ mod tests {
 
         assert_eq!(enabled, ["quit"]);
     }
+
+    #[test]
+    fn only_quit_has_an_action() {
+        assert_eq!(menu_action("quit"), Some(MenuAction::Quit));
+        for id in [
+            "preferences",
+            "clear-history",
+            "about",
+            "check-updates",
+            "?",
+        ] {
+            assert_eq!(menu_action(id), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn build_menu_follows_the_model() {
+        let app = tauri::test::mock_app();
+
+        let menu = build_menu(app.handle()).unwrap();
+
+        assert_eq!(menu.items().unwrap().len(), menu_items().len());
+    }
+
+    #[test]
+    fn setup_registers_the_tray_icon() {
+        let app = tauri::test::mock_app();
+
+        setup(app.handle()).unwrap();
+
+        assert!(app.tray_by_id(TRAY_ID).is_some());
+    }
 }
