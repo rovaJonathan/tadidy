@@ -5,7 +5,7 @@ description: Addresses the human's review of a Tadidy pull request — reads eve
 
 # address-pr — one remark, one check, one answer
 
-There is no review bot: the reviewer is the human (ADR 0002). Their remarks deserve the same scrutiny as any other: a reviewer can be wrong, and agreeing out of politeness is a mistake.
+There is no review bot: the reviewer is the human (ADR 0002), sometimes preceded by an agent review posted with their account by `review-pr` (its body starts with "🤖 Agent review"). Every remark gets the same scrutiny: a reviewer can be wrong, and agreeing out of politeness is a mistake. Only the human's review can approve.
 
 ## 1. Read all the feedback
 
@@ -32,8 +32,10 @@ Classify: to fix · to discuss (with the argument) · out of scope (with the pro
 ## 3. Fix
 
 ```bash
-gh pr checkout <N>
+git worktree list                  # the branch already checked out somewhere? work there
+gh pr checkout <N>                 # otherwise, in the main folder if it is free
 ```
+If the branch is checked out nowhere and the main folder is busy (`node scripts/worktree.mjs status`), use `node scripts/worktree.mjs add <headRefName>` ([docs/guides/parallel-sessions.md](../../../docs/guides/parallel-sessions.md)).
 - A behaviour to change or a bug reported → first a failing test (skill `tdd`).
 - A local check failing → `systematic-debugging`, no random fix.
 - Changes limited to the feedback; no neighbouring refactor.
