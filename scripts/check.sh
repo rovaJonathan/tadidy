@@ -9,6 +9,10 @@ COV=0
 [ "${1:-}" = "--cov" ] && COV=1
 step() { printf '\n\033[1m▶ %s\033[0m\n' "$*"; }
 
+# A hook run from a worktree exports an absolute GIT_DIR: the tests' temporary repositories would
+# then write to this repository. Git finds the repository from the current folder anyway.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_PREFIX
+
 step "Repository scripts (node:test)"
 node --test scripts/*.test.mjs
 

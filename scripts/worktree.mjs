@@ -10,8 +10,16 @@ import { fileURLToPath } from "node:url";
 
 const ENDED_PR_STATES = new Set(["MERGED", "CLOSED"]);
 
+// Git hooks export the repository location (GIT_DIR is absolute inside a worktree): drop it so
+// git always acts on `cwd`.
+const REPOSITORY_VARS = new Set(["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_PREFIX"]);
+
+function gitEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !REPOSITORY_VARS.has(key)));
+}
+
 function git(cwd, ...args) {
-  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync("git", args, { cwd, env: gitEnv(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 function gitOrEmpty(cwd, ...args) {
