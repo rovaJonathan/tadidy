@@ -63,6 +63,8 @@ node scripts/tickets.mjs check                             # validate every tick
 ## Rules
 
 - **Order of proposal** (`next`): first a ticket `in-progress` or `review`; otherwise the ready `todo` ticket with the lowest phase, then the highest priority (P0 first), then the lowest number.
+- **Taken tickets**: an `in-progress` ticket whose branch is checked out in the main folder or a worktree belongs to another session. `next` lists it under `taken` and a new session never proposes it: it proposes the next ticket instead. It is resumed only when the human names it.
+- **Closed on `main` wins**: a ticket `done` or `canceled` on `main` (`origin/main`, or `main` without a remote) keeps that status even if an old local `tad-xxx` branch says `review`.
 - **One ticket per session.** Several tickets may be `review` at the same time: a ticket waiting for review never blocks taking the next ready one.
 - **Steps**: the agent checks a step (`- [ ]` → `- [x]`) as soon as it is done, without changing anything else in the body.
 - **Blocked**: `status: blocked` + a *Notes* entry *Blocked — decision expected* (cause, attempts, decision expected with options and a recommendation). Unblocking = the decision in *Notes*, a line in `PROGRESS.md`, `status: todo` or `in-progress`.

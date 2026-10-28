@@ -12,7 +12,7 @@ The main folder is **busy** when it is not on `main` or has uncommitted changes:
 
 | What this session does | Where it works |
 |---|---|
-| The ticket checked out in the main folder (resuming it) | In the main folder, after asking the human whether another session is still working on it. If yes, stop. |
+| The ticket checked out in the main folder | Nothing: another session owns it (`tickets.mjs next` lists it under `taken`). Propose the next ticket. Resume it in the main folder only if the human names it. |
 | Another ticket | `node scripts/worktree.mjs add <branch>` → `../tadidy-worktrees/<branch>` |
 | A pull request review (`review-pr`) | `node scripts/worktree.mjs review <N>` → `../tadidy-worktrees/review-pr-<N>`, always, even when the main folder is free |
 | A ticket whose branch already has a worktree | That worktree (`git worktree list`) |

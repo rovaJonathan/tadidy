@@ -109,7 +109,7 @@ The status travels **with the ticket's branch**: `node scripts/tickets.mjs` read
 
 ## 8. Work loop
 
-1. The human says **"What should I do today?"** (or "let's continue"). **`tadidy-session`** answers with one ticket: an in-progress or in-review ticket first, otherwise the next ready one. It asks **"Shall I do it?"**. The human can also name a ticket ("take TAD-009"). No command to type.
+1. The human says **"What should I do today?"** (or "let's continue"). **`tadidy-session`** answers with one ticket: an in-progress or in-review ticket first, otherwise the next ready one. An in-progress ticket whose branch is checked out (main folder or worktree) belongs to another session: it is never proposed. It asks **"Shall I do it?"**. The human can also name a ticket ("take TAD-009"). No command to type.
 2. **Yes** → **`ticket-claim`**, then **`ticket-implement`** (plan, **`tdd`**, verify, **`self-review`**, **`prototype-parity`** for UI tickets).
 3. At the end, the agent opens the pull request to `main` (**`ticket-update`**, opening) without asking; the ticket goes to `review`. Optionally, the human asks another session for an agent review (**`review-pr`**: comments posted on the pull request, never an approval). The human reviews on GitHub, then says **"address the review"** → **`address-pr`**, as many rounds as needed.
 4. The human approves ("approved", "LGTM", or a GitHub approval) → **`ticket-update`** (closing: closing note, `done`, pushed on the branch), then the human merges, then **"Shall I take the next one?"**.
