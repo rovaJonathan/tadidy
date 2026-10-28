@@ -11,9 +11,10 @@ Rules: [docs/guides/tickets.md](../../../docs/guides/tickets.md).
 
 1. **Start clean and up to date**
    ```bash
-   git status --short                 # nothing pending; otherwise finish or stash it first
-   git checkout main && git pull --rebase   # skip the pull if there is no remote yet
+   node scripts/worktree.mjs status   # busy: another session is working in the main folder
    ```
+   - **Not busy** → `git checkout main && git pull --rebase` (skip the pull if there is no remote yet).
+   - **Busy** → never stash, commit or switch branch there: it is someone else's work. The branch is created in a worktree in step 4.
 
 2. **One ticket: the one proposed by `tadidy-session` or named by the human.** Not another one.
 
@@ -24,8 +25,11 @@ Rules: [docs/guides/tickets.md](../../../docs/guides/tickets.md).
 
 4. **Create the branch** `tad-xxx-<short-slug>` (3–5 words of the title, kebab-case):
    ```bash
-   git checkout -b tad-004-pasteboard-workspace-layer
+   git checkout -b tad-004-pasteboard-workspace-layer                    # main folder free
+   node scripts/worktree.mjs add tad-004-pasteboard-workspace-layer      # main folder busy
+   cd ../tadidy-worktrees/tad-004-pasteboard-workspace-layer
    ```
+   In a worktree, every later command and file path targets that folder ([docs/guides/parallel-sessions.md](../../../docs/guides/parallel-sessions.md)), and the claim note ends with `, in a worktree.`.
 
 5. **Claim**
    ```bash

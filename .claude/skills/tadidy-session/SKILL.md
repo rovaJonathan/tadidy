@@ -9,12 +9,14 @@ The project's memory is not in the conversation: progress is in `tickets/` (read
 
 ## Steps
 
-1. **Sync**
+1. **Sync, without disturbing another session**
    ```bash
-   git status --short                 # uncommitted work? say so before anything else
-   git checkout main && git pull --rebase   # skip the pull if there is no remote yet
+   node scripts/worktree.mjs prune    # removes the worktrees of merged or closed pull requests
+   node scripts/worktree.mjs status   # busy: the main folder is off main or has changes
    git fetch --prune 2>/dev/null || true
    ```
+   - **Not busy** → `git checkout main && git pull --rebase` (skip the pull if there is no remote yet).
+   - **Busy** → another session may be working there: touch nothing in the main folder. If you resume the ticket checked out there, first ask the human whether another session is still on it. Any other ticket goes to a worktree ([docs/guides/parallel-sessions.md](../../../docs/guides/parallel-sessions.md)), and you say so in step 4.
 
 2. **Read the state**
    ```bash
@@ -23,7 +25,7 @@ The project's memory is not in the conversation: progress is in `tickets/` (read
    `active` = tickets `in-progress` or `review` (the status read on their local `tad-xxx-*` branch); `next` = the first ready `todo` ticket (phase, then priority, then number).
 
 3. **Decide**
-   1. **A ticket `in-progress`** → resume it: `git checkout <branch>`, then `ticket-implement` from where the *Steps* checkboxes stop.
+   1. **A ticket `in-progress`** → resume it where its branch is checked out (`git worktree list`): its worktree, or the main folder. If the branch is checked out nowhere, `git checkout <branch>` when the main folder is free, `node scripts/worktree.mjs add <branch>` otherwise. Then `ticket-implement` from where the *Steps* checkboxes stop.
    2. **A ticket `review`** → look at its pull request: `gh pr view <url> --json state,reviewDecision,reviews,comments`.
       - Unanswered review comments → propose `address-pr`.
       - `reviewDecision: APPROVED`, or the human said "approved / LGTM" → `ticket-update`, *Closing*.

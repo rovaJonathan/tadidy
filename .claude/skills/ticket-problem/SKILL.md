@@ -37,7 +37,7 @@ A well-written blocker is unblocked in one answer. A vague one costs a meeting.
    git add tickets/TAD-xxx.md && git commit -m "chore(TAD-xxx): mark blocked"
    ```
 
-4. **Back to `main`**: `git checkout main`.
+4. **Back to `main`**: `git checkout main` in the main folder. In a worktree, leave it as it is: the branch stays there until the ticket is unblocked.
 
 5. **Tell the human** the cause and the decision expected, then propose another ready ticket (`tadidy-session`, step 3).
 

@@ -22,6 +22,7 @@ Signing: [docs/runbooks/signing-identity.md](../../../docs/runbooks/signing-iden
 
 ## 3. Build
 
+In the main folder only, and only if `node scripts/worktree.mjs status` says it is not busy. Otherwise another session is working there: wait.
 ```bash
 git checkout main && git pull --rebase
 pnpm install --frozen-lockfile
