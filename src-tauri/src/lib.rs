@@ -28,7 +28,8 @@ pub fn run() {
             let popover = windows::create_popover(app)?;
             #[cfg(target_os = "macos")]
             macos::vibrancy::apply_popover_material(&popover)?;
-            tray::setup(app.handle())?;
+            #[cfg(target_os = "macos")]
+            macos::tray::setup(app.handle())?;
             Ok(())
         })
         .on_window_event(windows::on_window_event)

@@ -4,4 +4,6 @@
 #![allow(unsafe_code)]
 
 #[cfg(target_os = "macos")]
+pub mod tray;
+#[cfg(target_os = "macos")]
 pub mod vibrancy;

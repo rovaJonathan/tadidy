@@ -1,18 +1,10 @@
-//! The tray icon's native menu (MNU-03). The model is a pure function so the labels, the
-//! order and the enabled state are tested without AppKit; `lib.rs` turns it into a menu.
+//! The tray icon's menu model (MNU-03) and click rules (MNU-02). They are pure, so the labels,
+//! the order, the enabled state and the clicks are tested without AppKit; `macos::tray` builds
+//! the native menu and the status item from them.
 
-use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Runtime};
-
-use crate::windows;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 
 pub const TRAY_ID: &str = "tadidy";
-
-/// The 36 × 36 px (@2x) template image: macOS scales a template to the menu bar's 18 pt
-/// height, so the larger file stays sharp on Retina. `tray-template.png` is its @1x twin.
-const ICON: &[u8] = include_bytes!("../icons/tray/tray-template@2x.png");
 
 /// One row of the tray menu, in the order the prototype's `#tray-menu` shows them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,50 +57,17 @@ pub fn menu_action(id: &str) -> Option<MenuAction> {
     (id == "quit").then_some(MenuAction::Quit)
 }
 
-pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let menu = Menu::new(app)?;
-    for item in menu_items() {
-        match item {
-            TrayItem::Entry {
-                id,
-                label,
-                enabled,
-                accelerator,
-            } => menu.append(&MenuItem::with_id(app, id, label, enabled, accelerator)?)?,
-            TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+/// A left click acts when the button is released (MNU-02). The right click opens the native
+/// menu by itself, so it is not handled here.
+pub fn toggles_the_popover(event: &TrayIconEvent) -> bool {
+    matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
         }
-    }
-    Ok(menu)
-}
-
-/// Adds the tray icon: a left click toggles the popover (MNU-02), a right click opens the
-/// native menu (MNU-03).
-pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    TrayIconBuilder::with_id(TRAY_ID)
-        .icon(Image::from_bytes(ICON)?)
-        .icon_as_template(true)
-        .show_menu_on_left_click(false)
-        .menu(&build_menu(app)?)
-        .on_menu_event(|app, event| {
-            if menu_action(event.id().as_ref()) == Some(MenuAction::Quit) {
-                app.exit(0);
-            }
-        })
-        .on_tray_icon_event(|tray, event| {
-            let app = tray.app_handle();
-            // The positioner needs the icon's position to place the popover under it.
-            tauri_plugin_positioner::on_tray_event(app, &event);
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                windows::toggle_popover(app);
-            }
-        })
-        .build(app)?;
-    Ok(())
+    )
 }
 
 #[cfg(test)]
