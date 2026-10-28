@@ -43,6 +43,7 @@ impl PopoverToggle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::time::{Duration, Instant};
     use tauri::test::MockRuntime;
     use tauri::{Manager, WebviewWindow, WindowEvent};
@@ -88,81 +89,122 @@ mod tests {
         assert_eq!(action, ToggleAction::Show);
     }
 
-    fn app_with_popover() -> (
-        tauri::App<tauri::test::MockRuntime>,
-        WebviewWindow<MockRuntime>,
-    ) {
+    /// Tauri's mock runtime ignores `show` and `hide` (`is_visible` is always true), so the
+    /// show/hide decisions are tested against this fake.
+    #[derive(Default)]
+    struct FakePopover {
+        visible: Cell<bool>,
+    }
+
+    impl PopoverWindow for FakePopover {
+        fn is_shown(&self) -> bool {
+            self.visible.get()
+        }
+        fn reveal(&self) {
+            self.visible.set(true);
+        }
+        fn conceal(&self) {
+            self.visible.set(false);
+        }
+    }
+
+    #[test]
+    fn toggling_a_hidden_popover_shows_it() {
+        let popover = FakePopover::default();
+
+        toggle(&popover, &PopoverState::default(), Instant::now());
+
+        assert!(popover.is_shown());
+    }
+
+    #[test]
+    fn toggling_a_visible_popover_hides_it() {
+        let popover = FakePopover::default();
+        popover.reveal();
+
+        toggle(&popover, &PopoverState::default(), Instant::now());
+
+        assert!(!popover.is_shown());
+    }
+
+    #[test]
+    fn losing_focus_hides_the_popover() {
+        let popover = FakePopover::default();
+        popover.reveal();
+
+        focus_lost(&popover, &PopoverState::default(), Instant::now());
+
+        assert!(!popover.is_shown());
+    }
+
+    #[test]
+    fn a_tray_click_right_after_the_focus_loss_keeps_the_popover_hidden() {
+        let popover = FakePopover::default();
+        let state = PopoverState::default();
+        let lost_at = Instant::now();
+        popover.reveal();
+        focus_lost(&popover, &state, lost_at);
+
+        toggle(&popover, &state, lost_at + Duration::from_millis(100));
+
+        assert!(!popover.is_shown());
+    }
+
+    #[test]
+    fn a_tray_click_after_the_debounce_shows_it_again() {
+        let popover = FakePopover::default();
+        let state = PopoverState::default();
+        let lost_at = Instant::now();
+        popover.reveal();
+        focus_lost(&popover, &state, lost_at);
+
+        toggle(&popover, &state, lost_at + Duration::from_millis(300));
+
+        assert!(popover.is_shown());
+    }
+
+    fn app_with_popover() -> (tauri::App<MockRuntime>, WebviewWindow<MockRuntime>) {
         let app = tauri::test::mock_app();
         app.manage(PopoverState::default());
         let popover = create_popover(&app).unwrap();
         (app, popover)
     }
 
+    /// Whether a tray click right now would be swallowed by the focus-loss debounce.
+    fn click_is_debounced(app: &tauri::App<MockRuntime>) -> bool {
+        let state = app.state::<PopoverState>();
+        let action = state.lock().unwrap().click(Instant::now(), false);
+        action == ToggleAction::Ignore
+    }
+
     #[test]
-    fn popover_is_created_hidden_under_its_label() {
-        let (_app, popover) = app_with_popover();
+    fn the_popover_is_created_under_its_label() {
+        let (app, popover) = app_with_popover();
 
         assert_eq!(popover.label(), POPOVER_LABEL);
-        assert!(!popover.is_visible().unwrap());
-    }
-
-    #[test]
-    fn toggling_a_hidden_popover_shows_it() {
-        let (app, popover) = app_with_popover();
-
-        toggle_popover(app.handle());
-
-        assert!(popover.is_visible().unwrap());
-    }
-
-    #[test]
-    fn toggling_a_visible_popover_hides_it() {
-        let (app, popover) = app_with_popover();
-        popover.show().unwrap();
-
-        toggle_popover(app.handle());
-
-        assert!(!popover.is_visible().unwrap());
-    }
-
-    #[test]
-    fn losing_focus_hides_the_popover_without_destroying_it() {
-        let (app, popover) = app_with_popover();
-        popover.show().unwrap();
-        let window = app.get_window(POPOVER_LABEL).unwrap();
-
-        on_window_event(&window, &WindowEvent::Focused(false));
-
-        assert!(!popover.is_visible().unwrap());
         assert!(app.get_webview_window(POPOVER_LABEL).is_some());
     }
 
     #[test]
-    fn a_tray_click_right_after_the_focus_loss_keeps_the_popover_hidden() {
+    fn the_popover_window_losing_focus_starts_the_debounce() {
         let (app, popover) = app_with_popover();
-        popover.show().unwrap();
-        let window = app.get_window(POPOVER_LABEL).unwrap();
-        on_window_event(&window, &WindowEvent::Focused(false));
 
-        toggle_popover(app.handle());
+        on_window_event(&popover.as_ref().window(), &WindowEvent::Focused(false));
 
-        assert!(!popover.is_visible().unwrap());
+        assert!(click_is_debounced(&app));
+        assert!(app.get_webview_window(POPOVER_LABEL).is_some());
     }
 
     #[test]
-    fn gaining_focus_or_another_window_does_not_hide_the_popover() {
+    fn gaining_focus_or_another_window_losing_it_starts_no_debounce() {
         let (app, popover) = app_with_popover();
-        popover.show().unwrap();
         let other = tauri::WebviewWindowBuilder::new(&app, "other", Default::default())
             .build()
             .unwrap();
-        let popover_window = app.get_window(POPOVER_LABEL).unwrap();
-        let other_window = app.get_window("other").unwrap();
 
-        on_window_event(&popover_window, &WindowEvent::Focused(true));
-        on_window_event(&other_window, &WindowEvent::Focused(false));
+        on_window_event(&popover.as_ref().window(), &WindowEvent::Focused(true));
+        on_window_event(&other.as_ref().window(), &WindowEvent::Focused(false));
 
-        assert!(popover.is_visible().unwrap());
-        assert!(other.is_visible().unwrap());
+        assert!(!click_is_debounced(&app));
     }
 }
