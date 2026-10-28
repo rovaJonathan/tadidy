@@ -51,6 +51,7 @@ test("isGated skips the macOS layer, generated, test and non-source files", () =
   for (const path of [
     "src-tauri/src/macos/pasteboard.rs",
     "src-tauri/src/main.rs",
+    "src-tauri/src/lib.rs",
     "src/lib/bindings/Settings.ts",
     "src/lib/api.test.ts",
     "src/test/setup.ts",
