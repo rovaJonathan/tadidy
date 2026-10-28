@@ -1,0 +1,237 @@
+/* DESIGN.md §2: a copy of section 1 of the prototype stylesheet (docs/prototype/prototype.html). Keep in sync. */
+:root {
+  color-scheme: light;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, monospace;
+  --text-caption: 10px;
+  --leading-caption: 13px;
+  --text-small: 11px;
+  --leading-small: 14px;
+  --text-callout: 12px;
+  --leading-callout: 15px;
+  --text-body: 13px;
+  --leading-body: 16px;
+  --text-code: 12px;
+  --leading-code: 16px;
+  --text-headline: 15px;
+  --leading-headline: 20px;
+  --text-search: 15px;
+  --text-search-lg: 18px;
+  --text-title: 17px;
+  --leading-title: 22px;
+  --text-title-lg: 22px;
+  --leading-title-lg: 28px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Spacing */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  /* Radii */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-window: 10px;
+  --radius-alert: 12px;
+  --radius-pill: 999px;
+
+  /* Sizes */
+  --popover-width: 380px;
+  --popover-height: 520px;
+  --panel-width: 640px;
+  --panel-height: 460px;
+  --preview-width: 272px;
+  --prefs-width: 640px;
+  --prefs-height: 480px;
+  --prefs-sidebar-width: 184px;
+  --onboarding-width: 520px;
+  --onboarding-height: 440px;
+  --tile-size: 28px;
+  --preview-lines: 2;
+
+  /* Motion */
+  --duration-fast: 80ms;
+  --duration-base: 120ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Blur / vibrancy fallback */
+  --blur-material: blur(30px) saturate(180%);
+  --blur-menu: blur(20px) saturate(180%);
+
+  /* Colors — light */
+  --color-accent: #007aff;
+  --color-accent-text: #0062cc;
+  --color-accent-tint: rgba(0, 122, 255, 0.14);
+  --color-on-accent: #ffffff;
+  --color-selection: #0063e1;
+  --color-selection-text: #ffffff;
+  --color-selection-text-secondary: rgba(255, 255, 255, 0.78);
+  --color-focus-ring: rgba(0, 122, 255, 0.45);
+
+  --color-text-primary: rgba(0, 0, 0, 0.85);
+  --color-text-secondary: rgba(0, 0, 0, 0.62);
+  --color-text-tertiary: rgba(0, 0, 0, 0.45);
+  --color-text-disabled: rgba(0, 0, 0, 0.25);
+
+  --color-separator: rgba(0, 0, 0, 0.1);
+  --color-border: rgba(0, 0, 0, 0.14);
+  --color-fill: rgba(0, 0, 0, 0.05);
+  --color-fill-hover: rgba(0, 0, 0, 0.06);
+  --color-fill-pressed: rgba(0, 0, 0, 0.1);
+  --color-control-bg: #ffffff;
+  --color-segment-selected: #ffffff;
+  --color-toggle-off: rgba(0, 0, 0, 0.1);
+
+  --color-destructive: #ff3b30;
+  --color-destructive-text: #d70015;
+  --color-warning: #ff9500;
+  --color-warning-bg: rgba(255, 149, 0, 0.14);
+  --color-success: #34c759;
+  --color-success-text: #248a3d;
+  --color-pin: #ff9500;
+  --color-match-bg: rgba(255, 204, 0, 0.5);
+  --color-match-bg-selected: rgba(255, 255, 255, 0.3);
+  --color-toast-bg: rgba(30, 30, 30, 0.86);
+  --color-toast-text: #ffffff;
+
+  --color-code-keyword: #ad3da4;
+  --color-code-string: #c41a16;
+  --color-code-number: #1c00cf;
+  --color-code-comment: #5d6c79;
+
+  /* Materials (CSS fallback for native vibrancy) and surfaces */
+  --material-popover: rgba(246, 246, 246, 0.8);
+  --material-hud: rgba(248, 248, 248, 0.84);
+  --material-menu: rgba(242, 242, 242, 0.84);
+  --material-sidebar: rgba(232, 232, 234, 0.82);
+  --material-alert: rgba(240, 240, 240, 0.94);
+  --surface-window: #f5f5f5;
+  --surface-group: #ffffff;
+  --surface-group-border: rgba(0, 0, 0, 0.08);
+  --surface-overlay: rgba(250, 250, 250, 0.97);
+  --surface-preview: rgba(0, 0, 0, 0.025);
+
+  /* Shadows */
+  --shadow-window: 0 0 0 0.5px rgba(0, 0, 0, 0.18), 0 12px 40px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-menu: 0 0 0 0.5px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.18);
+  --shadow-alert: 0 0 0 0.5px rgba(0, 0, 0, 0.15), 0 20px 50px rgba(0, 0, 0, 0.28);
+  --shadow-control: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 0.5px 1.5px rgba(0, 0, 0, 0.14);
+  --shadow-segment: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.14);
+  --shadow-toast: 0 4px 14px rgba(0, 0, 0, 0.25);
+
+  /* Prototype-only (fake desktop) — NOT app tokens */
+  --proto-wallpaper:
+    radial-gradient(1100px 700px at 12% 18%, #b8d0f5 0%, transparent 60%),
+    radial-gradient(900px 640px at 88% 26%, #f1c8d8 0%, transparent 60%),
+    radial-gradient(1000px 700px at 58% 105%, #f6d6ae 0%, transparent 62%), linear-gradient(160deg, #dce6f5, #efe3ea);
+  --proto-menubar-bg: rgba(246, 246, 246, 0.55);
+  --proto-menubar-fg: rgba(0, 0, 0, 0.88);
+  --proto-menubar-highlight: rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-accent: #0a84ff;
+  --color-accent-text: #4da3ff;
+  --color-accent-tint: rgba(10, 132, 255, 0.26);
+  --color-selection: #0058d0;
+  --color-focus-ring: rgba(10, 132, 255, 0.55);
+
+  --color-text-primary: rgba(255, 255, 255, 0.88);
+  --color-text-secondary: rgba(255, 255, 255, 0.62);
+  --color-text-tertiary: rgba(255, 255, 255, 0.42);
+  --color-text-disabled: rgba(255, 255, 255, 0.25);
+
+  --color-separator: rgba(255, 255, 255, 0.1);
+  --color-border: rgba(255, 255, 255, 0.14);
+  --color-fill: rgba(255, 255, 255, 0.07);
+  --color-fill-hover: rgba(255, 255, 255, 0.08);
+  --color-fill-pressed: rgba(255, 255, 255, 0.14);
+  --color-control-bg: rgba(255, 255, 255, 0.16);
+  --color-segment-selected: rgba(255, 255, 255, 0.22);
+  --color-toggle-off: rgba(255, 255, 255, 0.16);
+
+  --color-destructive: #ff453a;
+  --color-destructive-text: #ff6961;
+  --color-warning: #ff9f0a;
+  --color-warning-bg: rgba(255, 159, 10, 0.18);
+  --color-success: #30d158;
+  --color-success-text: #30d158;
+  --color-pin: #ff9f0a;
+  --color-match-bg: rgba(255, 214, 10, 0.38);
+  --color-toast-bg: rgba(60, 60, 62, 0.92);
+
+  --color-code-keyword: #ff7ab2;
+  --color-code-string: #ff8170;
+  --color-code-number: #d9c97c;
+  --color-code-comment: #7f8c98;
+
+  --material-popover: rgba(38, 38, 40, 0.76);
+  --material-hud: rgba(32, 32, 34, 0.8);
+  --material-menu: rgba(44, 44, 46, 0.82);
+  --material-sidebar: rgba(40, 40, 42, 0.8);
+  --material-alert: rgba(50, 50, 52, 0.94);
+  --surface-window: #1e1e1e;
+  --surface-group: rgba(255, 255, 255, 0.05);
+  --surface-group-border: rgba(255, 255, 255, 0.07);
+  --surface-overlay: rgba(36, 36, 38, 0.97);
+  --surface-preview: rgba(255, 255, 255, 0.03);
+
+  --shadow-window:
+    0 0 0 0.5px rgba(0, 0, 0, 0.85), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-menu:
+    0 0 0 0.5px rgba(0, 0, 0, 0.85), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-alert:
+    0 0 0 0.5px rgba(0, 0, 0, 0.85), inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 20px 50px rgba(0, 0, 0, 0.55);
+  --shadow-control: 0 0 0 0.5px rgba(0, 0, 0, 0.35), inset 0 0.5px 0 rgba(255, 255, 255, 0.1);
+  --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-toast: 0 4px 14px rgba(0, 0, 0, 0.45);
+
+  --proto-wallpaper:
+    radial-gradient(1100px 700px at 12% 18%, #1f3c72 0%, transparent 60%),
+    radial-gradient(900px 640px at 88% 26%, #4b2050 0%, transparent 60%),
+    radial-gradient(1000px 700px at 58% 105%, #5b3515 0%, transparent 62%), linear-gradient(160deg, #0c1323, #1a1022);
+  --proto-menubar-bg: rgba(24, 24, 28, 0.45);
+  --proto-menubar-fg: rgba(255, 255, 255, 0.92);
+  --proto-menubar-highlight: rgba(255, 255, 255, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --material-popover: #f2f2f2;
+    --material-hud: #f4f4f4;
+    --material-menu: #f0f0f0;
+    --material-sidebar: #e8e8ea;
+    --material-alert: #f0f0f0;
+    --blur-material: none;
+    --blur-menu: none;
+  }
+  :root[data-theme="dark"] {
+    --material-popover: #262628;
+    --material-hud: #202022;
+    --material-menu: #2c2c2e;
+    --material-sidebar: #28282a;
+    --material-alert: #323234;
+  }
+}

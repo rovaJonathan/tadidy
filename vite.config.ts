@@ -6,6 +6,12 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
+  // One HTML entry per Tauri window (index.html is the dev harness).
+  build: {
+    rollupOptions: {
+      input: { main: "index.html", popover: "popover.html" },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
