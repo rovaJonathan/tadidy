@@ -1,0 +1,30 @@
+# Local git hooks: the only quality gate, there is no CI (ADR 0004).
+# Install once per clone with `lefthook install`. Never bypass them (AGENTS.md §2).
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secrets
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+    - name: tickets
+      glob: "{tickets/*.md,docs/spec/*.md,docs/prototype/*.html}"
+      run: node scripts/tickets.mjs check
+    - name: rust-format
+      glob: "src-tauri/**/*.rs"
+      run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+    - name: front-format
+      glob: "*.{ts,svelte,js,mjs,css,json}"
+      run: test ! -f package.json || pnpm exec prettier --check --ignore-unknown {staged_files}
+
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      run: node scripts/commit-msg.mjs {1}
+
+pre-push:
+  jobs:
+    - name: no-direct-push-to-main
+      run: scripts/pre-push-guard.sh
+      use_stdin: true
+    - name: check
+      run: scripts/check.sh --cov

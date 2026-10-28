@@ -1,0 +1,77 @@
+:root {
+  --bg: #fbfbfd; --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e8;
+  --card: #ffffff; --code-bg: #f3f3f6; --accent: #0a84ff; --accent-soft: #e8f2ff;
+  --p0: #d70015; --p1: #c26e00; --p2: #5e5ce6;
+  --sidebar: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161618; --fg: #f2f2f7; --muted: #a1a1a6; --line: #2f2f33;
+    --card: #1e1e21; --code-bg: #232327; --accent: #4ea1ff; --accent-soft: #14273d;
+    --p0: #ff6961; --p1: #ffb340; --p2: #a5a4ff;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 1.5rem; }
+body {
+  margin: 0; padding: 3rem 2rem 6rem calc(var(--sidebar) + 3rem);
+  max-width: calc(var(--sidebar) + 3rem + 980px);
+  background: var(--bg); color: var(--fg);
+  font: 15.5px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+nav#TOC {
+  position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar);
+  overflow-y: auto; padding: 2rem 1.25rem; border-right: 1px solid var(--line);
+  background: var(--card); font-size: 13.5px;
+}
+nav#TOC::before {
+  content: "Tadidy · Spec"; display: block; font-weight: 700; font-size: 16px;
+  margin-bottom: 1rem; letter-spacing: -0.01em;
+}
+nav#TOC ul { list-style: none; margin: 0; padding-left: 0.9rem; }
+nav#TOC > ul { padding-left: 0; }
+nav#TOC > ul > li > ul > li > ul { display: none; }
+nav#TOC li { margin: 0.2rem 0; }
+nav#TOC > ul > li { margin-top: 0.9rem; }
+nav#TOC > ul > li > a { color: var(--fg); font-weight: 600; }
+nav#TOC a { color: var(--muted); text-decoration: none; display: block; padding: 2px 6px; border-radius: 6px; }
+nav#TOC a:hover { color: var(--fg); background: var(--accent-soft); }
+@media (max-width: 1000px) {
+  body { padding: 2rem 1.25rem 4rem; max-width: 980px; }
+  nav#TOC { position: static; width: auto; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 2rem; }
+}
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.25; }
+h1 { font-size: 2.4rem; margin: 0 0 1rem; }
+h1 ~ h1 { font-size: 2rem; margin: 5rem 0 1rem; padding-top: 1.5rem; border-top: 3px solid var(--fg); }
+h2 { font-size: 1.6rem; margin: 3.5rem 0 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+h1 + h2, h1 + p + h2 { margin-top: 1.5rem; }
+h3 { font-size: 1.15rem; margin: 2rem 0 0.75rem; }
+a { color: var(--accent); }
+hr { display: none; }
+blockquote {
+  margin: 0 0 1.5rem; padding: 1rem 1.25rem; border-left: 4px solid var(--accent);
+  background: var(--accent-soft); border-radius: 0 10px 10px 0; color: var(--fg);
+}
+blockquote p { margin: 0; }
+table {
+  width: 100%; border-collapse: separate; border-spacing: 0; margin: 1rem 0 1.5rem;
+  font-size: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+}
+th, td { padding: 0.55rem 0.8rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: none; }
+thead th { background: var(--code-bg); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+tbody tr:hover { background: var(--accent-soft); }
+td:first-child { white-space: nowrap; }
+code { font: 0.88em/1.5 "SF Mono", ui-monospace, Menlo, monospace; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 5px; }
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; overflow-x: auto; line-height: 1.35; }
+pre code { background: none; padding: 0; font-size: 12.5px; }
+.prio { display: inline-block; font: 600 11px/1 "SF Mono", ui-monospace, monospace; padding: 4px 7px; border-radius: 999px; color: #fff; }
+.prio.p0 { background: var(--p0); } .prio.p1 { background: var(--p1); } .prio.p2 { background: var(--p2); }
+ol li, ul li { margin: 0.25rem 0; }
+@media print {
+  nav#TOC { display: none; } body { padding: 0; max-width: none; }
+  h1 ~ h1 { break-before: page; } table, pre { break-inside: avoid; }
+}
+td, th { hyphens: manual; }
+thead tr, thead th { border-top: none; }

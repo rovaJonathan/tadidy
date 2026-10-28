@@ -1,0 +1,6 @@
+# Latest stable Rust (AGENTS.md §2). Targets for the universal macOS build.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+profile = "minimal"

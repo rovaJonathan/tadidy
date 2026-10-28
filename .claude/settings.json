@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh api repos/:*)",
+      "Bash(node scripts/tickets.mjs list:*)",
+      "Bash(node scripts/tickets.mjs next:*)",
+      "Bash(node scripts/tickets.mjs ready:*)",
+      "Bash(node scripts/tickets.mjs show:*)",
+      "Bash(node scripts/tickets.mjs check:*)",
+      "Bash(node scripts/repo-check.mjs:*)",
+      "Bash(node --test:*)",
+      "Bash(scripts/check.sh:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo llvm-cov:*)",
+      "Bash(cargo info:*)",
+      "Bash(cargo search:*)",
+      "Bash(pnpm view:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm e2e:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.p12)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push --no-verify:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n:*)",
+      "Bash(gh pr merge:*)"
+    ]
+  }
+}

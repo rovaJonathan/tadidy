@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="fr" xml:lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Tadidy — Spécification</title>
+  <style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+</style>
+  <style type="text/css">:root {
+--bg: #fbfbfd; --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e8;
+--card: #ffffff; --code-bg: #f3f3f6; --accent: #0a84ff; --accent-soft: #e8f2ff;
+--p0: #d70015; --p1: #c26e00; --p2: #5e5ce6;
+--sidebar: 280px;
+}
+@media (prefers-color-scheme: dark) {
+:root {
+--bg: #161618; --fg: #f2f2f7; --muted: #a1a1a6; --line: #2f2f33;
+--card: #1e1e21; --code-bg: #232327; --accent: #4ea1ff; --accent-soft: #14273d;
+--p0: #ff6961; --p1: #ffb340; --p2: #a5a4ff;
+}
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 1.5rem; }
+body {
+margin: 0; padding: 3rem 2rem 6rem calc(var(--sidebar) + 3rem);
+max-width: calc(var(--sidebar) + 3rem + 980px);
+background: var(--bg); color: var(--fg);
+font: 15.5px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+-webkit-font-smoothing: antialiased;
+}
+nav#TOC {
+position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar);
+overflow-y: auto; padding: 2rem 1.25rem; border-right: 1px solid var(--line);
+background: var(--card); font-size: 13.5px;
+}
+nav#TOC::before {
+content: "Tadidy · Spec"; display: block; font-weight: 700; font-size: 16px;
+margin-bottom: 1rem; letter-spacing: -0.01em;
+}
+nav#TOC ul { list-style: none; margin: 0; padding-left: 0.9rem; }
+nav#TOC > ul { padding-left: 0; }
+nav#TOC > ul > li > ul > li > ul { display: none; }
+nav#TOC li { margin: 0.2rem 0; }
+nav#TOC a { color: var(--muted); text-decoration: none; display: block; padding: 2px 6px; border-radius: 6px; }
+nav#TOC a:hover { color: var(--fg); background: var(--accent-soft); }
+@media (max-width: 1000px) {
+body { padding: 2rem 1.25rem 4rem; max-width: 980px; }
+nav#TOC { position: static; width: auto; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 2rem; }
+}
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.25; }
+h1 { font-size: 2.4rem; margin: 0 0 1rem; }
+h2 { font-size: 1.6rem; margin: 3.5rem 0 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+h3 { font-size: 1.15rem; margin: 2rem 0 0.75rem; }
+a { color: var(--accent); }
+hr { display: none; }
+blockquote {
+margin: 0 0 1.5rem; padding: 1rem 1.25rem; border-left: 4px solid var(--accent);
+background: var(--accent-soft); border-radius: 0 10px 10px 0; color: var(--fg);
+}
+blockquote p { margin: 0; }
+table {
+width: 100%; border-collapse: separate; border-spacing: 0; margin: 1rem 0 1.5rem;
+font-size: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+}
+th, td { padding: 0.55rem 0.8rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: none; }
+thead th { background: var(--code-bg); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+tbody tr:hover { background: var(--accent-soft); }
+td:first-child { white-space: nowrap; }
+code { font: 0.88em/1.5 "SF Mono", ui-monospace, Menlo, monospace; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 5px; }
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; overflow-x: auto; line-height: 1.35; }
+pre code { background: none; padding: 0; font-size: 12.5px; }
+.prio { display: inline-block; font: 600 11px/1 "SF Mono", ui-monospace, monospace; padding: 4px 7px; border-radius: 999px; color: #fff; }
+.prio.p0 { background: var(--p0); } .prio.p1 { background: var(--p1); } .prio.p2 { background: var(--p2); }
+ol li, ul li { margin: 0.25rem 0; }
+@media print {
+nav#TOC { display: none; } body { padding: 0; max-width: none; }
+h2 { break-before: page; } table, pre { break-inside: avoid; }
+}
+td, th { hyphens: manual; }
+thead tr, thead th { border-top: none; }
+</style>
+</head>
+<body>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#tadidy-spécification" id="toc-tadidy-spécification">Tadidy
+— Spécification</a>
+<ul>
+<li><a href="#objectifs" id="toc-objectifs">1. Objectifs</a>
+<ul>
+<li><a href="#problème" id="toc-problème">1.1 Problème</a></li>
+<li><a href="#objectifs-1" id="toc-objectifs-1">1.2 Objectifs</a></li>
+<li><a href="#hors-périmètre-v1" id="toc-hors-périmètre-v1">1.3 Hors
+périmètre (v1)</a></li>
+</ul></li>
+<li><a href="#glossaire" id="toc-glossaire">2. Glossaire</a></li>
+<li><a href="#fonctionnalités" id="toc-fonctionnalités">3.
+Fonctionnalités</a>
+<ul>
+<li><a href="#capture-du-presse-papiers" id="toc-capture-du-presse-papiers">3.1 Capture du
+presse-papiers</a></li>
+<li><a href="#historique" id="toc-historique">3.2 Historique</a></li>
+<li><a href="#recherche-et-filtres" id="toc-recherche-et-filtres">3.3
+Recherche et filtres</a></li>
+<li><a href="#coller-et-copier" id="toc-coller-et-copier">3.4 Coller et
+copier</a></li>
+<li><a href="#épinglés-et-snippets" id="toc-épinglés-et-snippets">3.5
+Épinglés et snippets</a></li>
+<li><a href="#barre-des-menus-popover" id="toc-barre-des-menus-popover">3.6 Barre des menus (popover)</a></li>
+<li><a href="#quick-panel-raccourci-global" id="toc-quick-panel-raccourci-global">3.7 Quick Panel (raccourci
+global)</a></li>
+<li><a href="#préférences" id="toc-préférences">3.8 Préférences</a></li>
+<li><a href="#système-et-onboarding" id="toc-système-et-onboarding">3.9
+Système et onboarding</a></li>
+<li><a href="#récapitulatif-par-phase" id="toc-récapitulatif-par-phase">3.10 Récapitulatif par phase</a></li>
+</ul></li>
+<li><a href="#interface" id="toc-interface">4. Interface</a>
+<ul>
+<li><a href="#popover-quick-panel-même-composant" id="toc-popover-quick-panel-même-composant">4.1 Popover / Quick Panel
+(même composant)</a></li>
+<li><a href="#design" id="toc-design">4.2 Design</a></li>
+</ul></li>
+<li><a href="#raccourcis-clavier-dans-le-panneau" id="toc-raccourcis-clavier-dans-le-panneau">5. Raccourcis clavier (dans
+le panneau)</a></li>
+<li><a href="#architecture-technique" id="toc-architecture-technique">6.
+Architecture technique</a>
+<ul>
+<li><a href="#vue-densemble" id="toc-vue-densemble">6.1 Vue
+d’ensemble</a></li>
+<li><a href="#dépendances-principales" id="toc-dépendances-principales">6.2 Dépendances principales</a></li>
+<li><a href="#surveillance-du-presse-papiers-watcher" id="toc-surveillance-du-presse-papiers-watcher">6.3 Surveillance du
+presse-papiers (watcher)</a></li>
+<li><a href="#collage-paster" id="toc-collage-paster">6.4 Collage
+(paster)</a></li>
+<li><a href="#fenêtres" id="toc-fenêtres">6.5 Fenêtres</a></li>
+<li><a href="#commandes-ipc-rust-svelte" id="toc-commandes-ipc-rust-svelte">6.6 Commandes IPC (Rust ⇄
+Svelte)</a></li>
+<li><a href="#modèle-de-données-sqlite-sqlcipher" id="toc-modèle-de-données-sqlite-sqlcipher">6.7 Modèle de données
+(SQLite / SQLCipher)</a></li>
+<li><a href="#chiffrement" id="toc-chiffrement">6.8 Chiffrement</a></li>
+<li><a href="#arborescence-du-projet" id="toc-arborescence-du-projet">6.9 Arborescence du projet</a></li>
+</ul></li>
+<li><a href="#exigences-non-fonctionnelles" id="toc-exigences-non-fonctionnelles">7. Exigences non
+fonctionnelles</a></li>
+<li><a href="#permissions-signature-distribution" id="toc-permissions-signature-distribution">8. Permissions, signature,
+distribution</a></li>
+<li><a href="#risques-et-points-dattention" id="toc-risques-et-points-dattention">9. Risques et points
+d’attention</a></li>
+<li><a href="#critères-dacceptation-mvp" id="toc-critères-dacceptation-mvp">10. Critères d’acceptation
+(MVP)</a></li>
+<li><a href="#décisions-prises" id="toc-décisions-prises">11. Décisions
+prises</a></li>
+<li><a href="#questions-ouvertes" id="toc-questions-ouvertes">12.
+Questions ouvertes</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 id="tadidy-spécification">Tadidy — Spécification</h1>
+<blockquote>
+<p><strong>Tadidy</strong> (« se souvenir » en malgache) est un
+gestionnaire d’historique du presse-papiers pour macOS qui vit dans la
+barre des menus, inspiré de <a href="https://apps.apple.com/fr/app/copyclip-clipboard-history/id595191960?mt=12">CopyClip</a>
+et CopyClip 2.</p>
+</blockquote>
+<table>
+<tbody>
+<tr class="odd">
+<td><strong>Version du document</strong></td>
+<td>0.1 (brouillon) — 28/10/2026</td>
+</tr>
+<tr class="even">
+<td><strong>Plateforme</strong></td>
+<td>macOS 13 Ventura et suivants, Apple Silicon + Intel (binaire
+universel)</td>
+</tr>
+<tr class="odd">
+<td><strong>Stack</strong></td>
+<td>Rust (cœur) · Tauri 2 (shell) · Svelte 5 + TypeScript (UI) · SQLite
+chiffrée (SQLCipher)</td>
+</tr>
+<tr class="even">
+<td><strong>Langue de l’UI</strong></td>
+<td>Anglais uniquement</td>
+</tr>
+<tr class="odd">
+<td><strong>Distribution</strong></td>
+<td>Usage perso, DMG direct (hors Mac App Store, donc sans sandbox)</td>
+</tr>
+<tr class="even">
+<td><strong>Synchronisation</strong></td>
+<td>Aucune, stockage 100 % local</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="objectifs">1. Objectifs</h2>
+<h3 id="problème">1.1 Problème</h3>
+<p>macOS ne garde qu’<strong>un seul</strong> élément dans le
+presse-papiers. Copier écrase le précédent, et le texte, le lien ou
+l’image d’avant est perdu.</p>
+<h3 id="objectifs-1">1.2 Objectifs</h3>
+<ol type="1">
+<li><strong>Ne rien perdre</strong> : tout ce qui est copié (texte,
+texte riche, images, fichiers, URLs) est historisé automatiquement.</li>
+<li><strong>Retrouver vite</strong> : ouvrir l’historique en un
+raccourci, taper quelques lettres, appuyer sur Entrée. Moins de 2
+secondes du besoin au collage.</li>
+<li><strong>Rester discret</strong> : icône dans la barre des menus, pas
+d’icône dans le Dock, consommation CPU quasi nulle au repos.</li>
+<li><strong>Rester privé</strong> : base chiffrée, aucune donnée ne
+quitte la machine, expiration automatique des vieux clips.</li>
+</ol>
+<h3 id="hors-périmètre-v1">1.3 Hors périmètre (v1)</h3>
+<ul>
+<li>Synchronisation multi-Mac / iCloud</li>
+<li>Version Mac App Store (la sandbox empêche l’auto-collage)</li>
+<li>Localisation autre que l’anglais</li>
+<li>Windows / Linux (Tauri le permettrait, mais l’accès au
+presse-papiers et le collage sont spécifiques à macOS)</li>
+</ul>
+<hr />
+<h2 id="glossaire">2. Glossaire</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Terme</th>
+<th>Définition</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Clip</strong></td>
+<td>Un élément de l’historique, correspondant à une copie. Il peut
+contenir plusieurs <em>représentations</em>.</td>
+</tr>
+<tr class="even">
+<td><strong>Représentation</strong></td>
+<td>Un format de données d’un clip, identifié par son UTI
+(<code>public.utf8-plain-text</code>, <code>public.rtf</code>,
+<code>public.html</code>, <code>public.png</code>,
+<code>public.file-url</code>…).</td>
+</tr>
+<tr class="odd">
+<td><strong>Épinglé (Pinned)</strong></td>
+<td>Clip protégé de la purge et de la limite d’historique, affiché en
+haut ou dans un onglet dédié.</td>
+</tr>
+<tr class="even">
+<td><strong>Snippet</strong></td>
+<td>Clip épinglé avec un <strong>titre</strong>, rangé dans une
+<strong>collection</strong>. Il peut être créé à la main, sans copie
+préalable.</td>
+</tr>
+<tr class="odd">
+<td><strong>Popover</strong></td>
+<td>Fenêtre qui s’ouvre sous l’icône de la barre des menus au clic.</td>
+</tr>
+<tr class="even">
+<td><strong>Quick Panel</strong></td>
+<td>Panneau flottant ouvert par raccourci global, navigable au clavier,
+qui ne vole pas le focus de l’app active.</td>
+</tr>
+<tr class="odd">
+<td><strong>Source app</strong></td>
+<td>Application au premier plan au moment de la copie.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="fonctionnalités">3. Fonctionnalités</h2>
+<p>Priorités : <strong><span class="prio p0">P0</span></strong> =
+indispensable au MVP · <strong><span class="prio p1">P1</span></strong>
+= v1.0 · <strong><span class="prio p2">P2</span></strong> = après la
+v1.0</p>
+<h3 id="capture-du-presse-papiers">3.1 Capture du presse-papiers</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>CAP-01</td>
+<td>Surveiller le presse-papiers général
+(<code>NSPasteboard.generalPasteboard</code>) en continu, en
+arrière-plan.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>CAP-02</td>
+<td>Capturer le <strong>texte brut</strong>.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>CAP-03</td>
+<td>Capturer le <strong>texte riche</strong> (RTF, HTML) et conserver
+aussi la version texte brut.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>CAP-04</td>
+<td>Capturer les <strong>images</strong> (PNG, TIFF, JPEG, HEIC) et
+générer une miniature (max. 256 px).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>CAP-05</td>
+<td>Capturer les <strong>fichiers</strong> copiés depuis le Finder (une
+ou plusieurs <code>file-url</code>).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>CAP-06</td>
+<td>Détecter les <strong>URLs</strong> (type <code>public.url</code> ou
+texte qui est une URL valide) et les classer en type
+<code>url</code>.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>CAP-07</td>
+<td>Détecter les <strong>couleurs</strong> (<code>#RRGGBB</code>,
+<code>rgb()</code>, <code>hsl()</code>) et afficher une pastille.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="even">
+<td>CAP-08</td>
+<td>Enregistrer l’<strong>app source</strong> : bundle ID, nom, icône
+(en cache).</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>CAP-09</td>
+<td><strong>Déduplication</strong> : si le contenu (hash SHA-256 de la
+représentation principale) existe déjà, on ne crée pas de doublon. Le
+clip existant remonte en tête, avec <code>copy_count + 1</code>.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>CAP-10</td>
+<td><strong>Apps exclues</strong> : ne rien capturer quand l’app source
+est dans la liste d’exclusion. Liste par défaut : 1Password, Bitwarden,
+Keychain Access, Passwords.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>CAP-11</td>
+<td><strong>Types masqués</strong> : ignorer les contenus marqués
+<code>org.nspasteboard.ConcealedType</code>,
+<code>org.nspasteboard.TransientType</code> et
+<code>org.nspasteboard.AutoGeneratedType</code> (convention
+nspasteboard.org, utilisée par les gestionnaires de mots de passe).
+Réglage activé par défaut.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>CAP-12</td>
+<td><strong>Ignorer ses propres écritures</strong> : quand Tadidy remet
+un clip dans le presse-papiers, il ne le recapture pas en doublon. Il
+remonte simplement le clip existant.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>CAP-13</td>
+<td><strong>Limites de taille</strong> : ignorer les textes &gt; 1 Mo et
+les images &gt; 20 Mo (configurable).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>CAP-14</td>
+<td>Choisir dans les préférences les types capturés (texte / riche /
+images / fichiers).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="historique">3.2 Historique</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>HIS-01</td>
+<td>Afficher la liste des clips du plus récent au plus ancien, avec
+aperçu (2 lignes de texte, ou miniature), icône de type, icône de l’app
+source et date relative (« 3 min ago »).</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>HIS-02</td>
+<td><strong>Taille maximale</strong> de l’historique : <strong>500
+clips</strong> par défaut, réglable de 10 à illimité. Les épinglés et
+snippets ne comptent pas dans la limite.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>HIS-03</td>
+<td><strong>Expiration automatique</strong> : supprimer les clips plus
+vieux que <em>N</em> jours (désactivé, 1, 7, 30, 90 ou 365 jours). Les
+épinglés ne sont jamais purgés. La purge tourne au démarrage puis toutes
+les heures.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>HIS-04</td>
+<td><strong>Quota disque</strong> des images : 1 Go par défaut. Au-delà,
+on purge les images non épinglées les plus anciennes.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>HIS-05</td>
+<td><strong>Supprimer</strong> un clip (avec confirmation désactivable,
+comme dans CopyClip 1.9.84).</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>HIS-06</td>
+<td><strong>Vider l’historique</strong>, avec une option « conserver les
+épinglés » cochée par défaut et une confirmation obligatoire.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>HIS-07</td>
+<td><strong>Éditer</strong> un clip texte (crée une nouvelle version,
+l’original est remplacé).</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="even">
+<td>HIS-08</td>
+<td>Afficher le nombre de copies (<code>copy_count</code>) et la date de
+dernière utilisation dans le détail du clip.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="recherche-et-filtres">3.3 Recherche et filtres</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>SRC-01</td>
+<td><strong>Recherche instantanée</strong> à la frappe (debounce 50 ms)
+sur le texte des clips, les titres de snippets, les noms de fichiers et
+les URLs. Index SQLite FTS5.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>SRC-02</td>
+<td>Mise en surbrillance des termes trouvés dans l’aperçu.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>SRC-03</td>
+<td><strong>Filtres par type</strong> sous forme de puces : All · Text ·
+Rich · Images · Files · Links.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>SRC-04</td>
+<td><strong>Filtre par app</strong> : syntaxe <code>app:safari</code> ou
+menu déroulant.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="odd">
+<td>SRC-05</td>
+<td><strong>Filtres de date</strong> : <code>today</code>,
+<code>yesterday</code>, <code>7d</code>.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="even">
+<td>SRC-06</td>
+<td>Recherche approximative (tolérance aux fautes de frappe) en repli
+quand FTS5 ne renvoie rien.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="coller-et-copier">3.4 Coller et copier</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>PST-01</td>
+<td><strong>Coller</strong> (Entrée ou double-clic) : remettre le clip
+dans le presse-papiers, fermer le panneau, rendre le focus à l’app
+précédente, puis simuler <code>⌘V</code>. Nécessite la permission
+<strong>Accessibilité</strong>.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>PST-02</td>
+<td><strong>Copier seulement</strong> (<code>⌘C</code> ou
+<code>⌥Entrée</code>) : remettre dans le presse-papiers sans coller.
+C’est aussi le mode de repli si la permission Accessibilité est
+refusée.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>PST-03</td>
+<td><strong>Coller en texte brut</strong> (<code>⇧Entrée</code>) :
+retirer la mise en forme RTF/HTML.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>PST-04</td>
+<td><strong>Collage rapide</strong> : <code>⌘1</code> à <code>⌘9</code>
+collent directement le <em>n</em>-ième clip affiché.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>PST-05</td>
+<td>Option globale « Always paste as plain text ».</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>PST-06</td>
+<td><strong>Transformations</strong> à la volée depuis le menu
+contextuel d’un clip : UPPERCASE, lowercase, Title Case, trim
+whitespace, JSON pretty/minify, URL encode/decode, Base64
+encode/decode.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="odd">
+<td>PST-07</td>
+<td><strong>Coller plusieurs</strong> : sélectionner plusieurs clips
+(<code>⇧</code>/<code>⌘</code>-clic) et les coller concaténés, avec un
+séparateur réglable (retour à la ligne, espace, virgule).</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="even">
+<td>PST-08</td>
+<td>Fichiers : le collage remet les <code>file-url</code>, ce qui permet
+de coller le fichier dans le Finder ou dans un champ d’upload. Action
+secondaire « Reveal in Finder ».</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>PST-09</td>
+<td>URLs : action secondaire « Open in browser » (<code>⌘O</code>).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="épinglés-et-snippets">3.5 Épinglés et snippets</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>PIN-01</td>
+<td><strong>Épingler / désépingler</strong> un clip (<code>⌘P</code>).
+Les épinglés apparaissent dans l’onglet <em>Pinned</em> et, selon un
+réglage, en tête de la liste <em>All</em>.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>PIN-02</td>
+<td>Réordonner les épinglés par glisser-déposer.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="odd">
+<td>PIN-03</td>
+<td><strong>Snippets</strong> : donner un titre à un épinglé et le
+ranger dans une <strong>collection</strong> (ex. « Emails », « SQL », «
+Adresses »).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>PIN-04</td>
+<td><strong>Créer un snippet à la main</strong> (bouton « New snippet »
+: titre, contenu texte, collection).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>PIN-05</td>
+<td>Gérer les collections : créer, renommer, supprimer, réordonner.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>PIN-06</td>
+<td><strong>Raccourci global par snippet</strong> (ex. <code>⌃⌥1</code>
+colle la signature email).</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="barre-des-menus-popover">3.6 Barre des menus (popover)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>MNU-01</td>
+<td>Icône <strong>template</strong> monochrome dans la barre des menus,
+qui s’adapte au mode clair/sombre.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>MNU-02</td>
+<td><strong>Clic gauche</strong> : ouvre le popover sous l’icône (≈ 380
+× 520 px) avec champ de recherche focalisé, onglets <em>All / Pinned /
+Snippets</em> et liste.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>MNU-03</td>
+<td><strong>Clic droit</strong> : menu natif avec Preferences…, Clear
+history…, About, Check for updates…, Quit Tadidy.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>MNU-04</td>
+<td>Le popover se ferme quand il perd le focus ou avec
+<code>Esc</code>.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>MNU-05</td>
+<td>Pied du popover : nombre de clips, bouton ⚙︎ (préférences).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>MNU-06</td>
+<td>Pas d’icône dans le Dock ni dans <code>⌘Tab</code> (activation
+policy <code>Accessory</code>).</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="quick-panel-raccourci-global">3.7 Quick Panel (raccourci
+global)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>QPN-01</td>
+<td><strong>Raccourci global</strong> configurable, <code>⌘⇧V</code> par
+défaut, qui ouvre/ferme le Quick Panel.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>QPN-02</td>
+<td>Le panneau est un <strong>NSPanel non activant</strong> : il reçoit
+le clavier sans désactiver l’app en cours, ce qui garantit que
+<code>⌘V</code> arrive dans la bonne fenêtre.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>QPN-03</td>
+<td>Position réglable : sous le curseur de la souris (défaut), au centre
+de l’écran actif, ou près du curseur de texte (via l’API Accessibilité,
+en P2).</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>QPN-04</td>
+<td>Navigation 100 % clavier (voir §5). Taper n’importe quel caractère
+focalise la recherche.</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="odd">
+<td>QPN-05</td>
+<td><strong>Aperçu</strong> du clip sélectionné (<code>Espace</code>) :
+texte complet avec coloration syntaxique basique si code, image en
+grand, liste de fichiers.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td>QPN-06</td>
+<td>Mêmes onglets, filtres et actions que le popover (composant Svelte
+partagé).</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="préférences">3.8 Préférences</h3>
+<p>Fenêtre standard (≈ 640 × 480) avec une barre latérale d’onglets.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Onglet</th>
+<th>Réglages</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>General</strong></td>
+<td>Launch at login · History size (10–∞, déf. 500) · Auto-expire after
+(off/1/7/30/90/365 j) · Confirm before delete · Show pinned on top ·
+Play sound on copy (off)</td>
+<td><span class="prio p0">P0</span>/<span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td><strong>Capture</strong></td>
+<td>Types capturés (text/rich/images/files) · Ignore concealed/transient
+content (on) · Max text size · Max image size · Excluded apps (liste +
+bouton « + » qui ouvre un sélecteur d’app ou propose les apps en cours
+d’exécution)</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td><strong>Shortcuts</strong></td>
+<td>Open Quick Panel (<code>⌘⇧V</code>) · Quick paste ⌘1–9 (on/off) ·
+Paste as plain text by default · Raccourcis de snippets (P2)</td>
+<td><span class="prio p0">P0</span>/<span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td><strong>Appearance</strong></td>
+<td>Theme (System/Light/Dark) · Panel position · Preview lines (1–4) ·
+Show app icons · Compact mode</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td><strong>Storage &amp; Privacy</strong></td>
+<td>Database encryption status (toujours actif) · Taille DB / images ·
+Image disk quota · Clear history… · Export… / Import… (JSON, avec
+avertissement « l’export n’est pas chiffré ») · Reveal data folder</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="even">
+<td><strong>About</strong></td>
+<td>Version, licence, lien GitHub, Check for updates</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="système-et-onboarding">3.9 Système et onboarding</h3>
+<table>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Fonctionnalité</th>
+<th>Prio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>SYS-01</td>
+<td><strong>Lancement au démarrage</strong> via
+<code>SMAppService</code> (macOS 13+).</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>SYS-02</td>
+<td><strong>Onboarding</strong> au premier lancement en 3 écrans : 1)
+bienvenue + raccourci, 2) demande de la permission Accessibilité avec
+bouton « Open System Settings », qui détecte l’activation en temps réel,
+3) choix de la taille d’historique et du lancement au démarrage.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+<tr class="odd">
+<td>SYS-03</td>
+<td>Bannière dans le popover si la permission Accessibilité est absente
+: « Auto-paste disabled — clips are copied only. [Enable] ».</td>
+<td><span class="prio p0">P0</span></td>
+</tr>
+<tr class="even">
+<td>SYS-04</td>
+<td><strong>Mises à jour</strong> via <code>tauri-plugin-updater</code>
+(manifest JSON hébergé sur GitHub Releases, signature Tauri).</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="odd">
+<td>SYS-05</td>
+<td><strong>Statistiques</strong> dans About/Storage : nombre de clips
+par type, top 5 apps sources, espace utilisé.</td>
+<td><span class="prio p2">P2</span></td>
+</tr>
+<tr class="even">
+<td>SYS-06</td>
+<td>Journal local (<code>~/Library/Logs/Tadidy/</code>) en rotation,
+<strong>sans contenu de clip</strong>.</td>
+<td><span class="prio p1">P1</span></td>
+</tr>
+</tbody>
+</table>
+<h3 id="récapitulatif-par-phase">3.10 Récapitulatif par phase</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Phase</th>
+<th>Contenu</th>
+<th>Résultat attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>0 — Spikes</strong> (≈ 3 j)</td>
+<td>Tray + popover Tauri · lecture <code>changeCount</code> via objc2 ·
+collage par <code>CGEvent</code> · NSPanel non activant · SQLCipher +
+Trousseau</td>
+<td>Lever les 5 risques techniques avant d’écrire l’app</td>
+</tr>
+<tr class="even">
+<td><strong>1 — MVP</strong></td>
+<td>CAP-01/02/08/09/12 · HIS-01/02/05/06 · SRC-01 · PST-01/02 · MNU-* ·
+QPN-01/02/04/06 · SYS-01/03 · Prefs General + Shortcuts ·
+chiffrement</td>
+<td>Utilisable au quotidien pour le texte</td>
+</tr>
+<tr class="odd">
+<td><strong>2 — v1.0</strong></td>
+<td>Tous les <span class="prio p1">P1</span> : texte riche, images,
+fichiers, URLs, apps exclues, types masqués, expiration, quota, filtres,
+collage brut, ⌘1–9, épinglés, snippets, collections, aperçu, onboarding,
+prefs complètes, export/import</td>
+<td>Parité CopyClip 2</td>
+</tr>
+<tr class="even">
+<td><strong>3 — v1.x</strong></td>
+<td>Tous les <span class="prio p2">P2</span> : transformations,
+multi-collage, raccourcis par snippet, édition, couleurs, filtres
+avancés, fuzzy, updater, stats, position au caret</td>
+<td>Extras</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="interface">4. Interface</h2>
+<h3 id="popover-quick-panel-même-composant">4.1 Popover / Quick Panel
+(même composant)</h3>
+<pre><code>┌──────────────────────────────────────────────┐
+│ 🔍 Search clips…                         ⌘⇧V │
+├──────────────────────────────────────────────┤
+│  All   Pinned   Snippets      [Txt][Img][🔗]  │
+├──────────────────────────────────────────────┤
+│ ⌘1 📌 SELECT * FROM users WHERE id = …   VS  │
+│ ⌘2 ▸ https://github.com/tauri-apps/…   🧭 2m │
+│ ⌘3 ▣ [miniature]  Screenshot 1440×900  📷 5m │
+│ ⌘4 ¶ Bonjour Jean, suite à notre…      ✉ 12m │
+│ ⌘5 📄 rapport-final.pdf (+2 files)     📁 1h │
+│ …                                            │
+├──────────────────────────────────────────────┤
+│ 487 clips · ⚠ Auto-paste disabled [Enable] ⚙ │
+└──────────────────────────────────────────────┘</code></pre>
+<ul>
+<li>Ligne sélectionnée en surbrillance (couleur d’accent système).</li>
+<li>Survol d’une ligne : actions rapides à droite (📌 pin, 🗑 delete, ⋯
+more).</li>
+<li>Menu contextuel (clic droit ou <code>⌘K</code>) : Paste · Paste as
+plain text · Copy · Pin/Unpin · Save as snippet… · Transform ▸ · Open
+URL / Reveal in Finder · Delete.</li>
+<li>État vide : « Nothing copied yet. Press ⌘C anywhere — Tadidy
+remembers. »</li>
+<li>Recherche sans résultat : « No clips match “xyz” ».</li>
+</ul>
+<h3 id="design">4.2 Design</h3>
+<ul>
+<li>Matériau translucide macOS (vibrancy <code>popover</code> /
+<code>hudWindow</code> via <code>window-vibrancy</code>), coins arrondis
+de 10 px.</li>
+<li>Police système (<code>-apple-system</code>, SF Pro), monospace (SF
+Mono) pour les clips détectés comme du code.</li>
+<li>Thème clair/sombre qui suit le système, avec surcharge
+possible.</li>
+<li>Animations ≤ 120 ms, désactivées si « Reduce motion » est
+actif.</li>
+<li>Accessibilité : labels ARIA, navigation clavier complète, contraste
+AA.</li>
+</ul>
+<hr />
+<h2 id="raccourcis-clavier-dans-le-panneau">5. Raccourcis clavier (dans
+le panneau)</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Touche</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>↑</code> / <code>↓</code></td>
+<td>Clip précédent / suivant</td>
+</tr>
+<tr class="even">
+<td><code>Entrée</code> / double-clic</td>
+<td>Coller</td>
+</tr>
+<tr class="odd">
+<td><code>⇧Entrée</code></td>
+<td>Coller en texte brut</td>
+</tr>
+<tr class="even">
+<td><code>⌥Entrée</code> / <code>⌘C</code></td>
+<td>Copier seulement</td>
+</tr>
+<tr class="odd">
+<td><code>⌘1</code> … <code>⌘9</code></td>
+<td>Coller le n-ième clip</td>
+</tr>
+<tr class="even">
+<td><code>Espace</code></td>
+<td>Aperçu (si la recherche est vide ou non focalisée)</td>
+</tr>
+<tr class="odd">
+<td><code>⌘P</code></td>
+<td>Épingler / désépingler</td>
+</tr>
+<tr class="even">
+<td><code>⌘S</code></td>
+<td>Enregistrer comme snippet</td>
+</tr>
+<tr class="odd">
+<td><code>⌘⌫</code></td>
+<td>Supprimer</td>
+</tr>
+<tr class="even">
+<td><code>⌘O</code></td>
+<td>Ouvrir l’URL / Reveal in Finder</td>
+</tr>
+<tr class="odd">
+<td><code>⌘K</code></td>
+<td>Menu d’actions</td>
+</tr>
+<tr class="even">
+<td><code>Tab</code> / <code>⇧Tab</code></td>
+<td>Onglet suivant / précédent</td>
+</tr>
+<tr class="odd">
+<td><code>⌘F</code> ou toute lettre</td>
+<td>Focus recherche</td>
+</tr>
+<tr class="even">
+<td><code>Esc</code></td>
+<td>Effacer la recherche, puis fermer</td>
+</tr>
+<tr class="odd">
+<td><code>⌘,</code></td>
+<td>Préférences</td>
+</tr>
+</tbody>
+</table>
+<p>Raccourci global : <code>⌘⇧V</code> (configurable). En cas de conflit
+d’enregistrement, afficher une erreur dans les préférences.</p>
+<hr />
+<h2 id="architecture-technique">6. Architecture technique</h2>
+<h3 id="vue-densemble">6.1 Vue d’ensemble</h3>
+<pre><code>┌──────────────────────────── Tadidy.app ─────────────────────────────┐
+│                                                                     │
+│  ┌──────────── WebView (Svelte 5 + TS) ────────────┐                │
+│  │  Popover · Quick Panel · Preferences · Onboarding│                │
+│  └───────────────▲──────────────────┬───────────────┘                │
+│        events     │                  │  invoke() commands             │
+│  ┌────────────────┴──────────────────▼───────────────────────────┐  │
+│  │                    Tauri 2 core (Rust)                         │  │
+│  │  commands.rs · tray.rs · windows.rs · shortcuts.rs · state.rs  │  │
+│  └──┬─────────────┬──────────────┬───────────────┬───────────────┘  │
+│     │             │              │               │                  │
+│ ┌───▼──────┐ ┌────▼─────┐ ┌──────▼──────┐ ┌──────▼───────┐          │
+│ │ watcher  │ │ storage  │ │   paster    │ │   purger     │          │
+│ │ (thread) │ │ SQLCipher│ │ CGEvent ⌘V  │ │ (tokio task) │          │
+│ └───┬──────┘ │ + FTS5   │ └──────┬──────┘ └──────────────┘          │
+│     │        └────▲─────┘        │                                  │
+│ ┌───▼────────────┴───────────────▼─────┐   ┌─────────────────────┐   │
+│ │  macos/ : pasteboard · workspace ·   │   │ keychain (DB key)   │   │
+│ │  accessibility · app_icon  (objc2)   │   │ security-framework  │   │
+│ └──────────────────────────────────────┘   └─────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="dépendances-principales">6.2 Dépendances principales</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Besoin</th>
+<th>Crate / lib</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Shell app, IPC, fenêtres, tray</td>
+<td><code>tauri</code> 2 (features <code>tray-icon</code>,
+<code>macos-private-api</code>)</td>
+</tr>
+<tr class="even">
+<td>Raccourci global</td>
+<td><code>tauri-plugin-global-shortcut</code></td>
+</tr>
+<tr class="odd">
+<td>Lancement au démarrage</td>
+<td><code>tauri-plugin-autostart</code> (ou
+<code>smappservice-rs</code>)</td>
+</tr>
+<tr class="even">
+<td>Positionnement sous le tray</td>
+<td><code>tauri-plugin-positioner</code> (feature
+<code>tray-icon</code>)</td>
+</tr>
+<tr class="odd">
+<td>Panneau non activant</td>
+<td><code>tauri-nspanel</code> (conversion d’une
+<code>WebviewWindow</code> en <code>NSPanel</code>)</td>
+</tr>
+<tr class="even">
+<td>Vibrancy</td>
+<td><code>window-vibrancy</code></td>
+</tr>
+<tr class="odd">
+<td>Mises à jour (P2)</td>
+<td><code>tauri-plugin-updater</code></td>
+</tr>
+<tr class="even">
+<td>AppKit / Foundation</td>
+<td><code>objc2</code>, <code>objc2-app-kit</code>,
+<code>objc2-foundation</code></td>
+</tr>
+<tr class="odd">
+<td>Simulation clavier</td>
+<td><code>core-graphics</code> (<code>CGEvent</code>)</td>
+</tr>
+<tr class="even">
+<td>Permission Accessibilité</td>
+<td><code>AXIsProcessTrustedWithOptions</code> (FFI
+ApplicationServices)</td>
+</tr>
+<tr class="odd">
+<td>Base de données</td>
+<td><code>rusqlite</code> (feature
+<code>bundled-sqlcipher-vendored-openssl</code>) + migrations
+<code>rusqlite_migration</code></td>
+</tr>
+<tr class="even">
+<td>Trousseau</td>
+<td><code>security-framework</code> (ou <code>keyring</code>)</td>
+</tr>
+<tr class="odd">
+<td>Hash</td>
+<td><code>sha2</code></td>
+</tr>
+<tr class="even">
+<td>Images / miniatures</td>
+<td><code>image</code></td>
+</tr>
+<tr class="odd">
+<td>IDs</td>
+<td><code>uuid</code> (v7, triables dans le temps)</td>
+</tr>
+<tr class="even">
+<td>Async / tâches</td>
+<td><code>tokio</code> (runtime fourni par Tauri)</td>
+</tr>
+<tr class="odd">
+<td>Sérialisation</td>
+<td><code>serde</code>, <code>serde_json</code></td>
+</tr>
+<tr class="even">
+<td>Logs</td>
+<td><code>tracing</code>, <code>tracing-appender</code></td>
+</tr>
+<tr class="odd">
+<td>Erreurs</td>
+<td><code>thiserror</code>, <code>anyhow</code></td>
+</tr>
+<tr class="even">
+<td>Front</td>
+<td>Svelte 5, TypeScript, Vite, <code>@tauri-apps/api</code>, virtual
+list (<code>@tanstack/svelte-virtual</code> ou implémentation
+maison)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="surveillance-du-presse-papiers-watcher">6.3 Surveillance du
+presse-papiers (watcher)</h3>
+<p>macOS ne fournit <strong>aucune notification</strong> de changement
+du presse-papiers. Il faut donc faire du polling sur
+<code>changeCount</code> :</p>
+<ol type="1">
+<li>Un thread dédié lit
+<code>NSPasteboard.generalPasteboard.changeCount</code> toutes les
+<strong>300 ms</strong> (réglage interne). C’est un simple entier, donc
+le coût est négligeable.</li>
+<li>Si la valeur a changé :
+<ol type="1">
+<li>Lire <code>NSWorkspace.sharedWorkspace.frontmostApplication</code>
+pour récupérer le bundle ID et le nom de l’app source.</li>
+<li>Si l’app est exclue, ignorer le changement.</li>
+<li>Lire la liste des <code>types</code>. Si elle contient un type
+masqué ou transitoire, ignorer.</li>
+<li>Si elle contient le marqueur interne
+<code>app.tadidy.internal</code>, c’est une écriture de Tadidy :
+remonter le clip existant et s’arrêter (CAP-12).</li>
+<li>Extraire les représentations utiles dans cet ordre de priorité :
+<code>file-url</code> &gt; image (<code>png</code>/<code>tiff</code>)
+&gt; <code>rtf</code>/<code>html</code> &gt; <code>url</code> &gt;
+<code>utf8-plain-text</code>.</li>
+<li>Calculer le hash, dédupliquer, insérer en base, générer la miniature
+hors du thread de polling.</li>
+<li>Émettre l’événement Tauri <code>clips://changed</code> vers la
+webview.</li>
+</ol></li>
+<li>Le polling est <strong>adaptatif</strong> : 300 ms par défaut, 1 s
+quand la session est inactive depuis plus de 5 min
+(<code>CGEventSourceSecondsSinceLastEventType</code>), pour économiser
+la batterie.</li>
+</ol>
+<h3 id="collage-paster">6.4 Collage (paster)</h3>
+<ol type="1">
+<li>Écrire toutes les représentations du clip dans le presse-papiers,
+plus le type marqueur <code>app.tadidy.internal</code>.</li>
+<li>Masquer le Quick Panel ou le popover. Comme le Quick Panel est un
+NSPanel non activant, l’app cible garde le focus. Le popover, lui, est
+une vraie fenêtre : il faut mémoriser l’app active à l’ouverture et la
+réactiver avec
+<code>NSRunningApplication.activateWithOptions</code>.</li>
+<li>Attendre environ 50 ms, puis poster <code>CGEvent</code>
+keyDown/keyUp <code>V</code> avec le flag <code>Command</code> sur
+<code>kCGHIDEventTap</code>.</li>
+<li>Si <code>AXIsProcessTrusted()</code> renvoie faux, on s’arrête à
+l’étape 1 (copier seulement) et on affiche SYS-03.</li>
+<li>Option « Restore previous clipboard after paste » (P2) : remettre
+l’élément d’avant 500 ms plus tard.</li>
+</ol>
+<h3 id="fenêtres">6.5 Fenêtres</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Fenêtre</th>
+<th>Label</th>
+<th>Type</th>
+<th>Comportement</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Popover</td>
+<td><code>popover</code></td>
+<td>WebviewWindow sans décoration, transparente,
+<code>alwaysOnTop</code>, <code>skipTaskbar</code></td>
+<td>Créée au démarrage <strong>puis cachée</strong> (ouverture &lt; 100
+ms). Positionnée sous le tray (<code>Position::TrayBottomCenter</code>).
+Masquée sur <code>Focused(false)</code>.</td>
+</tr>
+<tr class="even">
+<td>Quick Panel</td>
+<td><code>panel</code></td>
+<td>NSPanel non activant (<code>tauri-nspanel</code>), style
+<code>nonactivatingPanel</code>, niveau <code>floating</code>,
+<code>canJoinAllSpaces</code> + <code>fullScreenAuxiliary</code></td>
+<td>Créée au démarrage puis cachée. Apparaît sur le Space courant, y
+compris au-dessus des apps en plein écran.</td>
+</tr>
+<tr class="odd">
+<td>Preferences</td>
+<td><code>settings</code></td>
+<td>Fenêtre standard</td>
+<td>Créée à la demande. Passe temporairement l’activation policy en
+<code>Regular</code> pour pouvoir prendre le focus, puis revient à
+<code>Accessory</code> à la fermeture.</td>
+</tr>
+<tr class="even">
+<td>Onboarding</td>
+<td><code>onboarding</code></td>
+<td>Fenêtre standard</td>
+<td>Au premier lancement uniquement.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="commandes-ipc-rust-svelte">6.6 Commandes IPC (Rust ⇄
+Svelte)</h3>
+<pre class="ts"><code>// Lecture
+list_clips(q: { search?: string; kinds?: ClipKind[]; app?: string;
+               tab: &#39;all&#39;|&#39;pinned&#39;|&#39;snippets&#39;; collectionId?: string;
+               cursor?: string; limit?: number }) -&gt; Page&lt;ClipSummary&gt;
+get_clip(id: string) -&gt; ClipDetail            // représentations + aperçu complet
+get_thumbnail(id: string) -&gt; Uint8Array        // ou protocole asset tadidy://thumb/{id}
+get_stats() -&gt; Stats
+
+// Actions
+paste_clip(id: string, mode: &#39;default&#39;|&#39;plain&#39;) -&gt; PasteResult  // &#39;pasted&#39; | &#39;copied_only&#39;
+copy_clip(id: string) -&gt; void
+paste_many(ids: string[], separator: string) -&gt; PasteResult       // P2
+transform_and_paste(id: string, t: Transform) -&gt; PasteResult      // P2
+delete_clips(ids: string[]) -&gt; void
+toggle_pin(id: string) -&gt; boolean
+save_snippet(input: { id?: string; title: string; content?: string; collectionId?: string }) -&gt; Clip
+update_clip_text(id: string, text: string) -&gt; void                // P2
+clear_history(keepPinned: boolean) -&gt; number
+reveal_in_finder(id: string) / open_url(id: string)
+
+// Collections
+list_collections() / create_collection(name) / rename_collection(id, name)
+delete_collection(id) / reorder_collections(ids)
+
+// Réglages &amp; système
+get_settings() -&gt; Settings ; set_settings(patch: Partial&lt;Settings&gt;) -&gt; Settings
+list_running_apps() -&gt; AppInfo[] ; add_excluded_app(bundleId) ; remove_excluded_app(bundleId)
+check_accessibility() -&gt; boolean ; open_accessibility_settings()
+export_history(path) -&gt; number ; import_history(path) -&gt; number</code></pre>
+<p><strong>Événements émis par Rust</strong> :
+<code>clips://changed</code>
+(<code>{ added?: id, updated?: id, removed?: id[] }</code>),
+<code>settings://changed</code>, <code>accessibility://changed</code>,
+<code>panel://shown</code> (pour réinitialiser la recherche et la
+sélection).</p>
+<h3 id="modèle-de-données-sqlite-sqlcipher">6.7 Modèle de données
+(SQLite / SQLCipher)</h3>
+<pre class="sql"><code>CREATE TABLE clips (
+  id              TEXT PRIMARY KEY,          -- UUID v7
+  kind            TEXT NOT NULL,             -- &#39;text&#39;|&#39;rich&#39;|&#39;image&#39;|&#39;file&#39;|&#39;url&#39;|&#39;color&#39;
+  content_hash    TEXT NOT NULL UNIQUE,      -- SHA-256 de la représentation principale
+  plain_text      TEXT,                      -- texte indexable (texte, alt d&#39;image, noms de fichiers, URL)
+  preview         TEXT,                      -- aperçu tronqué (300 car.)
+  title           TEXT,                      -- snippets
+  source_bundle   TEXT,
+  source_name     TEXT,
+  byte_size       INTEGER NOT NULL,
+  width           INTEGER, height INTEGER,   -- images
+  pinned          INTEGER NOT NULL DEFAULT 0,
+  pin_order       REAL,
+  collection_id   TEXT REFERENCES collections(id) ON DELETE SET NULL,
+  copy_count      INTEGER NOT NULL DEFAULT 1,
+  created_at      INTEGER NOT NULL,          -- ms epoch, première copie
+  last_copied_at  INTEGER NOT NULL,          -- tri principal
+  last_used_at    INTEGER                    -- dernier collage depuis Tadidy
+);
+CREATE INDEX idx_clips_recent ON clips(pinned, last_copied_at DESC);
+CREATE INDEX idx_clips_kind   ON clips(kind, last_copied_at DESC);
+
+CREATE TABLE representations (
+  clip_id  TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+  uti      TEXT NOT NULL,                    -- public.rtf, public.png, public.file-url…
+  data     BLOB NOT NULL,
+  PRIMARY KEY (clip_id, uti)
+);
+
+CREATE TABLE thumbnails (
+  clip_id  TEXT PRIMARY KEY REFERENCES clips(id) ON DELETE CASCADE,
+  png      BLOB NOT NULL
+);
+
+CREATE TABLE collections (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, sort REAL NOT NULL
+);
+
+CREATE TABLE excluded_apps (
+  bundle_id TEXT PRIMARY KEY, name TEXT NOT NULL
+);
+
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL  -- JSON
+);
+
+CREATE TABLE app_icons (                      -- cache des icônes d&#39;apps sources
+  bundle_id TEXT PRIMARY KEY, png BLOB NOT NULL
+);
+
+CREATE VIRTUAL TABLE clips_fts USING fts5(
+  plain_text, title, source_name,
+  content=&#39;clips&#39;, content_rowid=&#39;rowid&#39;,
+  tokenize=&#39;unicode61 remove_diacritics 2&#39;
+);
+-- + triggers AFTER INSERT/UPDATE/DELETE sur clips pour synchroniser clips_fts</code></pre>
+<p><strong>Emplacement</strong> :
+<code>~/Library/Application Support/app.tadidy/tadidy.db</code> (+
+WAL).</p>
+<p><strong>Choix « tout en base »</strong> : les images sont stockées en
+BLOB dans la base chiffrée, plutôt qu’en fichiers. Cela donne un seul
+mécanisme de chiffrement, des suppressions atomiques et des sauvegardes
+simples. En contrepartie, la base grossit, d’où les limites CAP-13 et
+HIS-04, et un <code>VACUUM</code> incrémental
+(<code>auto_vacuum = INCREMENTAL</code>).</p>
+<h3 id="chiffrement">6.8 Chiffrement</h3>
+<ul>
+<li>La base est chiffrée avec <strong>SQLCipher</strong> (AES-256,
+<code>PRAGMA key</code>).</li>
+<li>Au premier lancement, une clé aléatoire de 256 bits est générée et
+stockée dans le <strong>Trousseau macOS</strong>
+(<code>kSecClassGenericPassword</code>, service <code>app.tadidy</code>,
+accessibilité <code>AfterFirstUnlockThisDeviceOnly</code>).</li>
+<li>La clé ne quitte jamais la mémoire du processus et n’est jamais
+loguée.</li>
+<li>Si la clé est absente alors que la base existe (Trousseau
+réinitialisé), proposer de <strong>réinitialiser l’historique</strong>.
+Aucune récupération n’est possible.</li>
+<li>L’export JSON est <strong>en clair</strong> et le dialogue d’export
+le signale.</li>
+<li>⚠️ Comme l’accès au Trousseau est lié à la signature du code, voir
+§8 (signature stable).</li>
+</ul>
+<h3 id="arborescence-du-projet">6.9 Arborescence du projet</h3>
+<pre><code>tadidy/
+├─ SPEC.md / SPEC.html
+├─ package.json · vite.config.ts · svelte.config.js · tsconfig.json
+├─ src/                              # Front Svelte 5
+│  ├─ main.ts
+│  ├─ routes/ (ou entrées multiples Vite)
+│  │  ├─ popover.html / panel.html / settings.html / onboarding.html
+│  ├─ lib/
+│  │  ├─ api.ts                      # wrappers typés de invoke() + listen()
+│  │  ├─ types.ts                    # ClipSummary, Settings… (générés via ts-rs ou specta)
+│  │  ├─ stores/ clips.svelte.ts · settings.svelte.ts   # runes $state
+│  │  ├─ components/
+│  │  │  ├─ ClipList.svelte · ClipRow.svelte · SearchBar.svelte
+│  │  │  ├─ Tabs.svelte · KindFilters.svelte · Preview.svelte
+│  │  │  ├─ ContextMenu.svelte · EmptyState.svelte · PermissionBanner.svelte
+│  │  └─ keyboard.ts                 # gestion centralisée des raccourcis
+│  └─ styles/ tokens.css
+└─ src-tauri/
+   ├─ Cargo.toml · tauri.conf.json · capabilities/default.json
+   ├─ Info.plist                     # LSUIElement = true
+   ├─ icons/ (app + tray template @1x/@2x)
+   └─ src/
+      ├─ main.rs · lib.rs            # setup, plugins, activation policy
+      ├─ commands.rs                 # #[tauri::command]
+      ├─ state.rs                    # AppState (db pool, settings, last_active_app)
+      ├─ tray.rs · windows.rs · shortcuts.rs
+      ├─ watcher.rs                  # thread de polling
+      ├─ paster.rs                   # écriture pasteboard + CGEvent
+      ├─ purger.rs                   # expiration, quota, limite
+      ├─ transforms.rs               # P2
+      ├─ storage/ mod.rs · migrations.rs · clips.rs · collections.rs · settings.rs · fts.rs
+      ├─ crypto.rs                   # Trousseau
+      └─ macos/ pasteboard.rs · workspace.rs · accessibility.rs · app_icon.rs</code></pre>
+<hr />
+<h2 id="exigences-non-fonctionnelles">7. Exigences non
+fonctionnelles</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Catégorie</th>
+<th>Exigence</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Performance</strong></td>
+<td>Ouverture du popover / Quick Panel &lt; 100 ms (fenêtres
+pré-créées). Recherche &lt; 50 ms sur 10 000 clips. Liste virtualisée
+(seuls environ 30 nœuds DOM rendus).</td>
+</tr>
+<tr class="even">
+<td><strong>Ressources</strong></td>
+<td>CPU au repos &lt; 0,5 % (polling adaptatif). RAM &lt; 120 Mo (WebKit
+inclus). Binaire &lt; 15 Mo.</td>
+</tr>
+<tr class="odd">
+<td><strong>Fiabilité</strong></td>
+<td>Aucune perte de clip si l’app plante : écriture en base avant
+l’émission de l’événement, journal WAL. Migrations de schéma versionnées
+et testées.</td>
+</tr>
+<tr class="even">
+<td><strong>Confidentialité</strong></td>
+<td>Aucun appel réseau sauf la vérification de mise à jour (P2,
+désactivable). Pas de télémétrie. Le contenu des clips n’apparaît jamais
+dans les logs.</td>
+</tr>
+<tr class="odd">
+<td><strong>Compatibilité</strong></td>
+<td>macOS 13+, binaire universel arm64 + x86_64. Fonctionne avec
+plusieurs écrans, Spaces et apps en plein écran.</td>
+</tr>
+<tr class="even">
+<td><strong>Accessibilité</strong></td>
+<td>VoiceOver sur la liste (rôle
+<code>listbox</code>/<code>option</code>), navigation clavier complète,
+contraste AA, respect de « Reduce motion » / « Reduce transparency
+».</td>
+</tr>
+<tr class="odd">
+<td><strong>Qualité</strong></td>
+<td><code>cargo clippy -D warnings</code>, <code>cargo fmt</code>,
+<code>svelte-check</code>, ESLint. Tests unitaires Rust sur storage,
+dédup, purge, transforms et parsing de recherche. Tests de composants
+front (Vitest).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="permissions-signature-distribution">8. Permissions, signature,
+distribution</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Sujet</th>
+<th>Décision</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Accessibilité (TCC)</strong></td>
+<td>Requise pour l’auto-collage (<code>CGEvent</code>). Demandée à
+l’onboarding. Sans elle, l’app fonctionne en mode « copier seulement
+».</td>
+</tr>
+<tr class="even">
+<td><strong>Sandbox</strong></td>
+<td>Désactivée, puisqu’il n’y a pas d’App Store. Pas d’entitlement
+sandbox.</td>
+</tr>
+<tr class="odd">
+<td><strong><code>Info.plist</code></strong></td>
+<td><code>LSUIElement = true</code> (pas d’icône Dock),
+<code>NSHumanReadableCopyright</code>, bundle ID
+<code>app.tadidy</code>.</td>
+</tr>
+<tr class="even">
+<td><strong>Signature</strong></td>
+<td>⚠️ <strong>Important</strong> : macOS associe la permission
+Accessibilité et l’accès au Trousseau à l’<strong>identité de
+signature</strong>. Une signature <em>ad hoc</em> change à chaque build
+: il faudrait alors réautoriser l’app à chaque fois.
+<strong>Solution</strong> : signer avec une identité stable, soit un
+certificat « Developer ID Application » (99 $/an, qui permet aussi la
+notarisation), soit, en usage strictement perso, un certificat
+auto-signé créé dans Trousseau d’accès et référencé dans
+<code>tauri.conf.json &gt; bundle &gt; macOS &gt; signingIdentity</code>.</td>
+</tr>
+<tr class="odd">
+<td><strong>Notarisation</strong></td>
+<td>Optionnelle en usage perso. Indispensable si l’app est partagée,
+pour éviter le blocage Gatekeeper.</td>
+</tr>
+<tr class="even">
+<td><strong>Packaging</strong></td>
+<td><code>tauri build --target universal-apple-darwin</code> produit
+<code>.app</code> + <code>.dmg</code>.</td>
+</tr>
+<tr class="odd">
+<td><strong>Mises à jour (P2)</strong></td>
+<td><code>tauri-plugin-updater</code> : clé de signature Tauri
+(différente de la signature Apple), <code>latest.json</code> publié sur
+GitHub Releases.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="risques-et-points-dattention">9. Risques et points
+d’attention</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Risque</th>
+<th>Impact</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Le popover vole le focus, et <code>⌘V</code> part dans la mauvaise
+app</td>
+<td>Élevé</td>
+<td>Quick Panel en NSPanel non activant. Pour le popover, mémoriser
+l’app active et la réactiver avant le collage. À valider en spike (phase
+0).</td>
+</tr>
+<tr class="even">
+<td>Permission Accessibilité perdue à chaque rebuild</td>
+<td>Moyen (dev)</td>
+<td>Signature stable dès le début (§8). En dev, lancer depuis le
+<code>.app</code> signé et non via <code>cargo run</code>.</td>
+</tr>
+<tr class="odd">
+<td>Compilation SQLCipher (OpenSSL) en binaire universel</td>
+<td>Moyen</td>
+<td>Feature <code>bundled-sqlcipher-vendored-openssl</code>, testée en
+CI dès la phase 0.</td>
+</tr>
+<tr class="even">
+<td>Base qui grossit avec les images</td>
+<td>Moyen</td>
+<td>Limites de taille, quota, <code>incremental_vacuum</code> après les
+purges.</td>
+</tr>
+<tr class="odd">
+<td>Polling et batterie</td>
+<td>Faible</td>
+<td>Polling adaptatif. Lire seulement <code>changeCount</code>, jamais
+le contenu, tant qu’il ne change pas.</td>
+</tr>
+<tr class="even">
+<td>Contenus exotiques (formats propriétaires d’apps comme Figma ou
+Office)</td>
+<td>Faible</td>
+<td>Ne garder que les UTI connus. Option <span class="prio p2">P2</span>
+« keep all representations » avec une limite de taille.</td>
+</tr>
+<tr class="odd">
+<td>Raccourci <code>⌘⇧V</code> déjà utilisé par une autre app</td>
+<td>Faible</td>
+<td>Détecter l’échec d’enregistrement et le signaler dans les
+préférences.</td>
+</tr>
+<tr class="even">
+<td>Empreinte mémoire WebKit</td>
+<td>Faible</td>
+<td>Fenêtres cachées, pas détruites. Une seule webview partagée
+popover/panel possible si nécessaire.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="critères-dacceptation-mvp">10. Critères d’acceptation (MVP)</h2>
+<ol type="1">
+<li>Copier un texte dans n’importe quelle app : il apparaît en tête du
+popover en moins de 500 ms.</li>
+<li>Copier deux fois le même texte : un seul clip, remonté en tête,
+<code>copy_count = 2</code>.</li>
+<li><code>⌘⇧V</code> dans TextEdit, <code>↓</code>, <code>Entrée</code>
+: le 2ᵉ clip est collé dans TextEdit, qui garde le focus.</li>
+<li>Permission Accessibilité retirée : <code>Entrée</code> copie
+seulement et la bannière s’affiche.</li>
+<li>Avec la limite à 10, une 11ᵉ copie supprime la plus ancienne non
+épinglée.</li>
+<li>Taper « sel » filtre en moins de 50 ms et n’affiche que les clips
+contenant « sel ».</li>
+<li>Après redémarrage du Mac, Tadidy est lancé (si l’option est cochée)
+et l’historique est intact.</li>
+<li>Ouvrir <code>tadidy.db</code> avec <code>sqlite3</code> sans la clé
+échoue (« file is not a database »).</li>
+<li>Aucune icône dans le Dock ni dans <code>⌘Tab</code>.</li>
+<li>CPU au repos &lt; 0,5 % mesuré sur 10 min dans le Moniteur
+d’activité.</li>
+</ol>
+<hr />
+<h2 id="décisions-prises">11. Décisions prises</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Question</th>
+<th>Décision</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Stack</td>
+<td>Rust + <strong>Tauri 2</strong>, front <strong>Svelte 5 +
+TypeScript</strong></td>
+</tr>
+<tr class="even">
+<td>Périmètre</td>
+<td>Niveau <strong>CopyClip 2 + extras</strong>, livré par phases</td>
+</tr>
+<tr class="odd">
+<td>Contenus</td>
+<td>Texte brut, texte riche (RTF/HTML), images, fichiers/URLs</td>
+</tr>
+<tr class="even">
+<td>Affichage</td>
+<td><strong>Popover</strong> au clic sur le tray + <strong>Quick
+Panel</strong> au raccourci global</td>
+</tr>
+<tr class="odd">
+<td>Distribution</td>
+<td>Usage perso, DMG direct, hors sandbox</td>
+</tr>
+<tr class="even">
+<td>Langue</td>
+<td>Anglais uniquement</td>
+</tr>
+<tr class="odd">
+<td>Confidentialité</td>
+<td><strong>Base chiffrée</strong> (SQLCipher + Trousseau) +
+<strong>expiration auto</strong></td>
+</tr>
+<tr class="even">
+<td>Nom</td>
+<td><strong>Tadidy</strong></td>
+</tr>
+<tr class="odd">
+<td>Historique</td>
+<td><strong>500 clips</strong> par défaut</td>
+</tr>
+<tr class="even">
+<td>Sync</td>
+<td>Aucune, local uniquement</td>
+</tr>
+</tbody>
+</table>
+<h2 id="questions-ouvertes">12. Questions ouvertes</h2>
+<ol type="1">
+<li><strong>Ignorer les contenus masqués (mots de passe)</strong> : non
+coché lors du cadrage, mais inclus ici (CAP-11), activé par défaut et
+désactivable. À confirmer.</li>
+<li><strong>Pause de capture</strong> (« Pause for 15 min / 1 h / until
+resumed ») : non retenue pour l’instant. À ajouter en
+<span class="prio p2">P2</span> ?</li>
+<li><strong>Position du Quick Panel</strong> : sous la souris (défaut
+proposé) ou centré ?</li>
+<li><strong>Son ou retour visuel à la copie</strong> (l’icône du tray
+qui « pulse ») : souhaité ?</li>
+<li><strong>Raccourci global</strong> : <code>⌘⇧V</code> convient, ou tu
+préfères <code>⌥⌘V</code> / <code>⌃⌥V</code> ?</li>
+<li><strong>Signature</strong> : as-tu un compte Apple Developer, ou on
+part sur un certificat auto-signé ?</li>
+</ol>
+</body>
+</html>
