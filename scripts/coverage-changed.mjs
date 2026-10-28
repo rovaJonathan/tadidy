@@ -83,7 +83,9 @@ function git(cwd, ...args) {
 
 function changedFiles(root, base) {
   const mergeBase = git(root, "merge-base", "HEAD", base);
-  return git(root, "diff", "--name-only", "--diff-filter=AMR", mergeBase).split("\n").filter(Boolean);
+  const tracked = git(root, "diff", "--name-only", "--diff-filter=AMR", mergeBase);
+  const untracked = git(root, "ls-files", "--others", "--exclude-standard");
+  return `${tracked}\n${untracked}`.split("\n").filter(Boolean);
 }
 
 function main() {
