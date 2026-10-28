@@ -30,3 +30,6 @@ ts-rs = "12.0.1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[dev-dependencies]
+tauri = { version = "2.12", features = ["test"] }

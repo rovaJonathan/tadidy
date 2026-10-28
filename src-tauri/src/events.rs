@@ -63,6 +63,7 @@ impl EventSink for RecordingEventSink {
 mod tests {
     use super::*;
     use serde_json::json;
+    use tauri::Listener;
 
     #[test]
     fn recording_sink_keeps_events_in_order() {
@@ -78,6 +79,22 @@ mod tests {
                 (SETTINGS_CHANGED, json!(null)),
             ]
         );
+    }
+
+    #[test]
+    fn tauri_sink_emits_to_the_app_listeners() {
+        let app = tauri::test::mock_app();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        app.listen_any(CLIPS_CHANGED, move |event| {
+            sender.send(event.payload().to_owned()).unwrap();
+        });
+
+        TauriEventSink::new(app.handle().clone()).emit(CLIPS_CHANGED, json!({ "added": "0192" }));
+
+        let payload = receiver
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(payload, r#"{"added":"0192"}"#);
     }
 
     #[test]

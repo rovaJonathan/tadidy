@@ -29,6 +29,7 @@ if [ -f src-tauri/Cargo.toml ]; then
   cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
   if [ "$COV" = 1 ]; then
     step "Rust tests with coverage"
+    mkdir -p coverage # cargo llvm-cov does not create the folder of --output-path
     cargo llvm-cov --manifest-path src-tauri/Cargo.toml --lcov --output-path coverage/rust.lcov
   else
     step "Rust tests"
