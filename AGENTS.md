@@ -80,6 +80,7 @@ tadidy/
 | Pasteboard, paste, windows, AppKit | [docs/spec/04-architecture.md](docs/spec/04-architecture.md) (`watcher`, `paster`, `windows`), §13 *macOS layer* |
 | Build, signing, release | [docs/spec/06-delivery.md#permissions-signing](docs/spec/06-delivery.md#permissions-signing), skill `release-dmg`, [docs/runbooks/](docs/runbooks/) |
 | Ticket tracking | [docs/guides/tickets.md](docs/guides/tickets.md), skills `ticket-*` |
+| Second session in parallel, pull request review | [docs/guides/parallel-sessions.md](docs/guides/parallel-sessions.md), skill `review-pr` |
 | Bug or test failing for no clear reason | skill `systematic-debugging`, then [docs/solutions/](docs/solutions/) |
 | Decision that commits the architecture | [docs/adr/](docs/adr/README.md); a new decision = a new ADR |
 
@@ -110,12 +111,14 @@ The status travels **with the ticket's branch**: `node scripts/tickets.mjs` read
 
 1. The human says **"What should I do today?"** (or "let's continue"). **`tadidy-session`** answers with one ticket: an in-progress or in-review ticket first, otherwise the next ready one. It asks **"Shall I do it?"**. The human can also name a ticket ("take TAD-009"). No command to type.
 2. **Yes** → **`ticket-claim`**, then **`ticket-implement`** (plan, **`tdd`**, verify, **`self-review`**, **`prototype-parity`** for UI tickets).
-3. At the end, the agent opens the pull request to `main` (**`ticket-update`**, opening) without asking; the ticket goes to `review`. The human reviews on GitHub, then says **"address the review"** → **`address-pr`**, as many rounds as needed.
+3. At the end, the agent opens the pull request to `main` (**`ticket-update`**, opening) without asking; the ticket goes to `review`. Optionally, the human asks another session for an agent review (**`review-pr`**: comments posted on the pull request, never an approval). The human reviews on GitHub, then says **"address the review"** → **`address-pr`**, as many rounds as needed.
 4. The human approves ("approved", "LGTM", or a GitHub approval) → **`ticket-update`** (closing: closing note, `done`, pushed on the branch), then the human merges, then **"Shall I take the next one?"**.
 5. Stuck? **`ticket-problem`**, then ask again.
 6. Missing work? **`ticket-create`**, not in the current ticket.
 
 Stay in scope: what is under *Out of scope* is not done in this ticket, even if it is quick. One session = one ticket: start the next one from a clean context.
+
+**Parallel sessions never share a folder.** When the main folder is busy (not on `main`, or uncommitted changes: `node scripts/worktree.mjs status`), a session working on another ticket or reviewing a pull request works in its own git worktree in `../tadidy-worktrees/`, and never switches branch, stashes or commits in the main folder. Rules and traps: [docs/guides/parallel-sessions.md](docs/guides/parallel-sessions.md).
 
 ## 9. TDD: mandatory for every ticket
 
@@ -210,7 +213,8 @@ Full index: [docs/README.md](docs/README.md).
 | `self-review` | Before opening the pull request |
 | `verification-before-completion` | Before any "it's done", "it passes", "it's fixed" |
 | `systematic-debugging` | A bug, a red test or an unexpected behaviour whose cause is not obvious |
-| `address-pr` | To address the human's review comments on a pull request |
+| `review-pr` | When the human asks for an agent review of a pull request (in a session that did not write it) |
+| `address-pr` | To address the review comments on a pull request (the human's, or `review-pr`'s) |
 | `prototype-parity` | For every UI ticket |
 | `scaffold-tauri-command` | A new IPC command end to end |
 | `db-migration` | Any schema change |

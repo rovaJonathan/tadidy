@@ -9,7 +9,7 @@
 | [solutions/](solutions/) | Solved problems that will come back: tool traps, obscure errors, workarounds | `<category>/YYYY-MM-DD-<slug>.md` |
 | [runbooks/](runbooks/) | Operating procedures: signing identity, release, data recovery | `<slug>.md` |
 | [reference.md](reference.md) | Versions, tools, paths, bundle identifiers | — |
-| [guides/](guides/) | For humans and agents: [tickets](guides/tickets.md), [manual QA](guides/manual-qa.md) | — |
+| [guides/](guides/) | For humans and agents: [tickets](guides/tickets.md), [manual QA](guides/manual-qa.md), [parallel sessions](guides/parallel-sessions.md) | — |
 | [archive/](archive/) | The French first draft of the spec — **no longer authoritative** | — |
 
 The visual system is in [../DESIGN.md](../DESIGN.md), the vocabulary in [../GLOSSARY.md](../GLOSSARY.md), the tickets in [../tickets/](../tickets/README.md).

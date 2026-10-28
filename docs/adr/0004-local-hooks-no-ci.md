@@ -13,7 +13,7 @@ A macOS app needs macOS runners to build and test; GitHub-hosted macOS minutes a
   - `pre-commit`: gitleaks on the staged changes, `tickets.mjs check` when tickets, spec or prototype change, `cargo fmt --check` and `prettier --check` on staged files.
   - `commit-msg`: Conventional Commits scoped to a ticket (`scripts/commit-msg.mjs`).
   - `pre-push`: no direct push to `main` (`scripts/pre-push-guard.sh`), then `scripts/check.sh --cov` — repository scripts, tickets, repository consistency, `cargo fmt`, `clippy -D warnings`, Rust tests with coverage, bindings drift, front lint, typecheck, tests with coverage, 80 % on changed files.
-- The repository sets a **local** `core.hooksPath` to `.git/hooks` so lefthook can install even when a global hooks path exists; the global "no push to main" rule is reproduced by `pre-push-guard.sh`.
+- The repository sets a **local** `core.hooksPath` to `.git/hooks` so lefthook can install even when a global hooks path exists; the global "no push to main" rule is reproduced by `pre-push-guard.sh`. *Amended 2026-10-28 (TAD-020)*: the path is absolute (`<common git dir>/hooks`), because a relative `.git/hooks` points at a file inside a git worktree and every hook is then skipped silently.
 - **Bypassing a hook is forbidden** (`--no-verify`, `LEFTHOOK=0`): AGENTS.md §2.
 - The pull request lists the commands that were run and their result (template), since nothing re-runs them on the server.
 
