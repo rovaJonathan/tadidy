@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": true,
+    "emitDeclarationOnly": true,
+    "outDir": "node_modules/.tmp/tsconfig.node"
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "eslint.config.js", "svelte.config.js"]
+}

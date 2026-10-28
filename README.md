@@ -16,6 +16,8 @@ brew install lefthook gitleaks cargo-llvm-cov
 rustup show                                 # installs the toolchain, components and targets of rust-toolchain.toml
 git config --local core.hooksPath "$(git rev-parse --path-format=absolute --git-common-dir)/hooks"   # absolute: hooks must also run in worktrees
 lefthook install --force                    # the hooks are the only quality gate (no CI)
+pnpm install                                # front dependencies (pnpm version from packageManager)
+pnpm exec playwright install chromium       # browser for the end-to-end tests (pnpm e2e)
 scripts/check.sh                            # everything green before you start
 ```
 
@@ -26,7 +28,8 @@ For auto-paste to keep working across rebuilds, sign with a stable identity: [do
 | What | Command |
 |---|---|
 | What to work on | ask the agent "What should I do today?" — or `node scripts/tickets.mjs next` |
-| Run the app | `pnpm tauri dev` (after TAD-001) |
+| Run the app | `pnpm tauri dev` (menu-bar only: no window, no Dock icon) |
+| Front checks | `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm test:cov` · `pnpm e2e` |
 | Full local gate | `scripts/check.sh` (`--cov` adds the coverage gate; run by `pre-push`) |
 | Tickets | `node scripts/tickets.mjs list` · `ready` · `check` |
 | Rebuild the spec HTML | `mise exec pandoc@3.1.11.1 -- scripts/spec/build.sh` |
