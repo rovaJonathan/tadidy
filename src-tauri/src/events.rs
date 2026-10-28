@@ -4,7 +4,7 @@
 use std::sync::{Mutex, PoisonError};
 
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime, Wry};
 
 pub const CLIPS_CHANGED: &str = "clips://changed";
 pub const SETTINGS_CHANGED: &str = "settings://changed";
@@ -15,18 +15,19 @@ pub trait EventSink: Send + Sync {
     fn emit(&self, event: &'static str, payload: Value);
 }
 
-/// Emits to every webview of the running app.
-pub struct TauriEventSink {
-    app: AppHandle,
+/// Emits to every webview of the running app. Generic over the runtime so tests use
+/// Tauri's mock runtime.
+pub struct TauriEventSink<R: Runtime = Wry> {
+    app: AppHandle<R>,
 }
 
-impl TauriEventSink {
-    pub fn new(app: AppHandle) -> Self {
+impl<R: Runtime> TauriEventSink<R> {
+    pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
     }
 }
 
-impl EventSink for TauriEventSink {
+impl<R: Runtime> EventSink for TauriEventSink<R> {
     fn emit(&self, event: &'static str, payload: Value) {
         // The payload is never logged: it may describe a clip.
         if let Err(error) = self.app.emit(event, payload) {
