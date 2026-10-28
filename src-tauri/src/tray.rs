@@ -1,6 +1,47 @@
 //! The tray icon's native menu (MNU-03). The model is a pure function so the labels, the
 //! order and the enabled state are tested without AppKit; `lib.rs` turns it into a menu.
 
+/// One row of the tray menu, in the order the prototype's `#tray-menu` shows them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrayItem {
+    Entry {
+        id: &'static str,
+        label: &'static str,
+        enabled: bool,
+        /// Tauri accelerator string, shown as the menu's keyboard equivalent.
+        accelerator: Option<&'static str>,
+    },
+    Separator,
+}
+
+const fn entry(
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+    accelerator: Option<&'static str>,
+) -> TrayItem {
+    TrayItem::Entry {
+        id,
+        label,
+        enabled,
+        accelerator,
+    }
+}
+
+/// The tray menu. Preferences…, Clear history… and About are wired by TAD-018 and Check for
+/// updates… by the P2 updater ticket (SYS-04): until then they are shown but disabled.
+pub fn menu_items() -> Vec<TrayItem> {
+    vec![
+        entry("preferences", "Preferences…", false, Some("CmdOrCtrl+,")),
+        entry("clear-history", "Clear history…", false, None),
+        TrayItem::Separator,
+        entry("about", "About Tadidy", false, None),
+        entry("check-updates", "Check for updates…", false, None),
+        TrayItem::Separator,
+        entry("quit", "Quit Tadidy", true, Some("CmdOrCtrl+Q")),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
