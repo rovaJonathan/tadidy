@@ -84,6 +84,18 @@ test("status reports the main folder and whether it is busy", () => {
   assert.equal(status(root).busy, true);
 });
 
+test("status ignores a GIT_DIR inherited from a git hook", () => {
+  // Hooks run from a worktree export an absolute GIT_DIR: git would then act on that repository.
+  const { root } = repo();
+  const decoy = repo().root;
+  process.env.GIT_DIR = join(decoy, ".git");
+  try {
+    assert.equal(status(root).main, root);
+  } finally {
+    delete process.env.GIT_DIR;
+  }
+});
+
 test("add creates the branch in a worktree next to the main folder, from main", () => {
   const { base, root } = repo();
   const dir = addWorktree(root, "tad-999-something", { install: false });
