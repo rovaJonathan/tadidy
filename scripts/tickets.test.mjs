@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -189,4 +189,73 @@ test("the status on a local tad-xxx branch wins over the working tree", () => {
   assert.equal(first.source, "tad-001-first");
   assert.equal(readFileSync(join(root, "tickets/TAD-001.md"), "utf8").includes("status: todo"), true);
   assert.equal(nextWork(tickets).next?.header.id, "TAD-002");
+});
+
+function commitAll(root, message) {
+  git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", ".");
+  git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message);
+}
+
+// TAD-001 in progress on its own branch, TAD-002 ready; returns the repository on main.
+function repoWithClaimedTicket() {
+  const root = makeRepo();
+  write(root, "TAD-001", {});
+  write(root, "TAD-002", {});
+  git(root, "init", "-q", "-b", "main");
+  commitAll(root, "init");
+  git(root, "checkout", "-qb", "tad-001-first");
+  write(root, "TAD-001", { status: "in-progress", branch: "tad-001-first", started: "2026-10-28" });
+  commitAll(root, "claim");
+  git(root, "checkout", "-q", "main");
+  return root;
+}
+
+test("an in-progress ticket checked out in a worktree is taken, and the next ready one is proposed", () => {
+  const root = repoWithClaimedTicket();
+  const other = join(mkdtempSync(join(tmpdir(), "tickets-wt-")), "tad-001-first");
+  git(root, "worktree", "add", "-q", other, "tad-001-first");
+
+  const { active, taken, next } = nextWork(loadTickets(root, { branches: true }));
+  assert.deepEqual(taken.map((t) => t.header.id), ["TAD-001"]);
+  assert.equal(realpathSync(taken[0].checkedOut), realpathSync(other));
+  assert.deepEqual(active, []);
+  assert.equal(next?.header.id, "TAD-002");
+});
+
+test("an in-progress ticket checked out in the main folder is taken", () => {
+  const root = repoWithClaimedTicket();
+  git(root, "checkout", "-q", "tad-001-first");
+
+  const { active, taken, next } = nextWork(loadTickets(root, { branches: true }));
+  assert.deepEqual(taken.map((t) => t.header.id), ["TAD-001"]);
+  assert.equal(realpathSync(taken[0].checkedOut), realpathSync(root));
+  assert.deepEqual(active, []);
+  assert.equal(next?.header.id, "TAD-002");
+});
+
+test("an in-progress ticket checked out nowhere stays active, to resume", () => {
+  const root = repoWithClaimedTicket();
+
+  const { active, taken } = nextWork(loadTickets(root, { branches: true }));
+  assert.deepEqual(active.map((t) => t.header.id), ["TAD-001"]);
+  assert.equal(active[0].checkedOut, null);
+  assert.deepEqual(taken, []);
+});
+
+test("a ticket done on main wins over a stale local branch", () => {
+  const root = makeRepo();
+  write(root, "TAD-001", {});
+  git(root, "init", "-q", "-b", "main");
+  commitAll(root, "init");
+  git(root, "checkout", "-qb", "tad-001-first");
+  write(root, "TAD-001", { status: "review", branch: "tad-001-first", pr: "https://x/pull/1", started: "2026-10-28" });
+  commitAll(root, "open pull request");
+  git(root, "checkout", "-q", "main");
+  write(root, "TAD-001", { status: "done", branch: "tad-001-first", pr: "https://x/pull/1", completed: "2026-10-28" });
+  commitAll(root, "close");
+  git(root, "checkout", "-qb", "tad-002-second", "HEAD~1");
+
+  const first = loadTickets(root, { branches: true }).find((t) => t.header.id === "TAD-001");
+  assert.equal(first.header.status, "done");
+  assert.equal(first.source, "main");
 });
