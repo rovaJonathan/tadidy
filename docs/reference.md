@@ -16,10 +16,10 @@ A **snapshot** of what the project uses. It is not a list of versions to copy: a
 
 ### Coverage gate
 
-`scripts/check.sh --cov` (run by the `pre-push` hook) ends with `node scripts/coverage-changed.mjs`: every source file changed since `git merge-base HEAD main`, working tree included, needs ≥ 80 % line coverage (AGENTS.md §9). It reads `coverage/rust.lcov` (`cargo llvm-cov`) and `coverage/front/lcov.info` (`pnpm test:cov`); a changed file in neither report counts as 0 %.
+`scripts/check.sh --cov` (run by the `pre-push` hook) ends with `node scripts/coverage-changed.mjs`: every source file changed since `git merge-base HEAD main`, working tree and untracked files included, needs ≥ 80 % line coverage (AGENTS.md §9). It reads `coverage/rust.lcov` (`cargo llvm-cov`) and `coverage/front/lcov.info` (`pnpm test:cov`); a changed file in neither report counts as 0 %.
 
 - Gated: `src-tauri/src/**/*.rs`, `src/**/*.ts`, `src/**/*.svelte`.
-- Excluded (`EXCLUDED` in the script; growing it needs a line in `PROGRESS.md`): `src-tauri/src/macos/**` (manual QA), `src-tauri/src/main.rs` and `src-tauri/src/lib.rs` (Tauri wiring), `src/lib/bindings/**` (generated), `*.test.ts`, `src/test/**`, `e2e/**`, `src-tauri/tests/**`, `*.d.ts`, `src/main.ts` and `src/App.svelte` (dev harness, covered by `e2e/`).
+- Excluded (`EXCLUDED` in the script; growing it needs a line in `PROGRESS.md`): `src-tauri/src/macos/**` (manual QA), `src-tauri/src/main.rs` and `src-tauri/src/lib.rs` (Tauri wiring, no logic: AGENTS.md §13), `src/lib/bindings/**` (generated), `*.test.ts`, `src/test/**`, `e2e/**`, `src-tauri/tests/**`, `*.d.ts`, `src/main.ts` and `src/App.svelte` (dev harness, covered by `e2e/`).
 - Options: `--lcov <path>` (repeatable, replaces the defaults), `--base <ref>` (default `main`), `--min <pct>` (default 80).
 
 ## Main dependencies
