@@ -1,0 +1,5 @@
+# ts-rs writes the IPC bindings here when `cargo test` runs (ADR 0006).
+# At the repo root, not in src-tauri/: cargo reads config from the working directory and its
+# parents, never from --manifest-path, so this file is found from both the root and src-tauri/.
+[env]
+TS_RS_EXPORT_DIR = { value = "src/lib/bindings", relative = true }
