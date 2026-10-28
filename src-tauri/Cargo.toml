@@ -29,4 +29,4 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 ts-rs = "12.0.1"
 
 [build-dependencies]
-tauri-build = "2"
+tauri-build = { version = "2", features = [] }
