@@ -6,9 +6,9 @@ A **snapshot** of what the project uses. It is not a list of versions to copy: a
 
 | Tool | Version | Source |
 |---|---|---|
-| Rust | stable channel (1.93 on 2026-10-28) | `rust-toolchain.toml` |
-| Node.js | 24 LTS | `.nvmrc` |
-| pnpm | 10.32.1 | `packageManager` in `package.json` (TAD-001) |
+| Rust | stable channel (1.93.0 on 2026-10-28) | `rust-toolchain.toml` |
+| Node.js | 24 LTS (24.13.0 on 2026-10-28) | `.nvmrc` |
+| pnpm | 10.34.9 | `packageManager` in `package.json`; stays on the 10 line (AGENTS.md §6) |
 | lefthook | 2.2.2 | `brew install lefthook` |
 | gitleaks | 8.30.1 | `brew install gitleaks` |
 | cargo-llvm-cov | 0.9.1 | `brew install cargo-llvm-cov` + `rustup component add llvm-tools-preview` |
@@ -16,26 +16,51 @@ A **snapshot** of what the project uses. It is not a list of versions to copy: a
 
 ## Main dependencies
 
-Latest stable on 2026-10-28, for orientation only (*planned*: installed by TAD-001 and later tickets).
+Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-tauri/Cargo.lock`). Later tickets add their own and update this table.
 
-| Package | Latest stable seen | Note |
+### Front (npm, pinned exactly in `package.json`)
+
+| Package | Installed | Note |
 |---|---|---|
-| `tauri` (crate) | 2.x | crates.io's newest is `3.0.0-alpha`: install `tauri@2` |
-| `@tauri-apps/cli`, `@tauri-apps/api` | 2.12.4 | same minor as the `tauri` crate |
+| `@tauri-apps/api`, `@tauri-apps/cli` | 2.12.4 | same major and minor as the `tauri` crate |
 | `svelte` | 5.57.3 | |
+| `@sveltejs/vite-plugin-svelte` | 7.3.1 | |
 | `vite` | 8.3.5 | |
-| `typescript` | 7.0.2 | keep the newest major that `svelte-check` and `typescript-eslint` support |
-| `vitest` | 5.0.5 | |
-| `@playwright/test` | 1.64.1 | |
+| `typescript` | 6.0.3 | 7.x exists but `typescript-eslint` (`<6.1.0`) and `svelte-check` (`^5 \|\| ^6`) do not accept it yet |
 | `svelte-check` | 4.7.7 | |
-| `eslint` / `prettier` | 10.13.0 / 3.9.10 | |
+| `eslint` / `@eslint/js` | 10.13.0 / 10.0.1 | flat config |
+| `typescript-eslint` | 8.72.1 | |
+| `eslint-plugin-svelte` | 3.23.1 | |
+| `globals` | 17.13.0 | |
+| `prettier` / `prettier-plugin-svelte` | 3.9.10 / 4.1.1 | |
+| `vitest` / `@vitest/coverage-v8` | 5.0.5 | |
+| `jsdom` | 30.1.3 | |
+| `@testing-library/svelte` / `@testing-library/jest-dom` | 5.4.2 / 7.0.1 | |
+| `@playwright/test` | 1.64.1 | Chromium only |
+| `@tsconfig/svelte` | 5.0.8 | |
+| `@types/node` | 24.19.2 | the 24 line, matching Node 24 LTS (`.nvmrc`) |
+
+### Core (crates, `src-tauri/Cargo.toml`)
+
+| Crate | Installed | Note |
+|---|---|---|
+| `tauri` | 2.12.5 | `cargo add tauri@2`: crates.io's newest is `3.0.0-alpha`; features `tray-icon`, `macos-private-api`; dev feature `test` |
+| `tauri-build` | 2.7.4 | |
+| `serde` / `serde_json` | 1.0.229 / 1.0.154 | |
+| `thiserror` / `anyhow` | 2.0.21 / 1.0.104 | |
+| `tracing` / `tracing-subscriber` | 0.1.44 / 0.3.23 | `env-filter` |
+| `ts-rs` | 12.0.1 | ADR 0006 |
+
+### Planned (later tickets, latest stable seen on 2026-10-28)
+
+| Crate | Latest stable seen | Note |
+|---|---|---|
 | `rusqlite` / `rusqlite_migration` | 0.41.0 / 2.6.0 | feature `bundled-sqlcipher-vendored-openssl` |
 | `objc2` / `objc2-app-kit` | 0.6.5 / 0.3.2 | |
 | `tauri-nspanel` | 2.1.1 | |
 | `window-vibrancy` | 0.8.1 | |
 | `security-framework` | 3.7.0 | |
 | `core-graphics` | 0.25.0 | |
-| `ts-rs` | 12.0.1 | ADR 0006 |
 
 ## Identifiers and paths
 
@@ -57,4 +82,5 @@ Latest stable on 2026-10-28, for orientation only (*planned*: installed by TAD-0
 |---|---|---|
 | `APPLE_SIGNING_IDENTITY` | `pnpm tauri build` (TAD-008) | Name of the code-signing identity in the login keychain ([runbook](runbooks/signing-identity.md)) |
 | `TADIDY_DATA_DIR` | the app, tests (*planned*, TAD-007) | Overrides the data folder; tests point it to a temporary folder |
-| `RUST_LOG` | the app | `tracing` filter, e.g. `tadidy=debug` |
+| `RUST_LOG` | the app | `tracing` filter, e.g. `tadidy_lib=debug` (the library crate's name) |
+| `TS_RS_EXPORT_DIR` | `cargo test` | Where `ts-rs` writes the bindings; set to `src/lib/bindings` by `.cargo/config.toml` at the repo root |
