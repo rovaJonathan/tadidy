@@ -1,7 +1,20 @@
 //! The popover window (MNU-02, MNU-04). The decision "should this tray click show or hide
 //! the popover?" is a pure type with an injectable clock so it is tested without a window.
 
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
+
+use tauri::{
+    AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
+    WindowEvent,
+};
+use tauri_plugin_positioner::{Position, WindowExt};
+
+pub const POPOVER_LABEL: &str = "popover";
+
+/// Popover size in logical pixels (DESIGN.md §3).
+const POPOVER_WIDTH: f64 = 380.0;
+const POPOVER_HEIGHT: f64 = 520.0;
 
 /// A tray click that arrives this soon after a focus-loss hide is the click that caused the
 /// focus loss (the user clicked the icon to close the popover): it must not reopen it.
@@ -38,6 +51,107 @@ impl PopoverToggle {
             _ => ToggleAction::Show,
         }
     }
+}
+
+/// Managed by Tauri: shared by the tray click handler and the window event handler.
+pub type PopoverState = Mutex<PopoverToggle>;
+
+/// Creates the popover hidden, so showing it later takes well under 100 ms. Vibrancy is
+/// applied by the caller (`macos::vibrancy`): it needs a real window.
+pub fn create_popover<R: Runtime>(manager: &impl Manager<R>) -> tauri::Result<WebviewWindow<R>> {
+    WebviewWindowBuilder::new(
+        manager,
+        POPOVER_LABEL,
+        WebviewUrl::App("popover.html".into()),
+    )
+    .inner_size(POPOVER_WIDTH, POPOVER_HEIGHT)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .visible(false)
+    .build()
+}
+
+/// What the toggle logic needs from the popover's window, so it runs against a fake in the
+/// tests: Tauri's mock runtime ignores `show` and `hide`.
+pub trait PopoverWindow {
+    fn is_shown(&self) -> bool;
+    /// Places the window under the tray icon, shows it and gives it the focus.
+    fn reveal(&self);
+    fn conceal(&self);
+}
+
+impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
+    fn is_shown(&self) -> bool {
+        self.is_visible().unwrap_or(false)
+    }
+
+    fn reveal(&self) {
+        // Without a tray position yet (no tray event seen) the window keeps its place.
+        if let Err(error) = self.move_window(Position::TrayBottomCenter) {
+            tracing::warn!(%error, "could not place the popover under the tray icon");
+        }
+        if let Err(error) = self.show().and_then(|()| self.set_focus()) {
+            tracing::error!(%error, "could not show the popover");
+        }
+    }
+
+    fn conceal(&self) {
+        if let Err(error) = self.hide() {
+            tracing::error!(%error, "could not hide the popover");
+        }
+    }
+}
+
+fn lock(state: &PopoverState) -> MutexGuard<'_, PopoverToggle> {
+    state.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A left click on the tray icon (MNU-02): shows the popover under the icon, or hides it.
+pub fn toggle(popover: &impl PopoverWindow, state: &PopoverState, now: Instant) {
+    // The lock is released before the window is touched.
+    let action = lock(state).click(now, popover.is_shown());
+    match action {
+        ToggleAction::Show => popover.reveal(),
+        ToggleAction::Hide => popover.conceal(),
+        ToggleAction::Ignore => {}
+    }
+}
+
+/// The popover lost focus (MNU-04): hide it and remember when, so the tray click that caused
+/// the focus loss does not reopen it.
+pub fn focus_lost(popover: &impl PopoverWindow, state: &PopoverState, now: Instant) {
+    lock(state).focus_lost(now);
+    popover.conceal();
+}
+
+/// Entry point of the tray's left click.
+pub fn toggle_popover<R: Runtime>(app: &AppHandle<R>) {
+    let (Some(popover), Some(state)) = (
+        app.get_webview_window(POPOVER_LABEL),
+        app.try_state::<PopoverState>(),
+    ) else {
+        tracing::error!("the popover window or its state is missing");
+        return;
+    };
+    toggle(&popover, &state, Instant::now());
+}
+
+/// Window event hook: the popover hides when it loses focus; it is never destroyed.
+pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
+    if window.label() != POPOVER_LABEL || !matches!(event, WindowEvent::Focused(false)) {
+        return;
+    }
+    let (Some(popover), Some(state)) = (
+        window.app_handle().get_webview_window(POPOVER_LABEL),
+        window.try_state::<PopoverState>(),
+    ) else {
+        tracing::error!("the popover window or its state is missing");
+        return;
+    };
+    focus_lost(&popover, &state, Instant::now());
 }
 
 #[cfg(test)]

@@ -1,9 +1,21 @@
 //! IPC commands: thin wrappers that delegate to the services (AGENTS.md §13).
 
+use tauri::{Runtime, WebviewWindow};
+
+use crate::error::AppError;
+
 /// The version of the running app, from the crate manifest.
 #[tauri::command]
 pub fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+/// Hides the window that calls it (`Esc` in the popover). The window is hidden, not destroyed.
+#[tauri::command]
+pub fn hide_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), AppError> {
+    window
+        .hide()
+        .map_err(|_| AppError::new("window", "The window could not be hidden."))
 }
 
 #[cfg(test)]
