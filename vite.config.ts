@@ -19,7 +19,15 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,svelte}"],
-      exclude: ["src/**/*.test.ts", "src/test/**", "src/lib/bindings/**", "src/main.ts", "src/vite-env.d.ts"],
+      // main.ts and App.svelte are the dev harness, covered by the end-to-end tests.
+      exclude: [
+        "src/**/*.test.ts",
+        "src/test/**",
+        "src/lib/bindings/**",
+        "src/main.ts",
+        "src/App.svelte",
+        "src/vite-env.d.ts",
+      ],
       // Not coverage/: coverage/rust.lcov lives there and Vitest cleans its reports directory.
       reportsDirectory: "coverage/front",
       reporter: ["text-summary", "lcov"],
