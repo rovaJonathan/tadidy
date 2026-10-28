@@ -222,6 +222,30 @@ mod tests {
         }
     }
 
+    /// Asks the window about itself while checking that the toggle state is not locked.
+    struct LockProbe<'a> {
+        state: &'a PopoverState,
+    }
+
+    impl PopoverWindow for LockProbe<'_> {
+        fn is_shown(&self) -> bool {
+            assert!(
+                self.state.try_lock().is_ok(),
+                "the window was queried while the state was locked"
+            );
+            false
+        }
+        fn reveal(&self) {}
+        fn conceal(&self) {}
+    }
+
+    #[test]
+    fn the_window_is_queried_without_holding_the_state_lock() {
+        let state = PopoverState::default();
+
+        toggle(&LockProbe { state: &state }, &state, Instant::now());
+    }
+
     #[test]
     fn toggling_a_hidden_popover_shows_it() {
         let popover = FakePopover::default();
