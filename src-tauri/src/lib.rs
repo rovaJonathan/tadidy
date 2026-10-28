@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod error;
+pub mod events;
 pub mod macos;
 pub mod state;
 
