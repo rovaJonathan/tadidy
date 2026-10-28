@@ -3,6 +3,8 @@ pub mod error;
 pub mod events;
 pub mod macos;
 pub mod state;
+pub mod tray;
+pub mod windows;
 
 use state::AppState;
 use tracing_subscriber::EnvFilter;
