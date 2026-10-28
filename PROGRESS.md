@@ -6,6 +6,7 @@ Decisions taken along the way. Ticket progress lives in the tickets ([tickets/](
 
 Add here, with the date and the ticket (`TAD-xxx`), any decision taken along the way (technical choice, accepted deviation from the prototype or the spec, answer to a `blocked` ticket). One entry per decision, newest first, in English.
 
+- 2026-10-28 · TAD-021 · An `in-progress` ticket whose branch is checked out (main folder or worktree) is owned by another session: `tadidy-session` never proposes it and moves on to the next ticket; the human resumes it by naming it. A ticket `done` or `canceled` on `main` wins over a stale local branch.
 - 2026-10-28 · TAD-001 · `scripts/check.sh` unsets `SDKROOT`: `/usr/bin/git` exports the Command Line Tools SDK to hooks, which broke linking in `pre-push` when Xcode is older than the Command Line Tools ([solution](docs/solutions/build/2026-10-28-sdkroot-from-git-breaks-linking-in-hooks.md)).
 - 2026-10-28 · TAD-001 · TypeScript is on 6.0.3, not 7.0.2: `typescript-eslint` 8.72.1 requires `<6.1.0` and `svelte-check` 4.7.7 `^5 || ^6`. Move to 7 once both accept it (AGENTS.md §6: newest major the toolchain accepts).
 - 2026-10-28 · TAD-001 · pnpm stays on the 10 line (10.34.9) although npm's `latest` is 12.x: AGENTS.md §6 fixes pnpm 10; a jump needs an ADR. `@types/node` follows the 24 line to match Node 24 LTS.
