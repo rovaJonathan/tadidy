@@ -14,7 +14,7 @@ Prerequisites: macOS 13+, Xcode command line tools, Homebrew, [rustup](https://r
 ```bash
 brew install lefthook gitleaks cargo-llvm-cov
 rustup show                                 # installs the toolchain, components and targets of rust-toolchain.toml
-git config --local core.hooksPath .git/hooks   # needed only if you have a global core.hooksPath
+git config --local core.hooksPath "$(git rev-parse --path-format=absolute --git-common-dir)/hooks"   # absolute: hooks must also run in worktrees
 lefthook install --force                    # the hooks are the only quality gate (no CI)
 scripts/check.sh                            # everything green before you start
 ```
