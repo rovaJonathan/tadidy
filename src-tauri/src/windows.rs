@@ -111,8 +111,9 @@ fn lock(state: &PopoverState) -> MutexGuard<'_, PopoverToggle> {
 
 /// A left click on the tray icon (MNU-02): shows the popover under the icon, or hides it.
 pub fn toggle(popover: &impl PopoverWindow, state: &PopoverState, now: Instant) {
-    // The lock is released before the window is touched.
-    let action = lock(state).click(now, popover.is_shown());
+    // The lock is never held while the window is touched.
+    let visible = popover.is_shown();
+    let action = lock(state).click(now, visible);
     match action {
         ToggleAction::Show => popover.reveal(),
         ToggleAction::Hide => popover.conceal(),
