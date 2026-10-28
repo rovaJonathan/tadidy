@@ -4,6 +4,9 @@
 # Usage: scripts/check.sh [--cov]   --cov also enforces 80 % line coverage on changed files (TAD-002).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# /usr/bin/git is an xcrun shim that exports SDKROOT to hooks; when Xcode and the Command Line
+# Tools differ, that SDK is newer than the linker and linking fails. Behave as in a terminal.
+unset SDKROOT
 
 COV=0
 [ "${1:-}" = "--cov" ] && COV=1
