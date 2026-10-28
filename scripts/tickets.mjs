@@ -9,12 +9,15 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseWorktrees } from "./worktree.mjs";
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TICKET_FILE = /^TAD-\d{3}\.md$/;
 const PROTOTYPE = "docs/prototype/prototype.html";
 
 export const STATUSES = ["todo", "in-progress", "review", "done", "blocked", "canceled"];
 const ACTIVE = ["in-progress", "review"];
+const CLOSED = ["done", "canceled"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const FIELDS = {
@@ -151,22 +154,44 @@ function git(root, args) {
   }
 }
 
+function statusOf(text) {
+  try {
+    return parseTicket(text).header.status;
+  } catch {
+    return null;
+  }
+}
+
+// A ticket closed on main stays closed: an old local branch may still say `review`.
 function branchVersions(root) {
   const current = git(root, ["rev-parse", "--abbrev-ref", "HEAD"])?.trim();
   const refs = git(root, ["for-each-ref", "--format=%(refname:short)", "refs/heads/"]);
+  const main = git(root, ["rev-parse", "--verify", "--quiet", "origin/main"]) ? "origin/main" : "main";
   const versions = new Map();
   for (const branch of (refs ?? "").split("\n").filter(Boolean)) {
     const num = /^tad-(\d{3})-/.exec(branch)?.[1];
     if (!num || branch === current) continue;
+    const onMain = git(root, ["show", `${main}:tickets/TAD-${num}.md`]);
+    if (onMain !== null && CLOSED.includes(statusOf(onMain))) {
+      versions.set(`TAD-${num}`, { branch: "main", text: onMain });
+      continue;
+    }
     const text = git(root, ["show", `${branch}:tickets/TAD-${num}.md`]);
     if (text !== null) versions.set(`TAD-${num}`, { branch, text });
   }
   return versions;
 }
 
+// Branch → folder where it is checked out (the main folder or a worktree).
+function checkedOutBranches(root) {
+  const porcelain = git(root, ["worktree", "list", "--porcelain"]) ?? "";
+  return new Map(parseWorktrees(porcelain).filter((w) => w.branch).map((w) => [w.branch, w.path]));
+}
+
 export function loadTickets(root = REPO_ROOT, { branches = false } = {}) {
   const dir = join(root, "tickets");
   const overrides = branches ? branchVersions(root) : new Map();
+  const checkedOut = branches ? checkedOutBranches(root) : new Map();
   return readdirSync(dir)
     .filter((f) => TICKET_FILE.test(f))
     .sort()
@@ -176,7 +201,8 @@ export function loadTickets(root = REPO_ROOT, { branches = false } = {}) {
       const override = overrides.get(id);
       try {
         const ticket = parseTicket(override?.text ?? readFileSync(path, "utf8"));
-        return { ...ticket, file, path, source: override?.branch ?? "working tree" };
+        const where = (ticket.header.branch && checkedOut.get(ticket.header.branch)) || null;
+        return { ...ticket, file, path, source: override?.branch ?? "working tree", checkedOut: where };
       } catch (error) {
         return { header: {}, body: "", h1: "", sections: [], file, path, source: "working tree", error: error.message };
       }
@@ -290,9 +316,15 @@ export function readyTickets(tickets) {
     .sort(order);
 }
 
+// An in-progress ticket whose branch is checked out belongs to another session: it is `taken`.
 export function nextWork(tickets) {
-  const active = tickets.filter((t) => ACTIVE.includes(t.header.status)).sort(order);
-  return { active, next: readyTickets(tickets)[0] ?? null };
+  const isTaken = (t) => t.header.status === "in-progress" && Boolean(t.checkedOut);
+  const inFlight = tickets.filter((t) => ACTIVE.includes(t.header.status)).sort(order);
+  return {
+    active: inFlight.filter((t) => !isTaken(t)),
+    taken: inFlight.filter(isTaken),
+    next: readyTickets(tickets)[0] ?? null,
+  };
 }
 
 // ---------- CLI ----------
@@ -319,7 +351,7 @@ function main(argv) {
   const root = flags.root ? resolve(flags.root) : REPO_ROOT;
   const tickets = loadTickets(root, { branches: command !== "check" });
   const json = (value) => console.log(JSON.stringify(value, null, 2));
-  const summary = (t) => ({ ...t.header, source: t.source, path: t.path });
+  const summary = (t) => ({ ...t.header, source: t.source, checkedOut: t.checkedOut ?? null, path: t.path });
 
   switch (command) {
     case "list": {
@@ -339,11 +371,15 @@ function main(argv) {
       return;
     }
     case "next": {
-      const { active, next } = nextWork(tickets);
-      if (flags.json) return json({ active: active.map(summary), next: next && summary(next) });
+      const { active, taken, next } = nextWork(tickets);
+      if (flags.json) return json({ active: active.map(summary), taken: taken.map(summary), next: next && summary(next) });
       if (active.length) {
         console.log("Active:");
         active.forEach((t) => console.log(`  ${row(t)}${t.header.pr ? `  ${t.header.pr}` : ""}`));
+      }
+      if (taken.length) {
+        console.log("Taken by another session:");
+        taken.forEach((t) => console.log(`  ${row(t)}  in ${t.checkedOut}`));
       }
       console.log(next ? `Next ready:\n  ${row(next)}` : "No ready ticket.");
       return;
