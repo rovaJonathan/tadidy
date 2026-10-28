@@ -135,6 +135,14 @@ test("the CLI checks working-tree changes and passes at the minimum", () => {
   assert.match(result.stdout, /src-tauri\/src\/watcher\.rs\s+8\/10\s+80\.0 %/);
 });
 
+test("the CLI checks a new source file that is not added to git yet", () => {
+  const { root } = repo();
+  writeFileSync(join(root, "src-tauri", "src", "new.rs"), "pub fn f() {}\n");
+  const result = run(root, "--lcov", "missing.lcov");
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, /src-tauri\/src\/new\.rs\s+0\/0\s+0\.0 %\s+\(in no report\)/);
+});
+
 test("the CLI exits 0 when no source file changed", () => {
   const { root, git } = repo();
   writeFileSync(join(root, "README.md"), "# changed\n");
