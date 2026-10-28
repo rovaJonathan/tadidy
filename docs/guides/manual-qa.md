@@ -32,6 +32,7 @@ Manual QA (docs/guides/manual-qa.md#tad-004) — signed build, macOS 15.1, Apple
 | 4 | With the popover open, press `Esc`, without clicking inside first. | The popover hides (it has the focus). |
 | 5 | Open it again, then click on the desktop or in another app. | The popover hides. |
 | 6 | Open it, then click the tray icon. | The popover closes and does **not** reopen. |
+| 6b | Open it, then click the tray icon slowly (hold the button more than 250 ms before releasing). | The popover closes and does not reopen. If it reopens, the focus loss happens on mouse down and the debounce must also be stamped on the press: report it. |
 | 7 | Hide the popover by clicking elsewhere, wait about a second, then click the icon. | The popover opens again. |
 | 8 | Right-click the icon. | A native menu: Preferences… `⌘,`, Clear history…, separator, About Tadidy, Check for updates…, separator, Quit Tadidy `⌘Q`. Only Quit Tadidy is enabled. |
 | 9 | With the popover visible, hold `⌘Tab` and look at the Dock. | No Tadidy entry in the switcher, no Dock icon. |
