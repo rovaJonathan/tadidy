@@ -4,6 +4,7 @@
 pub mod app_icons;
 pub mod clips;
 mod migrations;
+pub mod settings;
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
