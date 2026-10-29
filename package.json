@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "tauri": "tauri",
+    "build:universal": "tauri build --target universal-apple-darwin",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.node.json",
