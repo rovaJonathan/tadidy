@@ -1,3 +1,90 @@
+//! The encrypted database (SQLCipher). The connection is opened with the key first, checked, set
+//! up, then migrated. Clip content never appears in an error or a log (AGENTS.md §2).
+
+mod migrations;
+
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+use rusqlite::{Connection, ErrorCode};
+
+use crate::crypto::{DbKey, KeyStore, KeyStoreError, load_or_create_key};
+
+/// The database file inside the data folder.
+pub const DB_FILE_NAME: &str = "tadidy.db";
+
+#[derive(Debug, thiserror::Error)]
+pub enum StorageError {
+    /// The database exists but the Keychain has no key for it: it can never be read again.
+    #[error("the database key is missing")]
+    KeyMissing,
+    /// The key does not decrypt the file (SQLCipher reports "file is not a database").
+    #[error("the database key does not match the database")]
+    WrongKey,
+    #[error("migration failed: {0}")]
+    Migration(#[from] rusqlite_migration::Error),
+    #[error("key store failed: {0}")]
+    KeyStore(#[from] KeyStoreError),
+    #[error("database error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+    #[error("file system error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+/// The one connection, shared between threads. Services borrow it through [`Db::with_conn`];
+/// they never block the main thread on it (AGENTS.md §13).
+#[derive(Clone)]
+pub struct Db(Arc<Mutex<Connection>>);
+
+impl Db {
+    pub fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> T) -> T {
+        // A panic in another closure does not corrupt SQLite: keep serving the connection.
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        f(&conn)
+    }
+}
+
+impl std::fmt::Debug for Db {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Db")
+    }
+}
+
+/// Opens (or creates) the database at `path` with `key` and brings its schema up to date.
+pub fn open(path: &Path, key: &DbKey) -> Result<Db, StorageError> {
+    let mut conn = Connection::open(path)?;
+    // `PRAGMA key` takes no bound parameter; the value is `x'` + 64 hex digits, nothing else.
+    conn.execute_batch(&format!("PRAGMA key = \"{}\";", key.to_pragma_value()))?;
+    check_key(&conn)?;
+    // Only effective before the first table exists, hence before the migrations.
+    conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL;")?;
+    conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    migrations::MIGRATIONS.to_latest(&mut conn)?;
+    Ok(Db(Arc::new(Mutex::new(conn))))
+}
+
+/// The first read decrypts the first page: with a wrong key (or none) SQLCipher answers
+/// "file is not a database".
+fn check_key(conn: &Connection) -> Result<(), StorageError> {
+    match conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(())) {
+        Ok(()) => Ok(()),
+        Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == ErrorCode::NotADatabase => {
+            Err(StorageError::WrongKey)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Opens `tadidy.db` in the data folder, creating the folder and the key on the first launch.
+/// A database whose key is gone is left untouched ([`StorageError::KeyMissing`]).
+pub fn open_in_dir(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(DB_FILE_NAME);
+    let key = load_or_create_key(store, path.exists())?;
+    open(&path, &key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

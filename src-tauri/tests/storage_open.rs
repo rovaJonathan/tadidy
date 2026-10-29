@@ -1,6 +1,9 @@
 //! `storage::open` against a real SQLCipher database in a temporary folder, with a fixed test
 //! key. Never the Keychain, never the user's data folder (AGENTS.md §13).
 
+// `allow-unwrap-in-tests` covers the `#[test]` functions, not the helpers around them.
+#![allow(clippy::unwrap_used)]
+
 use rusqlite::Connection;
 use tadidy_lib::crypto::DbKey;
 use tadidy_lib::storage::{Db, StorageError, open};

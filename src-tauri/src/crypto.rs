@@ -1,3 +1,123 @@
+//! The database key and where it lives. The key is 256 random bits, kept in the macOS Keychain
+//! and in memory only: it is never written to disk, logged, put in an error or sent to the
+//! webview (AGENTS.md §2). The Keychain sits behind [`KeyStore`] so the logic is tested with a
+//! fake (AGENTS.md §9).
+
+use std::fmt;
+use std::sync::Mutex;
+
+use crate::storage::StorageError;
+
+/// Length of the SQLCipher key, in bytes (AES-256).
+const KEY_LEN: usize = 32;
+
+/// The key of the encrypted database. No `Serialize`, and `Debug` hides the bytes.
+#[derive(Clone)]
+pub struct DbKey([u8; KEY_LEN]);
+
+impl DbKey {
+    pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
+        Self(bytes)
+    }
+
+    /// A new key from the operating system's random generator.
+    pub fn generate() -> Result<Self, KeyStoreError> {
+        let mut bytes = [0; KEY_LEN];
+        getrandom::fill(&mut bytes).map_err(|_| KeyStoreError::Random)?;
+        Ok(Self(bytes))
+    }
+
+    pub fn as_bytes(&self) -> &[u8; KEY_LEN] {
+        &self.0
+    }
+
+    /// The raw-key form SQLCipher reads as is: `x'<64 hex digits>'`. A passphrase would go
+    /// through PBKDF2 at every open, which is slow for a key that is already random.
+    pub(crate) fn to_pragma_value(&self) -> String {
+        let hex: String = self.0.iter().map(|byte| format!("{byte:02x}")).collect();
+        format!("x'{hex}'")
+    }
+}
+
+impl fmt::Debug for DbKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("DbKey(<redacted>)")
+    }
+}
+
+/// A failure of the key store. Never carries the key.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum KeyStoreError {
+    #[error("the key store is unavailable")]
+    Unavailable,
+    #[error("the stored key is malformed")]
+    Malformed,
+    #[error("the system random generator failed")]
+    Random,
+}
+
+/// Where the database key is kept between launches.
+pub trait KeyStore: Send + Sync {
+    fn get(&self) -> Result<Option<DbKey>, KeyStoreError>;
+    fn set(&self, key: &DbKey) -> Result<(), KeyStoreError>;
+}
+
+/// An in-memory [`KeyStore`] for tests; the real one is the Keychain.
+#[derive(Debug, Default)]
+pub struct FakeKeyStore {
+    key: Mutex<Option<DbKey>>,
+    failing: bool,
+}
+
+impl FakeKeyStore {
+    pub fn with_key(key: DbKey) -> Self {
+        Self {
+            key: Mutex::new(Some(key)),
+            failing: false,
+        }
+    }
+
+    /// A store whose every call fails, as a locked Keychain would.
+    pub fn failing() -> Self {
+        Self {
+            key: Mutex::new(None),
+            failing: true,
+        }
+    }
+}
+
+impl KeyStore for FakeKeyStore {
+    fn get(&self) -> Result<Option<DbKey>, KeyStoreError> {
+        if self.failing {
+            return Err(KeyStoreError::Unavailable);
+        }
+        Ok(self.key.lock().unwrap_or_else(|e| e.into_inner()).clone())
+    }
+
+    fn set(&self, key: &DbKey) -> Result<(), KeyStoreError> {
+        if self.failing {
+            return Err(KeyStoreError::Unavailable);
+        }
+        *self.key.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.clone());
+        Ok(())
+    }
+}
+
+/// The key to open the database with. A stored key is returned as is. With no key, a new one is
+/// created only when there is no database yet: a database without its key can never be read
+/// again, and a fresh key must not silently replace it (the caller offers a reset instead).
+pub fn load_or_create_key(store: &dyn KeyStore, db_exists: bool) -> Result<DbKey, StorageError> {
+    if let Some(key) = store.get()? {
+        return Ok(key);
+    }
+    if db_exists {
+        return Err(StorageError::KeyMissing);
+    }
+    let key = DbKey::generate()?;
+    store.set(&key)?;
+    Ok(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
