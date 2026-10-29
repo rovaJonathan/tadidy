@@ -247,6 +247,51 @@ fn a_bump_records_the_latest_source_app() {
 }
 
 #[test]
+fn a_bump_keeps_the_bundle_and_the_name_of_one_app_together() {
+    let (_dir, db) = open_db();
+    let id = inserted_id(insert(&db, &text_clip("same", 1_000)));
+    let source = |db: &Db| {
+        let found = db.with_conn(|conn| get(conn, &id)).unwrap().unwrap();
+        (found.clip.source_bundle, found.clip.source_name)
+    };
+
+    // A copier with a bundle id but no name must not inherit the previous app's name.
+    let mut nameless = text_clip("same", 2_000);
+    nameless.source_bundle = Some("com.example.Browser".to_owned());
+    nameless.source_name = None;
+    insert(&db, &nameless);
+    assert_eq!(source(&db), (Some("com.example.Browser".to_owned()), None));
+
+    // A copier of unknown origin leaves the known pair as it is.
+    let mut unknown = text_clip("same", 3_000);
+    unknown.source_bundle = None;
+    unknown.source_name = None;
+    insert(&db, &unknown);
+    assert_eq!(source(&db), (Some("com.example.Browser".to_owned()), None));
+}
+
+#[test]
+fn representations_come_back_in_the_order_they_were_stored() {
+    let (_dir, db) = open_db();
+    let mut clip = text_clip("rich", 1_000);
+    clip.representations = vec![
+        Representation::new("public.rtf", b"rtf".to_vec()),
+        Representation::new("public.html", b"html".to_vec()),
+        Representation::new(UTI_PLAIN_TEXT, b"rich".to_vec()),
+    ];
+    let id = inserted_id(insert(&db, &clip));
+
+    let found = db.with_conn(|conn| get(conn, &id)).unwrap().unwrap();
+
+    let utis: Vec<&str> = found
+        .representations
+        .iter()
+        .map(|r| r.uti.as_str())
+        .collect();
+    assert_eq!(utis, ["public.rtf", "public.html", UTI_PLAIN_TEXT]);
+}
+
+#[test]
 fn getting_an_unknown_clip_gives_none() {
     let (_dir, db) = open_db();
 
