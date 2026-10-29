@@ -203,4 +203,44 @@ mod tests {
 
         assert_eq!(workspace.app_icon_png(&textedit()), None);
     }
+
+    #[test]
+    fn fake_key_sender_counts_pastes_and_can_fail() {
+        let keys = FakeKeySender::new();
+        assert_eq!(keys.paste_count(), 0);
+
+        keys.send_paste().unwrap();
+        keys.send_paste().unwrap();
+        assert_eq!(keys.paste_count(), 2);
+
+        keys.fail_sends();
+        assert_eq!(keys.send_paste(), Err(PlatformError::KeyEvent));
+        assert_eq!(keys.paste_count(), 2);
+    }
+
+    #[test]
+    fn fake_accessibility_is_untrusted_until_set() {
+        let accessibility = FakeAccessibility::new();
+        assert!(!accessibility.is_trusted());
+
+        accessibility.set_trusted(true);
+
+        assert!(accessibility.is_trusted());
+        assert_eq!(accessibility.requests(), 0);
+    }
+
+    #[test]
+    fn fake_accessibility_records_requests_and_can_fail() {
+        let accessibility = FakeAccessibility::new();
+
+        accessibility.request_and_open_settings().unwrap();
+        assert_eq!(accessibility.requests(), 1);
+
+        accessibility.fail_requests();
+        assert_eq!(
+            accessibility.request_and_open_settings(),
+            Err(PlatformError::AccessibilitySettings)
+        );
+        assert_eq!(accessibility.requests(), 2);
+    }
 }

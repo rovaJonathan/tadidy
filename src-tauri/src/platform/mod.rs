@@ -23,6 +23,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_key_and_settings_error_messages_are_fixed_texts() {
+        assert_eq!(
+            PlatformError::KeyEvent.to_string(),
+            "the paste keystroke could not be sent"
+        );
+        assert_eq!(
+            PlatformError::AccessibilitySettings.to_string(),
+            "the Accessibility settings could not be opened"
+        );
+    }
+
+    #[test]
     fn the_write_error_message_carries_no_clip_content() {
         assert_eq!(
             PlatformError::PasteboardWrite.to_string(),
