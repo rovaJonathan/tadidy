@@ -4,7 +4,10 @@
 
 use rusqlite_migration::{M, Migrations};
 
-const STEPS: &[M<'static>] = &[M::up(include_str!("migrations/0001_settings.sql"))];
+const STEPS: &[M<'static>] = &[
+    M::up(include_str!("migrations/0001_settings.sql")),
+    M::up(include_str!("migrations/0002_clips.sql")),
+];
 
 pub static MIGRATIONS: Migrations<'static> = Migrations::from_slice(STEPS);
 

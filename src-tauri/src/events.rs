@@ -24,6 +24,19 @@ pub struct PanelShown {
     pub window: String,
 }
 
+/// Payload of `clips://changed`: what changed in the history. An all-empty payload means
+/// "reload the list".
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct ClipsChanged {
+    /// Id of a clip that was just recorded.
+    pub added: Option<String>,
+    /// Id of a clip that moved to the top or changed.
+    pub updated: Option<String>,
+    pub removed: Option<Vec<String>>,
+}
+
 /// Tells the webview that the popover or the Quick Panel was shown, so it can focus its
 /// search field and reset its selection.
 pub fn emit_panel_shown(sink: &impl EventSink, window: &str) {
@@ -142,6 +155,24 @@ mod tests {
         assert_eq!(
             sink.events(),
             vec![(PANEL_SHOWN, json!({ "window": "panel" }))]
+        );
+    }
+
+    #[test]
+    fn clips_changed_serializes_to_camel_case_with_nothing_set_by_default() {
+        let changed = ClipsChanged {
+            added: Some("0192".to_owned()),
+            removed: Some(vec!["a".to_owned(), "b".to_owned()]),
+            ..ClipsChanged::default()
+        };
+
+        assert_eq!(
+            json!(changed),
+            json!({ "added": "0192", "updated": null, "removed": ["a", "b"] })
+        );
+        assert_eq!(
+            json!(ClipsChanged::default()),
+            json!({ "added": null, "updated": null, "removed": null })
         );
     }
 }

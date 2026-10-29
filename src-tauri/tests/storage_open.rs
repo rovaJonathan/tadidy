@@ -38,13 +38,13 @@ fn pragma(db: &Db, name: &str) -> String {
 }
 
 #[test]
-fn opening_twice_succeeds_and_migrates_to_version_one() {
+fn opening_twice_succeeds_and_migrates_to_the_latest_version() {
     let (_dir, path) = new_db_path();
     open(&path, &key_a()).unwrap();
 
     let db = open(&path, &key_a()).unwrap();
 
-    assert_eq!(pragma(&db, "user_version"), "1");
+    assert_eq!(pragma(&db, "user_version"), "2");
     let tables: i64 = db
         .with_conn(|conn| {
             conn.query_row(

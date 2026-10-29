@@ -1,3 +1,4 @@
+pub mod clip;
 pub mod commands;
 pub mod crypto;
 pub mod error;

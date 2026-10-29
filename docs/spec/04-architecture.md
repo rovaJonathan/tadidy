@@ -159,6 +159,7 @@ CREATE TABLE clips (
 );
 CREATE INDEX idx_clips_recent ON clips(pinned, last_copied_at DESC);
 CREATE INDEX idx_clips_kind   ON clips(kind, last_copied_at DESC);
+CREATE INDEX idx_clips_last_copied ON clips(last_copied_at DESC, id DESC);  -- unfiltered newest-first list, total order
 
 CREATE TABLE representations (
   clip_id  TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
@@ -193,7 +194,8 @@ CREATE VIRTUAL TABLE clips_fts USING fts5(
   content='clips', content_rowid='rowid',
   tokenize='unicode61 remove_diacritics 2'
 );
--- + AFTER INSERT/UPDATE/DELETE triggers on clips to keep clips_fts in sync
+-- + triggers on clips keep clips_fts in sync: AFTER INSERT, AFTER DELETE, and AFTER UPDATE OF
+--   plain_text, title, source_name (only when one of them changed, so a bump rewrites nothing)
 ```
 
 **Location**: `~/Library/Application Support/app.tadidy/tadidy.db` (+ WAL).
