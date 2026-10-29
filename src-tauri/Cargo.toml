@@ -3,7 +3,7 @@ name = "tadidy"
 version = "0.1.0"
 description = "Clipboard history for the macOS menu bar"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.95"
 publish = false
 
 [lib]
@@ -20,6 +20,9 @@ undocumented_unsafe_blocks = "deny"
 
 [dependencies]
 anyhow = "1.0.104"
+getrandom = "0.4.3"
+rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite_migration = "2.6.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tauri = { version = "2.12", features = ["tray-icon", "macos-private-api", "image-png"] }
@@ -36,6 +39,7 @@ tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 tauri = { version = "2.12", features = ["test"] }
+tempfile = "3.27.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.25.0"
@@ -67,3 +71,4 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
     "NSString",
 ] }
 tauri-nspanel = "2.1.1"
+security-framework = "3.7.0"
