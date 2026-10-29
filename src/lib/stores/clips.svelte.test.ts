@@ -1,4 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClipSummary } from "../bindings/ClipSummary";
 import type { Page } from "../bindings/Page";
@@ -335,5 +336,133 @@ describe("ClipsStore app icons", () => {
     await flush();
 
     expect(core.commands).not.toContain("get_app_icon");
+  });
+});
+
+describe("ClipsStore selection", () => {
+  it("selects the first clip once loaded", async () => {
+    fakeCore(() => page([clip(1), clip(2)]));
+
+    await store.start();
+
+    expect(store.selected?.id).toBe("clip-1");
+  });
+
+  it("has no selected clip in an empty history", async () => {
+    fakeCore(() => page([]));
+
+    await store.start();
+
+    expect(store.selected).toBeUndefined();
+  });
+
+  it("moves down and up one row at a time", async () => {
+    fakeCore(() => page([clip(1), clip(2), clip(3)]));
+    await store.start();
+
+    await store.selectNext();
+    await store.selectNext();
+    expect(store.selected?.id).toBe("clip-3");
+
+    store.selectPrevious();
+    expect(store.selected?.id).toBe("clip-2");
+  });
+
+  it("stays on the first row going up and on the last row going down (no wrap)", async () => {
+    fakeCore(() => page([clip(1), clip(2)]));
+    await store.start();
+
+    store.selectPrevious();
+    expect(store.selectedIndex).toBe(0);
+
+    await store.selectNext();
+    await store.selectNext();
+    expect(store.selectedIndex).toBe(1);
+  });
+
+  it("loads the next page at the last loaded row and moves on to its first clip", async () => {
+    const core = fakeCore((q) => (q.cursor ? page([clip(3), clip(4)], null, 4) : page([clip(1), clip(2)], "2", 4)));
+    await store.start();
+    await store.selectNext();
+
+    await store.selectNext();
+
+    expect(core.queries).toEqual([{}, { cursor: "2" }]);
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
+  it("selects the row that was clicked", async () => {
+    fakeCore(() => page([clip(1), clip(2), clip(3)]));
+    await store.start();
+
+    store.select(2);
+
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
+  it("ignores a row that is not loaded", async () => {
+    fakeCore(() => page([clip(1), clip(2)]));
+    await store.start();
+
+    store.select(5);
+    store.select(-1);
+
+    expect(store.selectedIndex).toBe(0);
+  });
+});
+
+describe("ClipsStore deleteClip", () => {
+  it("deletes through delete_clips and reloads the list", async () => {
+    let items = [clip(1), clip(2), clip(3)];
+    const core = fakeCore(() => page(items));
+    await store.start();
+    items = [clip(1), clip(3)];
+
+    await store.deleteClip("clip-2");
+
+    expect(core.deleted).toEqual([["clip-2"]]);
+    expect(store.items.map((c) => c.id)).toEqual(["clip-1", "clip-3"]);
+    expect(store.total).toBe(2);
+  });
+
+  it("keeps the selection at the same index, on the clip that took its place", async () => {
+    let items = [clip(1), clip(2), clip(3)];
+    fakeCore(() => page(items));
+    await store.start();
+    store.select(1);
+    items = [clip(1), clip(3)];
+
+    await store.deleteClip("clip-2");
+
+    expect(store.selectedIndex).toBe(1);
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
+  it("selects the new last row when the last one is deleted", async () => {
+    let items = [clip(1), clip(2), clip(3)];
+    fakeCore(() => page(items));
+    await store.start();
+    store.select(2);
+    items = [clip(1), clip(2)];
+
+    await store.deleteClip("clip-3");
+
+    expect(store.selected?.id).toBe("clip-2");
+  });
+
+  it("keeps the rows when the core refuses to delete", async () => {
+    fakeCore(() => page([clip(1), clip(2)]));
+    await store.start();
+    mockIPC(
+      (cmd) => {
+        if (cmd === "delete_clips") throw { code: "storage_error", message: "Storage failed." };
+        return page([clip(1), clip(2)]);
+      },
+      { shouldMockEvents: true },
+    );
+
+    await expect(store.deleteClip("clip-1")).resolves.toBeUndefined();
+
+    expect(store.items.map((c) => c.id)).toEqual(["clip-1", "clip-2"]);
   });
 });
