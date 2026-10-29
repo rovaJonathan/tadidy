@@ -4,9 +4,10 @@
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use uuid::Uuid;
 
-use super::StorageError;
+use super::{StorageError, fts};
 use crate::clip::{
-    ClipQuery, ClipRecord, ClipSummary, ClipWithRepresentations, Cursor, NewClip, Page,
+    ClipQuery, ClipRecord, ClipSummary, ClipWithRepresentations, Cursor, DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE, NewClip, Page,
 };
 use crate::platform::Representation;
 
@@ -31,6 +32,45 @@ pub const LIST_AFTER_SQL: &str = concat!(
     clip_columns!(),
     " FROM clips WHERE (last_copied_at, id) < (?1, ?2) \
      ORDER BY last_copied_at DESC, id DESC LIMIT ?3"
+);
+
+/// What the list shows of a clip: no full text, no representations. Qualified, because the search
+/// joins `clips_fts`.
+macro_rules! summary_columns {
+    () => {
+        "clips.id, clips.kind, clips.preview, clips.source_bundle, clips.source_name, \
+         clips.pinned, clips.copy_count, clips.last_copied_at"
+    };
+}
+
+/// The summaries, newest first. Walks `idx_clips_last_copied`, no sort.
+const SUMMARIES_SQL: &str = concat!(
+    "SELECT ",
+    summary_columns!(),
+    " FROM clips ORDER BY clips.last_copied_at DESC, clips.id DESC LIMIT ?1"
+);
+
+const SUMMARIES_AFTER_SQL: &str = concat!(
+    "SELECT ",
+    summary_columns!(),
+    " FROM clips WHERE (clips.last_copied_at, clips.id) < (?1, ?2) \
+     ORDER BY clips.last_copied_at DESC, clips.id DESC LIMIT ?3"
+);
+
+/// The summaries of the clips the full-text index matches (`?1`), in the same order.
+const SEARCH_SQL: &str = concat!(
+    "SELECT ",
+    summary_columns!(),
+    " FROM clips_fts JOIN clips ON clips.rowid = clips_fts.rowid WHERE clips_fts MATCH ?1 \
+     ORDER BY clips.last_copied_at DESC, clips.id DESC LIMIT ?2"
+);
+
+const SEARCH_AFTER_SQL: &str = concat!(
+    "SELECT ",
+    summary_columns!(),
+    " FROM clips_fts JOIN clips ON clips.rowid = clips_fts.rowid WHERE clips_fts MATCH ?1 \
+     AND (clips.last_copied_at, clips.id) < (?2, ?3) \
+     ORDER BY clips.last_copied_at DESC, clips.id DESC LIMIT ?4"
 );
 
 /// The unpinned clips past the first `?1`, newest first: the ones the history limit removes.
@@ -64,6 +104,19 @@ fn record(row: &Row<'_>) -> rusqlite::Result<ClipRecord> {
         created_at: row.get(15)?,
         last_copied_at: row.get(16)?,
         last_used_at: row.get(17)?,
+    })
+}
+
+fn summary(row: &Row<'_>) -> rusqlite::Result<ClipSummary> {
+    Ok(ClipSummary {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        preview: row.get(2)?,
+        source_bundle: row.get(3)?,
+        source_name: row.get(4)?,
+        pinned: row.get(5)?,
+        copy_count: row.get(6)?,
+        last_copied_at: row.get(7)?,
     })
 }
 
@@ -152,8 +205,70 @@ pub fn list_recent(
 /// One page of the list `query` asks for, newest first: every clip, or the ones matching its
 /// search. `total` counts all of them, not only this page.
 pub fn list(conn: &Connection, query: &ClipQuery) -> Result<Page<ClipSummary>, StorageError> {
-    let _ = (conn, query);
-    todo!("TAD-012")
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(|value| Cursor::decode(value).ok_or(StorageError::InvalidCursor))
+        .transpose()?;
+    let limit = query
+        .limit
+        .unwrap_or(DEFAULT_PAGE_SIZE)
+        .clamp(1, MAX_PAGE_SIZE);
+    let search = query.search.as_deref().and_then(fts::match_query);
+
+    // One row more than asked for tells whether a next page exists.
+    let mut items = summaries(conn, search.as_deref(), cursor.as_ref(), limit + 1)?;
+    let next_cursor = (items.len() > limit as usize).then(|| {
+        items.truncate(limit as usize);
+        items.last().map(|clip| clip.cursor().encode())
+    });
+    Ok(Page {
+        items,
+        next_cursor: next_cursor.flatten(),
+        total: count_matching(conn, search.as_deref())?,
+    })
+}
+
+fn summaries(
+    conn: &Connection,
+    search: Option<&str>,
+    cursor: Option<&Cursor>,
+    limit: u32,
+) -> Result<Vec<ClipSummary>, StorageError> {
+    let rows = match (search, cursor) {
+        (None, None) => conn
+            .prepare_cached(SUMMARIES_SQL)?
+            .query_map(params![limit], summary)?
+            .collect::<Result<_, _>>()?,
+        (None, Some(cursor)) => conn
+            .prepare_cached(SUMMARIES_AFTER_SQL)?
+            .query_map(params![cursor.last_copied_at, cursor.id, limit], summary)?
+            .collect::<Result<_, _>>()?,
+        (Some(search), None) => conn
+            .prepare_cached(SEARCH_SQL)?
+            .query_map(params![search, limit], summary)?
+            .collect::<Result<_, _>>()?,
+        (Some(search), Some(cursor)) => conn
+            .prepare_cached(SEARCH_AFTER_SQL)?
+            .query_map(
+                params![search, cursor.last_copied_at, cursor.id, limit],
+                summary,
+            )?
+            .collect::<Result<_, _>>()?,
+    };
+    Ok(rows)
+}
+
+/// How many clips the list holds for this search, whatever the page.
+fn count_matching(conn: &Connection, search: Option<&str>) -> Result<u32, StorageError> {
+    Ok(match search {
+        None => conn
+            .prepare_cached("SELECT count(*) FROM clips")?
+            .query_row([], |row| row.get(0))?,
+        Some(search) => conn
+            .prepare_cached("SELECT count(*) FROM clips_fts WHERE clips_fts MATCH ?1")?
+            .query_row([search], |row| row.get(0))?,
+    })
 }
 
 pub fn get(conn: &Connection, id: &str) -> Result<Option<ClipWithRepresentations>, StorageError> {

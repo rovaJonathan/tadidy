@@ -193,10 +193,21 @@ pub struct ClipSummary {
     pub source_bundle: Option<String>,
     pub source_name: Option<String>,
     pub pinned: bool,
+    #[ts(type = "number")]
     pub copy_count: i64,
     /// Milliseconds since the Unix epoch.
     #[ts(type = "number")]
     pub last_copied_at: i64,
+}
+
+impl ClipSummary {
+    /// Where to resume the list after this row.
+    pub fn cursor(&self) -> Cursor {
+        Cursor {
+            last_copied_at: self.last_copied_at,
+            id: self.id.clone(),
+        }
+    }
 }
 
 // Printed by hand, like [`ClipRecord`]: the preview is clip content.
@@ -368,5 +379,88 @@ mod tests {
             assert_eq!(serde_json::to_value(kind).unwrap(), text);
         }
         assert_eq!(ClipKind::parse("bogus"), None);
+    }
+
+    fn summary(preview: &str) -> ClipSummary {
+        ClipSummary {
+            id: "0192f3a4-7b1c-7d2e-8f00-123456789abc".to_owned(),
+            kind: ClipKind::Text,
+            preview: Some(preview.to_owned()),
+            source_bundle: Some("com.example.Editor".to_owned()),
+            source_name: None,
+            pinned: false,
+            copy_count: 2,
+            last_copied_at: 1_761_700_000_123,
+        }
+    }
+
+    #[test]
+    fn a_query_deserializes_from_the_camel_case_the_front_sends() {
+        let query: ClipQuery =
+            serde_json::from_str(r#"{ "search": "sel", "cursor": "1:a", "limit": 20 }"#).unwrap();
+
+        assert_eq!(query.search.as_deref(), Some("sel"));
+        assert_eq!(query.cursor.as_deref(), Some("1:a"));
+        assert_eq!(query.limit, Some(20));
+    }
+
+    #[test]
+    fn every_field_of_a_query_is_optional() {
+        let query: ClipQuery = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(query.search, None);
+        assert_eq!(query.cursor, None);
+        assert_eq!(query.limit, None);
+    }
+
+    #[test]
+    fn a_page_of_summaries_serializes_to_camel_case() {
+        let page = Page {
+            items: vec![summary("hello")],
+            next_cursor: None,
+            total: 1,
+        };
+
+        assert_eq!(
+            serde_json::to_value(page).unwrap(),
+            serde_json::json!({
+                "items": [{
+                    "id": "0192f3a4-7b1c-7d2e-8f00-123456789abc",
+                    "kind": "text",
+                    "preview": "hello",
+                    "sourceBundle": "com.example.Editor",
+                    "sourceName": null,
+                    "pinned": false,
+                    "copyCount": 2,
+                    "lastCopiedAt": 1_761_700_000_123_i64,
+                }],
+                "nextCursor": null,
+                "total": 1,
+            })
+        );
+    }
+
+    #[test]
+    fn a_summary_points_to_the_place_after_it_in_the_list() {
+        assert_eq!(
+            summary("hello").cursor(),
+            Cursor {
+                last_copied_at: 1_761_700_000_123,
+                id: "0192f3a4-7b1c-7d2e-8f00-123456789abc".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn debug_output_of_a_query_and_a_summary_holds_no_text() {
+        let query = ClipQuery {
+            search: Some("my secret search".to_owned()),
+            ..ClipQuery::default()
+        };
+
+        let printed = format!("{query:?} {:?}", summary("my secret preview"));
+
+        assert!(!printed.contains("secret"), "{printed}");
+        assert!(printed.contains("search_len: Some(16)"), "{printed}");
     }
 }
