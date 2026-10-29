@@ -60,13 +60,13 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `ts-rs` | 12.0.1 | ADR 0006 |
 | `tauri-plugin-positioner` | 2.4.0 | added by TAD-003, feature `tray-icon`; crates.io's latest is `3.0.0-alpha.3` (Tauri 3 pre-release), so the newest 2.x is used |
 | `window-vibrancy` | 0.8.1 | added by TAD-003, popover material (`src-tauri/src/macos/vibrancy.rs`) |
+| `objc2` / `objc2-foundation` / `objc2-app-kit` | 0.6.5 / 0.3.2 / 0.3.2 | added by TAD-004, macOS target only, `default-features = false` and only the AppKit and Foundation classes used by `src-tauri/src/macos/` (+ `libc` for `pid_t`) |
 
 ### Planned (later tickets, latest stable seen on 2026-10-28)
 
 | Crate | Latest stable seen | Note |
 |---|---|---|
 | `rusqlite` / `rusqlite_migration` | 0.41.0 / 2.6.0 | feature `bundled-sqlcipher-vendored-openssl` |
-| `objc2` / `objc2-app-kit` | 0.6.5 / 0.3.2 | |
 | `tauri-nspanel` | 2.1.1 | |
 | `security-framework` | 3.7.0 | |
 | `core-graphics` | 0.25.0 | |

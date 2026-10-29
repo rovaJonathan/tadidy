@@ -37,3 +37,21 @@ Manual QA (docs/guides/manual-qa.md#tad-004) — signed build, macOS 15.1, Apple
 | 8 | Right-click the icon. | A native menu: Preferences… `⌘,`, Clear history…, separator, About Tadidy, Check for updates…, separator, Quit Tadidy `⌘Q`. Only Quit Tadidy is enabled. |
 | 9 | With the popover visible, hold `⌘Tab` and look at the Dock. | No Tadidy entry in the switcher, no Dock icon. |
 | 10 | Choose Quit Tadidy (or `⌘Q` with the menu open). | The icon disappears and `pgrep -x tadidy` prints nothing. |
+
+### TAD-004 — Pasteboard and workspace layer
+
+Run a developer probe; no signing or Accessibility is involved. The probe prints types, byte sizes and the frontmost app, never the clipboard data. Start it from a terminal and keep it running for steps 1 to 6. It polls from its own thread while the main thread runs the run loop, like the watcher inside Tauri: `frontmostApplication` is only refreshed while the main run loop runs, so a probe without one keeps reporting the app it started in.
+
+```
+cargo run --manifest-path src-tauri/Cargo.toml --example pasteboard_probe
+```
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Start the probe. | `polling every 300 ms`, then one `change count N` block listing the current types, and `frontmost app` with the terminal's name and bundle id. |
+| 2 | Select a few words in TextEdit and copy them with `⌘C`. | `change count` grows by one, `public.utf8-plain-text` is listed with the byte size of the selection, and the frontmost app is TextEdit (`com.apple.TextEdit`). |
+| 3 | Copy a selection in Safari. | `public.html`, `public.rtf` or `public.utf8-plain-text` are listed; the frontmost app is Safari (`com.apple.Safari`). |
+| 4 | Copy a file in the Finder (`⌘C` on a file). | `public.file-url` is listed; the frontmost app is Finder. |
+| 5 | Open the PNG the probe printed after `icon:` in Preview (`open <path>`). | A 64 × 64 px image of the app icon, transparent corners, sharp (`sips -g pixelWidth -g dpiWidth <path>` → 64 and 144). |
+| 6 | Leave the probe idle for 60 s without copying and watch it in Activity Monitor (Memory column). | The memory stays flat: no growth, nothing printed after the first blocks. |
+| 7 | Stop the probe (`Ctrl-C`). | The process exits. |
