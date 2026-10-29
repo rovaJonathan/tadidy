@@ -110,3 +110,18 @@ cargo run --manifest-path src-tauri/Cargo.toml --example keychain_probe
 | 4 | `sqlite3 ~/Library/Application\ Support/app.tadidy/tadidy.db .tables` | `Error: file is not a database`. `head -c 16 tadidy.db` does not print `SQLite format 3`. |
 | 5 | Quit the app, run `pnpm tauri dev` again. | It starts, no new Keychain item (still one), no error in the terminal. |
 | 6 | Quit the app. Delete the Keychain item, keep `tadidy.db`. Run `RUST_LOG=tadidy_lib=info pnpm tauri dev`. | The terminal logs `storage_key_missing`; the tray icon still works; `shasum tadidy.db` is the same as before the launch; no new Keychain item. |
+
+### TAD-008 — Stable signing identity and universal build
+
+Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runbooks/signing-identity.md) and `export APPLE_SIGNING_IDENTITY="Tadidy Dev"` in the shell. `APP` below is `src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app`. Steps 1 to 5 need only this ticket. Step 7 needs a build that shows the permission state (a UI ticket): TAD-019 runs it. Step 8 needs TAD-007 and can be run today.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | `security find-identity -v -p codesigning` | Lists `"Tadidy Dev"` as a valid identity. |
+| 2 | `pnpm build:universal` | Succeeds and produces `APP` and a `.dmg` next to it, under `bundle/dmg/`. |
+| 3 | `codesign -dv --verbose=2 "$APP" 2>&1 \| grep -E 'Authority\|Signature'`, then `codesign --verify --deep --strict "$APP"` | `Authority=Tadidy Dev`, no `Signature=adhoc`; the verify command prints nothing and exits 0. |
+| 4 | `lipo -archs "$APP/Contents/MacOS/"*` | `x86_64 arm64`. |
+| 5 | `codesign -d -r- "$APP" 2>&1 \| grep designated > /tmp/dr-1.txt`; change any source file (a comment is enough); `pnpm build:universal`; the same command into `/tmp/dr-2.txt`; `diff /tmp/dr-1.txt /tmp/dr-2.txt` | No difference: the designated requirement does not depend on the build. |
+| 6 | Unset `APPLE_SIGNING_IDENTITY`, rebuild, and run `codesign -dv --verbose=2 "$APP" 2>&1 \| grep Signature` | `Signature=adhoc`: this is the failure the identity prevents. Export the variable again. |
+| 7 | Install build N in `/Applications`, grant it Accessibility, install build N+1 over it, launch it. | *System Settings → Privacy & Security → Accessibility* still lists Tadidy enabled, and `check_accessibility` returns `true` (TAD-019). |
+| 8 | Start from a clean state (no `~/Library/Application Support/app.tadidy/`, no `app.tadidy` / `database-key` item). Copy `APP` to `/tmp/N.app`, change a source file, `pnpm build:universal`, copy the new `APP` to `/tmp/N1.app`. Run `/tmp/N.app/Contents/MacOS/tadidy`, wait 5 s, quit it; run `/tmp/N1.app/Contents/MacOS/tadidy`, wait 5 s. Then `pgrep -x SecurityAgent`, `security dump-keychain ~/Library/Keychains/login.keychain-db \| grep -c '"svce"<blob>="app.tadidy"'` and `head -c 16 ~/Library/Application\ Support/app.tadidy/tadidy.db \| xxd` after each run. | Build N creates `tadidy.db` and one Keychain item; its header is not `SQLite format 3`. Build N+1 starts without any Keychain dialog (no `SecurityAgent`), still one item, the same header bytes (same key), and logs no `storage_key_missing`. Delete the item and the folder afterwards. |

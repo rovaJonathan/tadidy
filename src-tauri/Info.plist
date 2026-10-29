@@ -5,5 +5,7 @@
   <!-- Menu-bar app: no Dock icon, not in ⌘Tab (MNU-06). -->
   <key>LSUIElement</key>
   <true/>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Tadidy. All rights reserved.</string>
 </dict>
 </plist>
