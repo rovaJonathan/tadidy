@@ -23,16 +23,18 @@ export function page(items: ClipSummary[], nextCursor: string | null = null, tot
 }
 
 /**
- * A fake core: records every `list_clips` query and every command, answers `list_clips` with
+ * A fake core: records every `list_clips` query, every command and the ids of every `delete_clips`, answers `list_clips` with
  * whatever `answer` returns and `get_app_icon` with a PNG signature, except for a bundle id
  * ending in `.NoIcon`, which has no cached icon.
  */
 export function fakeCore(answer: (q: ClipQuery) => Page<ClipSummary> | Promise<Page<ClipSummary>>) {
   const queries: ClipQuery[] = [];
   const commands: string[] = [];
+  const deleted: string[][] = [];
   mockIPC(
     (cmd, args) => {
       commands.push(cmd);
+      if (cmd === "delete_clips") deleted.push((args as { ids: string[] }).ids);
       if (cmd === "list_clips") {
         const q = (args as { q: ClipQuery }).q;
         queries.push(q);
@@ -47,7 +49,7 @@ export function fakeCore(answer: (q: ClipQuery) => Page<ClipSummary> | Promise<P
     },
     { shouldMockEvents: true },
   );
-  return { queries, commands };
+  return { queries, commands, deleted };
 }
 
 /** A promise settled by hand, to hold a `list_clips` answer back. */

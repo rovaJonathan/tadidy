@@ -14,9 +14,11 @@
     now: number;
     /** Object URL of the source app's icon, when the core has one. */
     iconUrl: string | undefined;
+    onselect: () => void;
+    onactivate: () => void;
   }
 
-  let { clip, index, total, selected, now, iconUrl }: Props = $props();
+  let { clip, index, total, selected, now, iconUrl, onselect, onactivate }: Props = $props();
 
   /** Glyph paths of the prototype's 16 × 16 icon set, by clip kind. */
   const KIND_GLYPHS: Record<ClipKind, string[]> = {
@@ -44,6 +46,8 @@
   const text = $derived(clip.preview ?? (clip.kind === "image" ? "Image" : ""));
 </script>
 
+<!-- The keys are handled for the whole browser (`resolveKey`); a click only adds the mouse. -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   class="clip-row"
   class:is-selected={selected}
@@ -57,6 +61,10 @@
   aria-setsize={total}
   style:top="{index * ROW_HEIGHT}px"
   style:height="{ROW_HEIGHT}px"
+  tabindex="-1"
+  onmousedown={(event) => event.preventDefault()}
+  onclick={onselect}
+  ondblclick={onactivate}
 >
   <span class="clip-badge" aria-hidden="true">{index < 9 ? `⌘${index + 1}` : ""}</span>
   <span class="clip-tile">

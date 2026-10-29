@@ -1,7 +1,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { clip, deferred, fakeCore, page } from "../../test/clips";
 import { ROW_HEIGHT } from "../virtual-list";
 import ClipBrowser from "./ClipBrowser.svelte";
@@ -424,5 +424,449 @@ describe("ClipBrowser live updates", () => {
 
     expect(previews(container)).toEqual(["Fresh synthetic clip", "Synthetic clip 1"]);
     expect(container.querySelector("#clip-count")?.textContent).toBe("2 clips");
+  });
+});
+
+type Handlers = {
+  onpaste: Mock<(id: string) => void>;
+  oncopy: Mock<(id: string) => void>;
+  onclose: Mock<() => void>;
+  onopenpreferences: Mock<() => void>;
+  ondisableconfirm: Mock<() => void>;
+};
+
+function mountBrowser(props: { confirmBeforeDelete?: boolean } = {}) {
+  const handlers: Handlers = {
+    onpaste: vi.fn<(id: string) => void>(),
+    oncopy: vi.fn<(id: string) => void>(),
+    onclose: vi.fn<() => void>(),
+    onopenpreferences: vi.fn<() => void>(),
+    ondisableconfirm: vi.fn<() => void>(),
+  };
+  const view = render(ClipBrowser, { ...handlers, ...props });
+  return { ...view, ...handlers };
+}
+
+function key(target: Element, key: string, modifiers: KeyboardEventInit = {}) {
+  return fireEvent.keyDown(target, { key, ...modifiers });
+}
+
+function rowAt(container: HTMLElement, index: number): HTMLElement {
+  const row = rows(container)[index];
+  if (!row) throw new Error(`row ${index} is missing`);
+  return row;
+}
+
+function selectedIds(container: HTMLElement): (string | undefined)[] {
+  return rows(container)
+    .filter((row) => row.getAttribute("aria-selected") === "true")
+    .map((row) => row.dataset.id);
+}
+
+const THREE = () => page([clip(1), clip(2), clip(3)]);
+
+describe("ClipBrowser keyboard", () => {
+  it("pastes the second row after typing in the search, ↓ and Return", async () => {
+    fakeCore((q) => (q.search === "sel" ? page([clip(7), clip(8), clip(9)]) : THREE()));
+    const { container, onpaste } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "sel" } });
+    await settle(50);
+    await key(field, "ArrowDown");
+    await key(field, "Enter");
+
+    expect(onpaste).toHaveBeenCalledExactlyOnceWith("clip-8");
+  });
+
+  it("moves the selection with ↓ and ↑ and keeps it on the first row going up", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await key(field, "ArrowDown");
+    await settle();
+    expect(selectedIds(container)).toEqual(["clip-2"]);
+    expect(field.getAttribute("aria-activedescendant")).toBe("clip-clip-2");
+
+    await key(field, "ArrowUp");
+    await key(field, "ArrowUp");
+    expect(selectedIds(container)).toEqual(["clip-1"]);
+  });
+
+  it("does not let ↓ and ↑ move the text cursor of the search", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+
+    const notPrevented = await key(input(container), "ArrowDown");
+
+    expect(notPrevented).toBe(false);
+  });
+
+  it("loads the next page when ↓ is pressed on the last loaded row", async () => {
+    const core = fakeCore((q) => (q.cursor ? page([clip(3), clip(4)], null, 4) : page([clip(1), clip(2)], "2", 4)));
+    const { container } = mountBrowser();
+    await settle();
+    const field = input(container);
+    await key(field, "ArrowDown");
+
+    await key(field, "ArrowDown");
+    await settle();
+
+    expect(core.queries).toContainEqual({ cursor: "2" });
+    expect(selectedIds(container)).toEqual(["clip-3"]);
+  });
+
+  it("scrolls the selected row into view, in both directions", async () => {
+    fakeCore(() =>
+      page(
+        Array.from({ length: 10 }, (_, i) => clip(i + 1)),
+        null,
+        10,
+      ),
+    );
+    stubListHeight(2 * ROW_HEIGHT);
+    const { container } = mountBrowser();
+    await settle();
+    const list = find(container, "#clip-list");
+    const field = input(container);
+
+    for (let i = 0; i < 4; i++) await key(field, "ArrowDown");
+    await settle();
+    expect(list.scrollTop).toBe(3 * ROW_HEIGHT);
+
+    for (let i = 0; i < 4; i++) await key(field, "ArrowUp");
+    await settle();
+    expect(list.scrollTop).toBe(0);
+  });
+
+  it("selects a row on click and keeps the focus in the search", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    const field = input(container);
+    field.focus();
+
+    const row = rowAt(container, 2);
+    const notPrevented = await fireEvent.mouseDown(row);
+    await fireEvent.click(row);
+
+    expect(notPrevented).toBe(false);
+    expect(selectedIds(container)).toEqual(["clip-3"]);
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("pastes a row on double-click", async () => {
+    fakeCore(THREE);
+    const { container, onpaste } = mountBrowser();
+    await settle();
+
+    await fireEvent.dblClick(rowAt(container, 1));
+
+    expect(onpaste).toHaveBeenCalledExactlyOnceWith("clip-2");
+  });
+
+  it.each([
+    ["⌥Return", "Enter", { altKey: true }],
+    ["⌘C", "c", { metaKey: true }],
+  ])("%s copies the selected clip", async (_name, name, modifiers) => {
+    fakeCore(THREE);
+    const { container, oncopy, onpaste } = mountBrowser();
+    await settle();
+    await key(input(container), "ArrowDown");
+
+    await key(input(container), name, modifiers);
+
+    expect(oncopy).toHaveBeenCalledExactlyOnceWith("clip-2");
+    expect(onpaste).not.toHaveBeenCalled();
+  });
+
+  it("leaves ⌘C to the search field while part of its text is selected", async () => {
+    fakeCore(THREE);
+    const { container, oncopy } = mountBrowser();
+    await settle();
+    const field = input(container);
+    field.focus();
+    field.value = "hello";
+    field.setSelectionRange(0, 3);
+
+    const notPrevented = await key(field, "c", { metaKey: true });
+
+    expect(oncopy).not.toHaveBeenCalled();
+    expect(notPrevented).toBe(true);
+  });
+
+  it("pastes and copies nothing in an empty history", async () => {
+    fakeCore(() => page([]));
+    const { container, onpaste, oncopy } = mountBrowser();
+    await settle();
+
+    await key(input(container), "Enter");
+    await key(input(container), "c", { metaKey: true });
+
+    expect(onpaste).not.toHaveBeenCalled();
+    expect(oncopy).not.toHaveBeenCalled();
+  });
+
+  it("clears the search on Esc, then closes on the next Esc", async () => {
+    fakeCore((q) => (q.search ? page([clip(5)]) : THREE()));
+    const { container, onclose } = mountBrowser();
+    await settle();
+    const field = input(container);
+    await fireEvent.input(field, { target: { value: "synthetic" } });
+    await settle(50);
+
+    await key(field, "Escape");
+    await settle(50);
+
+    expect(field.value).toBe("");
+    expect(rows(container)).toHaveLength(3);
+    expect(onclose).not.toHaveBeenCalled();
+
+    await key(field, "Escape");
+
+    expect(onclose).toHaveBeenCalledOnce();
+  });
+
+  it("gives the focus to the search when a letter is typed with the focus elsewhere", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    input(container).blur();
+    expect(document.activeElement).toBe(document.body);
+
+    await key(document.body, "a");
+
+    expect(document.activeElement).toBe(input(container));
+  });
+
+  it("selects the text of the search on ⌘F", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    const field = input(container);
+    field.value = "abc";
+    field.blur();
+
+    const notPrevented = await key(document.body, "f", { metaKey: true });
+
+    expect(notPrevented).toBe(false);
+    expect(document.activeElement).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, 3]);
+  });
+
+  it("opens the preferences on ⌘,", async () => {
+    fakeCore(THREE);
+    const { container, onopenpreferences } = mountBrowser();
+    await settle();
+
+    await key(input(container), ",", { metaKey: true });
+
+    expect(onopenpreferences).toHaveBeenCalledOnce();
+  });
+
+  it("pastes the match of what was just typed, not the row of the previous list", async () => {
+    fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    const { container, onpaste } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Enter");
+    expect(onpaste).not.toHaveBeenCalled();
+    await settle(50);
+
+    expect(onpaste).toHaveBeenCalledExactlyOnceWith("clip-3");
+  });
+
+  it("copies the match of what was just typed", async () => {
+    fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    const { container, oncopy } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Enter", { altKey: true });
+    await settle(50);
+
+    expect(oncopy).toHaveBeenCalledExactlyOnceWith("clip-3");
+  });
+
+  it("asks to delete the match of what was just typed", async () => {
+    const core = fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    const { container } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Backspace", { metaKey: true });
+    await settle(50);
+    await key(find(container, "#dialog-delete-clip"), "Enter");
+    await settle();
+
+    expect(core.deleted).toEqual([["clip-3"]]);
+  });
+
+  it("does nothing, and does not hang, when the search a Return waits for fails", async () => {
+    fakeCore((q) => {
+      if (q.search) throw { code: "storage_error", message: "Storage failed." };
+      return THREE();
+    });
+    const { container, onpaste } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Enter");
+    await settle(50);
+
+    expect(onpaste).not.toHaveBeenCalled();
+  });
+
+  it("ignores the keys of an input method that is composing", async () => {
+    fakeCore(THREE);
+    const { container, onpaste } = mountBrowser();
+    await settle();
+
+    await key(input(container), "Enter", { isComposing: true });
+
+    expect(onpaste).not.toHaveBeenCalled();
+  });
+});
+
+describe("ClipBrowser deleting", () => {
+  it("asks first on ⌘⌫: Return deletes through delete_clips", async () => {
+    let items = [clip(1), clip(2), clip(3)];
+    const core = fakeCore(() => page(items));
+    const { container, ondisableconfirm } = mountBrowser();
+    await settle();
+    await key(input(container), "ArrowDown");
+
+    await key(input(container), "Backspace", { metaKey: true });
+
+    const dialog = find(container, "#dialog-delete-clip");
+    expect(core.deleted).toEqual([]);
+    expect(document.activeElement).toBe(find(container, "#btn-delete-confirm"));
+
+    items = [clip(1), clip(3)];
+    await key(dialog, "Enter");
+    await settle();
+
+    expect(core.deleted).toEqual([["clip-2"]]);
+    expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+    expect(previews(container)).toEqual(["Synthetic clip 1", "Synthetic clip 3"]);
+    expect(selectedIds(container)).toEqual(["clip-3"]);
+    expect(document.activeElement).toBe(input(container));
+    expect(ondisableconfirm).not.toHaveBeenCalled();
+  });
+
+  it("closes only the dialog on Esc: nothing is deleted and the window stays open", async () => {
+    const core = fakeCore(THREE);
+    const { container, onclose } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+
+    await key(find(container, "#dialog-delete-clip"), "Escape");
+
+    expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+    expect(core.deleted).toEqual([]);
+    expect(onclose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input(container));
+  });
+
+  it("leaves the other keys to the dialog while it is open", async () => {
+    fakeCore(THREE);
+    const { container, onpaste } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+
+    await key(find(container, "#btn-delete-cancel"), "ArrowDown");
+    await key(document.body, "ArrowDown");
+    await key(document.body, "c", { metaKey: true });
+
+    expect(selectedIds(container)).toEqual(["clip-1"]);
+    expect(onpaste).not.toHaveBeenCalled();
+  });
+
+  it("still routes the keys to the dialog when the focus has left it (a click on the dim layer)", async () => {
+    const core = fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+    (document.activeElement as HTMLElement).blur();
+
+    await key(document.body, "Escape");
+
+    expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+    expect(core.deleted).toEqual([]);
+  });
+
+  it("confirms with Return when the focus has left the dialog", async () => {
+    const core = fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+    (document.activeElement as HTMLElement).blur();
+
+    await key(document.body, "Enter");
+    await settle();
+
+    expect(core.deleted).toEqual([["clip-1"]]);
+  });
+
+  it("brings Tab back into the dialog when the focus has left it", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+    (document.activeElement as HTMLElement).blur();
+
+    await key(document.body, "Tab");
+    expect(document.activeElement).toBe(find(container, "#chk-dont-ask-delete"));
+
+    (document.activeElement as HTMLElement).blur();
+    await key(document.body, "Tab", { shiftKey: true });
+    expect(document.activeElement).toBe(find(container, "#btn-delete-cancel"));
+  });
+
+  it("deletes and calls ondisableconfirm once when Don’t ask again was ticked", async () => {
+    const core = fakeCore(THREE);
+    const { container, ondisableconfirm } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+
+    await fireEvent.click(find(container, "#chk-dont-ask-delete"));
+    await fireEvent.click(find(container, "#btn-delete-confirm"));
+    await settle();
+
+    expect(core.deleted).toEqual([["clip-1"]]);
+    expect(ondisableconfirm).toHaveBeenCalledOnce();
+  });
+
+  it("deletes at once, without a dialog, when confirmBeforeDelete is off", async () => {
+    const core = fakeCore(THREE);
+    const { container } = mountBrowser({ confirmBeforeDelete: false });
+    await settle();
+    await key(input(container), "ArrowDown");
+
+    await key(input(container), "Backspace", { metaKey: true });
+    await settle();
+
+    expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+    expect(core.deleted).toEqual([["clip-2"]]);
+  });
+
+  it("deletes nothing in an empty history", async () => {
+    const core = fakeCore(() => page([]));
+    const { container } = mountBrowser();
+    await settle();
+
+    await key(input(container), "Backspace", { metaKey: true });
+
+    expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+    expect(core.deleted).toEqual([]);
   });
 });

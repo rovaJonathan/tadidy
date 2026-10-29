@@ -15,9 +15,24 @@
 
   onMount(() => field?.focus());
 
+  /** Gives the field the focus, with its text selected when `select` is set. */
+  export function focus(select = false) {
+    field?.focus();
+    if (select) field?.select();
+  }
+
+  export function hasFocus(): boolean {
+    return document.activeElement === field;
+  }
+
+  /** Part of the text is selected: ⌘C copies it instead of the clip. */
+  export function hasSelection(): boolean {
+    return field !== undefined && field.selectionStart !== field.selectionEnd;
+  }
+
   function clear() {
     onsearch("");
-    field?.focus();
+    focus();
   }
 </script>
 
