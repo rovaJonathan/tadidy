@@ -7,6 +7,7 @@ pub mod error;
 pub mod events;
 pub mod macos;
 pub mod platform;
+pub mod settings;
 pub mod shortcuts;
 pub mod state;
 pub mod storage;
