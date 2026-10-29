@@ -9,6 +9,7 @@ interface MockWindow {
   __ipcCalls: string[];
   __ipcQueries: ClipQuery[];
   __clips: ClipSummary[];
+  __browserCalls?: string[];
   __emit: (event: string, payload: unknown) => void;
 }
 
@@ -77,6 +78,16 @@ export async function mockIpc(
               queries.push(args.q as ClipQuery);
               return listClips(args.q as ClipQuery);
             }
+            if (clips && cmd === "delete_clips") {
+              const ids = args.ids as string[];
+              for (const id of ids)
+                history.splice(
+                  history.findIndex((clip) => clip.id === id),
+                  1,
+                );
+              queueMicrotask(() => (window as unknown as MockWindow).__emit("clips://changed", {}));
+              return undefined;
+            }
             if (clips && cmd === "get_app_icon")
               throw { code: "not_found", message: "No icon is cached for this app." };
             if (cmd in responses) return responses[cmd];
@@ -104,6 +115,11 @@ export function ipcCalls(page: Page): Promise<string[]> {
 /** The `q` argument of every `list_clips` call so far, in order (needs `mockIpc` with `clips`). */
 export function listClipsQueries(page: Page): Promise<ClipQuery[]> {
   return page.evaluate(() => [...(window as unknown as MockWindow).__ipcQueries]);
+}
+
+/** What the dev harness's clip browser told its host so far, e.g. `paste:clip-2` or `close`, in order. */
+export function browserCalls(page: Page): Promise<string[]> {
+  return page.evaluate(() => [...((window as unknown as MockWindow).__browserCalls ?? [])]);
 }
 
 /** Records `clip` as the newest in the fake history, then announces `clips://changed`. */
