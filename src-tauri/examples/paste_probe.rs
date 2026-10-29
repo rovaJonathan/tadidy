@@ -37,7 +37,12 @@ fn main() {
         return;
     }
     match CgKeySender.send_paste() {
-        Ok(()) => println!("sent Command+V"),
+        Ok(()) => {
+            println!("sent Command+V");
+            // A process that exits right after posting loses the event: stay alive until
+            // macOS has delivered it. The app is long-lived, so it does not need this.
+            std::thread::sleep(Duration::from_millis(500));
+        }
         Err(error) => println!("send failed: {error}"),
     }
 }
