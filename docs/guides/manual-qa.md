@@ -55,3 +55,23 @@ cargo run --manifest-path src-tauri/Cargo.toml --example pasteboard_probe
 | 5 | Open the PNG the probe printed after `icon:` in Preview (`open <path>`). | A 64 × 64 px image of the app icon, transparent corners, sharp (`sips -g pixelWidth -g dpiWidth <path>` → 64 and 144). |
 | 6 | Leave the probe idle for 60 s without copying and watch it in Activity Monitor (Memory column). | The memory stays flat: no growth, nothing printed after the first blocks. |
 | 7 | Stop the probe (`Ctrl-C`). | The process exits. |
+
+### TAD-005 — Key sender and Accessibility permission
+
+Run a developer probe; no signed build is needed. macOS ties the Accessibility grant to the program that launched the probe (the terminal), not to the probe binary, so the grant goes to the terminal you run it from. The probe sends `⌘V`, which pastes whatever is on the clipboard: copy a harmless sentence first. It never reads or prints the clipboard.
+
+```
+cargo run --manifest-path src-tauri/Cargo.toml --example paste_probe
+cargo run --manifest-path src-tauri/Cargo.toml --example paste_probe -- --request
+```
+
+Open TextEdit with an empty document and the insertion point in it before each run, then put TextEdit in front within 3 s of starting the probe.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | In *System Settings → Privacy & Security → Accessibility*, make sure the terminal is **off** (or absent). Run the probe, then bring TextEdit to the front. | `trusted: false`, then `not trusted: no key event sent`. Nothing is pasted into TextEdit. |
+| 2 | Run the probe with `-- --request`. | System Settings opens on *Privacy & Security → Accessibility*, and the terminal is listed there. The probe prints `requested; System Settings opened on Accessibility` and exits. |
+| 3 | Turn the terminal **on** in that pane. Run the probe and bring TextEdit to the front within 3 s. | `trusted: true`, `sent Command+V`; the copied sentence appears in TextEdit, which keeps focus (no other app comes forward). |
+| 4 | Switch the keyboard layout to AZERTY (*System Settings → Keyboard → Input Sources*) and repeat step 3. | The sentence is pasted: `⌘V` is not read as another shortcut. |
+| 5 | Start the probe, bring TextEdit to the front, then hold `⇧` until the sentence appears (about 3 s after the start), and release it. | The sentence is pasted. The event carries `Command` only, so the held `⇧` is not merged in. If it were, the app would receive `⌘⇧V`, which does nothing in TextEdit: an empty document means the step failed. |
+| 6 | Turn the terminal off again in the Accessibility pane. | The state is back to step 1; restore your own layout and settings. |

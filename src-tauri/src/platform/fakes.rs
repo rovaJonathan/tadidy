@@ -1,11 +1,13 @@
-//! In-memory [`Pasteboard`] and [`Workspace`] for the tests of every service that depends on
+//! In-memory [`Pasteboard`], [`Workspace`], [`KeySender`] and [`AccessibilityProbe`] for the tests of every service that depends on
 //! them (`src-tauri/tests/` included). They honour the same contract as the AppKit
 //! implementations in `crate::macos`.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use super::{Pasteboard, PlatformError, Representation, SourceApp, Workspace};
+use super::{
+    AccessibilityProbe, KeySender, Pasteboard, PlatformError, Representation, SourceApp, Workspace,
+};
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -109,6 +111,93 @@ impl Workspace for FakeWorkspace {
     }
 }
 
+#[derive(Default)]
+struct KeySenderState {
+    pastes: usize,
+    failing: bool,
+}
+
+/// A key sender that only counts the pastes it was asked to send.
+#[derive(Default)]
+pub struct FakeKeySender {
+    state: Mutex<KeySenderState>,
+}
+
+impl FakeKeySender {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Makes every later [`KeySender::send_paste`] fail.
+    pub fn fail_sends(&self) {
+        lock(&self.state).failing = true;
+    }
+
+    /// How many pastes were sent successfully.
+    pub fn paste_count(&self) -> usize {
+        lock(&self.state).pastes
+    }
+}
+
+impl KeySender for FakeKeySender {
+    fn send_paste(&self) -> Result<(), PlatformError> {
+        let mut state = lock(&self.state);
+        if state.failing {
+            return Err(PlatformError::KeyEvent);
+        }
+        state.pastes += 1;
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct AccessibilityState {
+    trusted: bool,
+    requests: usize,
+    failing: bool,
+}
+
+/// An Accessibility probe that is untrusted until the test says otherwise.
+#[derive(Default)]
+pub struct FakeAccessibility {
+    state: Mutex<AccessibilityState>,
+}
+
+impl FakeAccessibility {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_trusted(&self, trusted: bool) {
+        lock(&self.state).trusted = trusted;
+    }
+
+    /// Makes every later [`AccessibilityProbe::request_and_open_settings`] fail.
+    pub fn fail_requests(&self) {
+        lock(&self.state).failing = true;
+    }
+
+    /// How many times the permission was requested, failed requests included.
+    pub fn requests(&self) -> usize {
+        lock(&self.state).requests
+    }
+}
+
+impl AccessibilityProbe for FakeAccessibility {
+    fn is_trusted(&self) -> bool {
+        lock(&self.state).trusted
+    }
+
+    fn request_and_open_settings(&self) -> Result<(), PlatformError> {
+        let mut state = lock(&self.state);
+        state.requests += 1;
+        if state.failing {
+            return Err(PlatformError::AccessibilitySettings);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,5 +291,45 @@ mod tests {
         let workspace = FakeWorkspace::new();
 
         assert_eq!(workspace.app_icon_png(&textedit()), None);
+    }
+
+    #[test]
+    fn fake_key_sender_counts_pastes_and_can_fail() {
+        let keys = FakeKeySender::new();
+        assert_eq!(keys.paste_count(), 0);
+
+        keys.send_paste().unwrap();
+        keys.send_paste().unwrap();
+        assert_eq!(keys.paste_count(), 2);
+
+        keys.fail_sends();
+        assert_eq!(keys.send_paste(), Err(PlatformError::KeyEvent));
+        assert_eq!(keys.paste_count(), 2);
+    }
+
+    #[test]
+    fn fake_accessibility_is_untrusted_until_set() {
+        let accessibility = FakeAccessibility::new();
+        assert!(!accessibility.is_trusted());
+
+        accessibility.set_trusted(true);
+
+        assert!(accessibility.is_trusted());
+        assert_eq!(accessibility.requests(), 0);
+    }
+
+    #[test]
+    fn fake_accessibility_records_requests_and_can_fail() {
+        let accessibility = FakeAccessibility::new();
+
+        accessibility.request_and_open_settings().unwrap();
+        assert_eq!(accessibility.requests(), 1);
+
+        accessibility.fail_requests();
+        assert_eq!(
+            accessibility.request_and_open_settings(),
+            Err(PlatformError::AccessibilitySettings)
+        );
+        assert_eq!(accessibility.requests(), 2);
     }
 }
