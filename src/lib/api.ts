@@ -10,3 +10,16 @@ export function appVersion(): Promise<string> {
 export async function hideWindow(): Promise<void> {
   await invoke("hide_window");
 }
+
+/** Whether Tadidy may post the paste keystroke. Never shows the system prompt. */
+export function checkAccessibility(): Promise<boolean> {
+  return invoke<boolean>("check_accessibility");
+}
+
+/**
+ * Lists Tadidy under Privacy & Security → Accessibility and opens that pane. Call it from a
+ * user click only: the permission is never requested silently.
+ */
+export async function openAccessibilitySettings(): Promise<void> {
+  await invoke("open_accessibility_settings");
+}
