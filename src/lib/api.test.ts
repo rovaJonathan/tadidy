@@ -4,13 +4,22 @@ import { describe, expect, it } from "vitest";
 import {
   appVersion,
   checkAccessibility,
+  clearHistory,
+  deleteClips,
+  getAppIcon,
   getSettings,
   hideWindow,
+  listClips,
+  onClipsChanged,
   onPanelShown,
   onSettingsChanged,
   openAccessibilitySettings,
   setSettings,
 } from "./api";
+import type { ClipQuery } from "./bindings/ClipQuery";
+import type { ClipsChanged } from "./bindings/ClipsChanged";
+import type { ClipSummary } from "./bindings/ClipSummary";
+import type { Page } from "./bindings/Page";
 import type { PanelShown } from "./bindings/PanelShown";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
@@ -183,6 +192,131 @@ describe("onSettingsChanged", () => {
     await onSettingsChanged((settings) => seen.push(settings));
 
     await emit("panel://shown", defaults);
+
+    expect(seen).toEqual([]);
+  });
+});
+
+const summary: ClipSummary = {
+  id: "0192f3a4-7b1c-7d2e-8f00-123456789abc",
+  kind: "text",
+  preview: "Selected items",
+  sourceBundle: "com.example.Editor",
+  sourceName: "Editor",
+  pinned: false,
+  copyCount: 1,
+  lastCopiedAt: 1_761_700_000_123,
+};
+
+describe("listClips", () => {
+  it("invokes list_clips with the query under the argument name Rust expects", async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    const page: Page<ClipSummary> = { items: [summary], nextCursor: null, total: 1 };
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      return page;
+    });
+    const q: ClipQuery = { search: "sel", limit: 50 };
+
+    await expect(listClips(q)).resolves.toEqual(page);
+    expect(calls).toEqual([{ cmd: "list_clips", args: { q } }]);
+  });
+
+  it("rejects with the core's invalid_cursor error", async () => {
+    mockIPC(() => {
+      throw { code: "invalid_cursor", message: "The list position is not valid." };
+    });
+
+    await expect(listClips({ cursor: "nonsense" })).rejects.toMatchObject({ code: "invalid_cursor" });
+  });
+});
+
+describe("deleteClips", () => {
+  it("invokes delete_clips with the ids", async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+    });
+
+    await expect(deleteClips(["a", "b"])).resolves.toBeUndefined();
+    expect(calls).toEqual([{ cmd: "delete_clips", args: { ids: ["a", "b"] } }]);
+  });
+});
+
+describe("clearHistory", () => {
+  it.each([true, false])("invokes clear_history with keepPinned %s and returns the count", async (keepPinned) => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      return 8;
+    });
+
+    await expect(clearHistory(keepPinned)).resolves.toBe(8);
+    expect(calls).toEqual([{ cmd: "clear_history", args: { keepPinned } }]);
+  });
+});
+
+describe("getAppIcon", () => {
+  it("resolves to the PNG bytes of the app's icon", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      return png;
+    });
+
+    await expect(getAppIcon("com.example.Editor")).resolves.toBe(png);
+    expect(calls).toEqual([{ cmd: "get_app_icon", args: { bundleId: "com.example.Editor" } }]);
+  });
+
+  it("resolves to null when the app has no cached icon", async () => {
+    mockIPC(() => {
+      throw { code: "not_found", message: "No icon is cached for this app." };
+    });
+
+    await expect(getAppIcon("com.example.Unknown")).resolves.toBeNull();
+  });
+
+  it("still rejects with any other error", async () => {
+    mockIPC(() => {
+      throw { code: "storage_unavailable", message: "The history database is unavailable." };
+    });
+
+    await expect(getAppIcon("com.example.Editor")).rejects.toMatchObject({ code: "storage_unavailable" });
+  });
+});
+
+describe("onClipsChanged", () => {
+  it("hands the payload of clips://changed to the callback", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const seen: ClipsChanged[] = [];
+    await onClipsChanged((changed) => seen.push(changed));
+    const removed: ClipsChanged = { added: null, updated: null, removed: ["a", "b"] };
+    const reload: ClipsChanged = { added: null, updated: null, removed: null };
+
+    await emit("clips://changed", removed);
+    await emit("clips://changed", reload);
+
+    expect(seen).toEqual([removed, reload]);
+  });
+
+  it("stops calling the callback once unlistened", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const seen: ClipsChanged[] = [];
+    const unlisten = await onClipsChanged((changed) => seen.push(changed));
+
+    unlisten();
+    await emit("clips://changed", { added: null, updated: null, removed: null });
+
+    expect(seen).toEqual([]);
+  });
+
+  it("ignores other events", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const seen: ClipsChanged[] = [];
+    await onClipsChanged((changed) => seen.push(changed));
+
+    await emit("settings://changed", defaults);
 
     expect(seen).toEqual([]);
   });
