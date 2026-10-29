@@ -1,4 +1,6 @@
+pub mod capture;
 pub mod clip;
+pub mod clock;
 pub mod commands;
 pub mod crypto;
 pub mod error;
@@ -9,6 +11,7 @@ pub mod shortcuts;
 pub mod state;
 pub mod storage;
 pub mod tray;
+pub mod watcher;
 pub mod windows;
 
 use state::AppState;
@@ -23,6 +26,20 @@ fn real_state(db: Option<storage::Db>) -> AppState {
         std::sync::Arc::new(macos::keys::CgKeySender),
     )
     .with_db(db)
+}
+
+/// The clipboard watcher's view of the system: the real pasteboard, workspace, idle probe,
+/// event channel and clock.
+#[cfg(target_os = "macos")]
+fn real_watcher_services(app: &tauri::AppHandle) -> watcher::Services {
+    use std::sync::Arc;
+    watcher::Services {
+        pasteboard: Arc::new(macos::pasteboard::NsPasteboard),
+        workspace: Arc::new(macos::workspace::NsWorkspace),
+        idle: Arc::new(macos::idle::CgIdleProbe),
+        events: Arc::new(events::TauriEventSink::new(app.clone())),
+        clock: Arc::new(clock::SystemClock),
+    }
 }
 
 pub fn run() {
@@ -49,6 +66,12 @@ pub fn run() {
                 &app.path().app_data_dir()?,
                 &macos::keychain::KeychainKeyStore::default(),
             )));
+            // Records what is copied; not started without the database.
+            #[cfg(target_os = "macos")]
+            watcher::start(
+                &app.state::<AppState>(),
+                real_watcher_services(app.handle()),
+            );
             // Created hidden at startup so the tray click only has to show it (< 100 ms).
             let popover = windows::create_popover(app)?;
             #[cfg(target_os = "macos")]

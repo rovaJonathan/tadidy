@@ -3,10 +3,12 @@
 //! implementations in `crate::macos`.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use super::{
-    AccessibilityProbe, KeySender, Pasteboard, PlatformError, Representation, SourceApp, Workspace,
+    AccessibilityProbe, IdleProbe, KeySender, Pasteboard, PlatformError, Representation, SourceApp,
+    Workspace,
 };
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -198,6 +200,29 @@ impl AccessibilityProbe for FakeAccessibility {
     }
 }
 
+/// An idle probe that reports a time set by the test, 0 s (the user is there) by default.
+#[derive(Default)]
+pub struct FakeIdle {
+    /// The seconds, as `f64` bits.
+    seconds: AtomicU64,
+}
+
+impl FakeIdle {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_seconds(&self, seconds: f64) {
+        self.seconds.store(seconds.to_bits(), Ordering::Relaxed);
+    }
+}
+
+impl IdleProbe for FakeIdle {
+    fn seconds_since_last_input(&self) -> f64 {
+        f64::from_bits(self.seconds.load(Ordering::Relaxed))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +356,15 @@ mod tests {
             Err(PlatformError::AccessibilitySettings)
         );
         assert_eq!(accessibility.requests(), 2);
+    }
+
+    #[test]
+    fn fake_idle_reports_the_seconds_it_was_given() {
+        let idle = FakeIdle::new();
+        assert_eq!(idle.seconds_since_last_input(), 0.0);
+
+        idle.set_seconds(299.5);
+
+        assert_eq!(idle.seconds_since_last_input(), 299.5);
     }
 }
