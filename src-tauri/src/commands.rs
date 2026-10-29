@@ -1,9 +1,12 @@
 //! IPC commands: thin wrappers that delegate to the services (AGENTS.md §13).
 
+use std::sync::PoisonError;
+
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
 
 use crate::error::AppError;
-use crate::settings::{Settings, SettingsPatch};
+use crate::events::TauriEventSink;
+use crate::settings::{self, Settings, SettingsPatch};
 use crate::state::AppState;
 
 /// The version of the running app, from the crate manifest.
@@ -45,19 +48,35 @@ pub fn open_accessibility_settings(state: State<'_, AppState>) -> Result<(), App
 
 /// The user's preferences.
 #[tauri::command]
-pub fn get_settings(_state: State<'_, AppState>) -> Settings {
-    todo!()
+pub fn get_settings(state: State<'_, AppState>) -> Settings {
+    state
+        .settings
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
 }
 
 /// Validates and stores a partial update of the preferences, applies the history size at once,
 /// and returns the full settings. `async` keeps the SQLite work off the main thread.
 #[tauri::command(async)]
 pub fn set_settings<R: Runtime>(
-    _app: AppHandle<R>,
-    _state: State<'_, AppState>,
-    _patch: SettingsPatch,
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
-    todo!()
+    let db = state.db.as_ref().ok_or_else(|| {
+        AppError::new(
+            "storage_unavailable",
+            "The history database is unavailable.",
+        )
+    })?;
+    settings::update(
+        db,
+        &state.settings,
+        &state.history_limit,
+        &TauriEventSink::new(app),
+        patch,
+    )
 }
 
 #[cfg(test)]

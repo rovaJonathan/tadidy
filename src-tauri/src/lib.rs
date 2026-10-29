@@ -92,7 +92,9 @@ pub fn run() {
             commands::app_version,
             commands::hide_window,
             commands::check_accessibility,
-            commands::open_accessibility_settings
+            commands::open_accessibility_settings,
+            commands::get_settings,
+            commands::set_settings
         ])
         .run(tauri::generate_context!())
     {
