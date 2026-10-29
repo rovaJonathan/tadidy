@@ -3,6 +3,7 @@ pub mod error;
 pub mod events;
 pub mod macos;
 pub mod platform;
+pub mod shortcuts;
 pub mod state;
 pub mod tray;
 pub mod windows;

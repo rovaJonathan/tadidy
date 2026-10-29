@@ -8,13 +8,18 @@ use tauri::{
     AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
     WindowEvent,
 };
-use tauri_plugin_positioner::{Position, WindowExt};
+use tauri_plugin_positioner::{Position as TrayPosition, WindowExt};
 
 pub const POPOVER_LABEL: &str = "popover";
+pub const PANEL_LABEL: &str = "panel";
 
 /// Popover size in logical pixels (DESIGN.md §3).
 const POPOVER_WIDTH: f64 = 380.0;
 const POPOVER_HEIGHT: f64 = 520.0;
+
+/// Quick Panel size in logical pixels (DESIGN.md §3).
+pub const PANEL_WIDTH: f64 = 640.0;
+pub const PANEL_HEIGHT: f64 = 460.0;
 
 /// A tray click that arrives this soon after a focus-loss hide is the click that caused the
 /// focus loss (the user clicked the icon to close the popover): it must not reopen it.
@@ -90,7 +95,7 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
 
     fn reveal(&self) {
         // Without a tray position yet (no tray event seen) the window keeps its place.
-        if let Err(error) = self.move_window(Position::TrayBottomCenter) {
+        if let Err(error) = self.move_window(TrayPosition::TrayBottomCenter) {
             tracing::warn!(%error, "could not place the popover under the tray icon");
         }
         if let Err(error) = self.show().and_then(|()| self.set_focus()) {
@@ -104,6 +109,49 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
         }
     }
 }
+
+/// A screen rectangle, in the physical pixels of the desktop space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Size {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Where a window of `size` goes to be centered on `screen`.
+pub fn center_in(_screen: Rect, _size: Size) -> Position {
+    Position { x: 0.0, y: 0.0 }
+}
+
+/// The screen that contains the mouse pointer, or the first one when it is outside all of them.
+pub fn target_screen(_pointer: Position, _screens: &[Rect]) -> Option<Rect> {
+    None
+}
+
+/// What the Quick Panel toggle needs from the panel, so it runs against a fake in the tests.
+pub trait QuickPanel {
+    fn is_shown(&self) -> bool;
+    /// Centers the panel on the screen under the pointer, shows it and makes it the key
+    /// window without activating the app.
+    fn reveal(&self);
+    fn conceal(&self);
+}
+
+/// The global shortcut (QPN-01): shows the Quick Panel, or hides it.
+pub fn toggle_panel(_panel: &impl QuickPanel) {}
 
 fn lock(state: &PopoverState) -> MutexGuard<'_, PopoverToggle> {
     state.lock().unwrap_or_else(PoisonError::into_inner)
@@ -345,5 +393,111 @@ mod tests {
         on_window_event(&other.as_ref().window(), &WindowEvent::Focused(false));
 
         assert!(!click_is_debounced(&app));
+    }
+
+    const SCREEN: Rect = Rect {
+        x: 1440.0,
+        y: -200.0,
+        width: 2560.0,
+        height: 1440.0,
+    };
+
+    #[test]
+    fn center_in_centers_on_the_given_screen() {
+        let size = Size {
+            width: 640.0,
+            height: 460.0,
+        };
+
+        let position = center_in(SCREEN, size);
+
+        assert_eq!(
+            position,
+            Position {
+                x: 2400.0,
+                y: 290.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_target_screen_contains_the_pointer() {
+        let main = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1440.0,
+            height: 900.0,
+        };
+
+        let at = |x, y| target_screen(Position { x, y }, &[main, SCREEN]);
+
+        assert_eq!(at(10.0, 10.0), Some(main));
+        assert_eq!(at(1440.0, 0.0), Some(SCREEN));
+        assert_eq!(at(3999.0, 1239.0), Some(SCREEN));
+    }
+
+    #[test]
+    fn a_pointer_outside_every_screen_falls_back_to_the_first() {
+        let pointer = Position {
+            x: -50.0,
+            y: 5000.0,
+        };
+
+        assert_eq!(target_screen(pointer, &[SCREEN]), Some(SCREEN));
+        assert_eq!(target_screen(pointer, &[]), None);
+    }
+
+    #[derive(Default)]
+    struct FakePanel {
+        visible: Cell<bool>,
+    }
+
+    impl QuickPanel for FakePanel {
+        fn is_shown(&self) -> bool {
+            self.visible.get()
+        }
+        fn reveal(&self) {
+            self.visible.set(true);
+        }
+        fn conceal(&self) {
+            self.visible.set(false);
+        }
+    }
+
+    #[test]
+    fn panel_toggle_shows_when_hidden() {
+        let panel = FakePanel::default();
+
+        toggle_panel(&panel);
+
+        assert!(panel.is_shown());
+    }
+
+    #[test]
+    fn panel_toggle_hides_when_visible() {
+        let panel = FakePanel::default();
+        panel.reveal();
+
+        toggle_panel(&panel);
+
+        assert!(!panel.is_shown());
+    }
+
+    #[test]
+    fn revealing_the_popover_emits_panel_shown_with_its_label() {
+        use tauri::Listener;
+        let (app, popover) = app_with_popover();
+        app.handle()
+            .plugin(tauri_plugin_positioner::init())
+            .unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        app.listen_any(crate::events::PANEL_SHOWN, move |event| {
+            sender.send(event.payload().to_owned()).unwrap();
+        });
+
+        popover.reveal();
+
+        let payload = receiver.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(payload, r#"{"window":"popover"}"#);
     }
 }
