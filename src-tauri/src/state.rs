@@ -1,10 +1,11 @@
 //! State managed by Tauri and shared by the commands. Later tickets add fields
-//! (database, settings, last active app).
+//! (settings, last active app).
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::platform::{AccessibilityProbe, KeySender};
 use crate::shortcuts::ShortcutStatus;
+use crate::storage::Db;
 
 /// The platform services as trait objects: the real ones in `setup`, fakes in the tests.
 pub struct AppState {
@@ -13,6 +14,8 @@ pub struct AppState {
     pub key_sender: Arc<dyn KeySender>,
     /// Result of the Quick Panel shortcut registration, read by the preferences (TAD-017).
     pub shortcut: Mutex<ShortcutStatus>,
+    /// `None` when the database could not be opened (e.g. its key is missing from the Keychain).
+    pub db: Option<Db>,
 }
 
 impl AppState {
@@ -21,7 +24,12 @@ impl AppState {
             accessibility,
             key_sender,
             shortcut: Mutex::default(),
+            db: None,
         }
+    }
+
+    pub fn with_db(self, db: Option<Db>) -> Self {
+        Self { db, ..self }
     }
 
     /// A copy of the shortcut's registration state.
@@ -36,8 +44,10 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::FakeKeyStore;
     use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
     use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
+    use crate::storage::open_in_dir;
     use std::sync::PoisonError;
 
     fn state() -> AppState {
@@ -71,5 +81,18 @@ mod tests {
             state.shortcut_status().error.as_deref(),
             Some("unavailable")
         );
+    }
+
+    #[test]
+    fn the_state_starts_without_a_database() {
+        assert!(state().db.is_none());
+    }
+
+    #[test]
+    fn the_state_holds_the_opened_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert!(state().with_db(Some(db)).db.is_some());
     }
 }

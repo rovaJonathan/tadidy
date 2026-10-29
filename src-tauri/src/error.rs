@@ -4,6 +4,8 @@
 use serde::Serialize;
 use ts_rs::TS;
 
+use crate::storage::StorageError;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS, thiserror::Error)]
 #[ts(export)]
 #[error("{code}: {message}")]
@@ -19,6 +21,22 @@ impl AppError {
         Self {
             code: code.into(),
             message: message.into(),
+        }
+    }
+}
+
+impl From<StorageError> for AppError {
+    fn from(error: StorageError) -> Self {
+        match error {
+            StorageError::KeyMissing => Self::new(
+                "storage_key_missing",
+                "The history key is missing from the Keychain.",
+            ),
+            StorageError::WrongKey => Self::new(
+                "storage_wrong_key",
+                "The history key does not match the database.",
+            ),
+            _ => Self::new("storage_error", "The history database could not be used."),
         }
     }
 }

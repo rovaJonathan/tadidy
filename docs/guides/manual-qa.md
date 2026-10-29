@@ -94,6 +94,23 @@ Open TextEdit with an empty document and the insertion point in it before each r
 | 10 | Put Safari in full screen (own Space), press `⌘⇧V`. | The panel appears above Safari on that Space; Safari stays full screen and active. |
 | 11 | Quit Tadidy. Make another app hold `⌘⇧V` first (for example a Hammerspoon `hs.hotkey.bind({"cmd","shift"}, "v", …)`), then start Tadidy. | Tadidy starts and keeps running with its tray icon, and no warning is logged: macOS does not refuse a combination another app already holds (known limit, TAD-006 *Notes*). Note which app receives `⌘⇧V`. |
 
+### TAD-007 — Encrypted database foundation
+
+`pnpm tauri dev` is enough for steps 1 to 5 (the Keychain item belongs to whichever binary created it, so macOS may ask for the login password once per rebuild). Use a throwaway data folder state: if a `tadidy.db` already exists from an earlier run, delete the folder and the Keychain item first (`security delete-generic-password -s app.tadidy -a database-key`).
+
+```
+cargo run --manifest-path src-tauri/Cargo.toml --example keychain_probe
+```
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Run the `keychain_probe` example. | `before: Ok(false)`, `set: Ok(())`, `get: found true, same key: true`, `set again: Ok(Err(AlreadyExists)), key unchanged: true`, `cleanup: Ok(())`. It uses the service `app.tadidy.probe` and prints no key. |
+| 2 | Delete `~/Library/Application Support/app.tadidy/` and the item `app.tadidy` / `database-key` if they exist, then run `pnpm tauri dev`. | The app starts as before (tray icon). `tadidy.db` (+ `-wal`, `-shm`) exists in the folder. |
+| 3 | In Keychain Access, search `app.tadidy`. | One "application password": name `app.tadidy`, account `database-key`. |
+| 4 | `sqlite3 ~/Library/Application\ Support/app.tadidy/tadidy.db .tables` | `Error: file is not a database`. `head -c 16 tadidy.db` does not print `SQLite format 3`. |
+| 5 | Quit the app, run `pnpm tauri dev` again. | It starts, no new Keychain item (still one), no error in the terminal. |
+| 6 | Quit the app. Delete the Keychain item, keep `tadidy.db`. Run `RUST_LOG=tadidy_lib=info pnpm tauri dev`. | The terminal logs `storage_key_missing`; the tray icon still works; `shasum tadidy.db` is the same as before the launch; no new Keychain item. |
+
 ### TAD-008 — Stable signing identity and universal build
 
 Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runbooks/signing-identity.md) and `export APPLE_SIGNING_IDENTITY="Tadidy Dev"` in the shell. `APP` below is `src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app`. Steps 1 to 5 need only this ticket. Steps 7 and 8 need a build that shows the permission state and opens the database (TAD-007 merged, then the UI tickets): TAD-019 runs them.
