@@ -4,9 +4,17 @@
 
 /// Every word of `input` becomes a quoted prefix term (`"sel"*`); the terms are joined with a
 /// space, which FTS5 reads as AND. `None` when nothing searchable is left.
+///
+/// Words are cut where the `unicode61` tokenizer cuts (at anything that is not a letter or a
+/// digit), so `foo-bar` searches `foo` and `bar` as the index stores them, and the terms hold no
+/// character FTS5 could read as syntax. Diacritics are folded by the tokenizer on both sides.
 pub fn match_query(input: &str) -> Option<String> {
-    let _ = input;
-    todo!("TAD-012")
+    let terms: Vec<String> = input
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(|word| format!("\"{word}\"*"))
+        .collect();
+    (!terms.is_empty()).then(|| terms.join(" "))
 }
 
 #[cfg(test)]
