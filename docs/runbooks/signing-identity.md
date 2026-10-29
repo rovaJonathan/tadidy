@@ -13,11 +13,17 @@ macOS ties the **Accessibility** permission (auto-paste) and the **Keychain** it
 
 Diagnosis (read-only): `security find-identity -v -p codesigning` lists the identities already usable.
 
-1. Open **Keychain Access** → menu *Keychain Access* → *Certificate Assistant* → *Create a Certificate…*
+1. Open **Keychain Access** and select the **login** keychain in the sidebar (not *System*). *Certificate Assistant* is in the **menu bar at the top of the screen**, not in the window: menu *Keychain Access* → *Certificate Assistant* → *Create a Certificate…* (or `⌘⌥⌃C`).
 2. Name `Tadidy Dev`, Identity Type *Self-Signed Root*, Certificate Type **Code Signing**, keep *Let me override defaults* unchecked → *Create*. It lands in the **login** keychain.
-3. Check: `security find-identity -v -p codesigning` shows `"Tadidy Dev"`.
-4. In your shell profile (never in the repository): `export APPLE_SIGNING_IDENTITY="Tadidy Dev"`.
-5. Build: `pnpm tauri build` (TAD-008 wires `signingIdentity` to this variable).
+3. **Trust it for code signing.** macOS does not trust a self-signed certificate by default, and `codesign` ignores an untrusted identity. In *My Certificates*, double-click `Tadidy Dev`, expand *Trust*, set *Code Signing* to **Always Trust**, close the window and enter your password. Or from a terminal (asks for your password):
+   ```
+   security find-certificate -c "Tadidy Dev" -p ~/Library/Keychains/login.keychain-db > /tmp/tadidy-dev.pem
+   security add-trusted-cert -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/tadidy-dev.pem
+   rm /tmp/tadidy-dev.pem
+   ```
+4. Check: `security find-identity -v -p codesigning` lists `"Tadidy Dev"` under *valid identities*. Without `-v` the list also shows expired or revoked certificates and an untrusted `Tadidy Dev` (`CSSMERR_TP_NOT_TRUSTED`): that means step 3 is missing.
+5. In your shell profile (never in the repository): `export APPLE_SIGNING_IDENTITY="Tadidy Dev"`, then open a new terminal.
+6. Build: `pnpm build:universal` (or `pnpm tauri build`); `signingIdentity` is `null` in `tauri.conf.json`, so Tauri reads the variable. Without it the build is signed ad-hoc.
 
 ## Steps — Developer ID (distribution)
 
@@ -27,7 +33,10 @@ Diagnosis (read-only): `security find-identity -v -p codesigning` lists the iden
 
 ## Verification
 
-- `codesign -dv --verbose=2 src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app` shows `Authority=Tadidy Dev` (or your Developer ID), not `adhoc`.
+- `codesign -dv --verbose=2 src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app` shows `Authority=Tadidy Dev` (or your Developer ID), not `adhoc`; `codesign --verify --deep --strict` on it prints nothing.
+- `codesign -d -r- <same path>` prints `designated => identifier "app.tadidy" and certificate leaf = H"…"`: the same line after every rebuild, because it names the certificate, not the build.
+- `lipo -archs <same path>/Contents/MacOS/*` prints `x86_64 arm64`.
+- A build without notarization variables prints `skipping app notarization`: expected for a development build.
 - Grant Accessibility once, rebuild, relaunch: *System Settings → Privacy & Security → Accessibility* still lists Tadidy enabled, and auto-paste works.
 
 ## Rollback
