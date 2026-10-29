@@ -19,6 +19,11 @@
   function onkeydown(event: KeyboardEvent) {
     // Whatever is pressed in here stays here: the clip browser and the window never see it.
     event.stopPropagation();
+    handleKey(event);
+  }
+
+  /** The dialog's keys; the clip browser also sends it the keys pressed while the focus is outside it. */
+  export function handleKey(event: KeyboardEvent) {
     switch (event.key) {
       case "Escape":
         event.preventDefault();
@@ -41,7 +46,9 @@
   function moveFocus(step: 1 | -1) {
     const controls = [...(dialog?.querySelectorAll<HTMLElement>("input, button") ?? [])];
     const at = controls.indexOf(document.activeElement as HTMLElement);
-    controls[(at + step + controls.length) % controls.length]?.focus();
+    // Out of the dialog, Tab enters at its first control and ⇧Tab at its last.
+    const next = at < 0 ? (step > 0 ? 0 : controls.length - 1) : (at + step + controls.length) % controls.length;
+    controls[next]?.focus();
   }
 </script>
 

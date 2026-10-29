@@ -47,6 +47,7 @@
 
   /** The clip the delete dialog is about; no dialog while it is `undefined`. */
   let pendingDelete = $state<string>();
+  let dialog = $state<DeleteClipDialog>();
 
   /** Virtualization drops rows far from the viewport: only a row in the DOM can be the active one. */
   const activeId = $derived(
@@ -56,6 +57,11 @@
   );
 
   function onkeydown(event: KeyboardEvent) {
+    // Every key goes to an open modal, wherever the focus is (as in the prototype).
+    if (pendingDelete !== undefined) {
+      dialog?.handleKey(event);
+      return;
+    }
     const action = resolveKey(event, {
       searchFocused: searchBar?.hasFocus() ?? false,
       searchEmpty: store.search === "",
@@ -68,7 +74,17 @@
     run(action, event.metaKey);
   }
 
-  function run(action: BrowserAction, command = false) {
+  /** Keys that act on the selected row. */
+  const ROW_ACTIONS: BrowserAction[] = ["paste", "copy", "delete"];
+
+  function run(action: BrowserAction, command = false, settled = false) {
+    // The selected row belongs to the list of an older search: wait for the typed one.
+    if (!settled && store.stale && ROW_ACTIONS.includes(action)) {
+      void store.settled().then(() => {
+        if (!store.stale) run(action, command, true);
+      });
+      return;
+    }
     const id = store.selected?.id;
     switch (action) {
       case "select-next":
@@ -169,7 +185,7 @@
 
   {#if pendingDelete !== undefined}
     <div id="modal-layer">
-      <DeleteClipDialog onconfirm={confirmDelete} oncancel={closeDialog} />
+      <DeleteClipDialog bind:this={dialog} onconfirm={confirmDelete} oncancel={closeDialog} />
     </div>
   {/if}
 </div>
