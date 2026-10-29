@@ -1,7 +1,7 @@
 // State of the clip browser: the search text, the pages of clips it shows, the selection and the
 // source-app icons. The core owns the data; this class only mirrors what `list_clips` returns.
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
-import { getAppIcon, listClips, onClipsChanged } from "../api";
+import { deleteClips, getAppIcon, listClips, onClipsChanged } from "../api";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
 
@@ -21,6 +21,9 @@ export class ClipsStore {
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */
   readonly iconUrls = new SvelteMap<string, string>();
+
+  /** The clip under the selection, if the history has one. */
+  selected = $derived(this.items[this.selectedIndex]);
 
   /** The search the core is asked for. */
   query = $derived(this.search.trim());
@@ -81,6 +84,33 @@ export class ClipsStore {
     return this.#loadFirstPage(false);
   }
 
+  /** Selects the row at `index` when it is loaded. */
+  select(index: number): void {
+    if (index >= 0 && index < this.items.length) this.selectedIndex = index;
+  }
+
+  /** One row up; the first row stays selected. */
+  selectPrevious(): void {
+    this.select(this.selectedIndex - 1);
+  }
+
+  /** One row down; past the last loaded row, the next page is loaded first. */
+  async selectNext(): Promise<void> {
+    if (this.selectedIndex === this.items.length - 1) await this.loadMore();
+    this.select(this.selectedIndex + 1);
+  }
+
+  /** Deletes a clip; the selection stays at the same index, on whatever took the clip's place. */
+  async deleteClip(id: string): Promise<void> {
+    const index = this.selectedIndex;
+    try {
+      await deleteClips([id]);
+    } catch {
+      return; // The rows stay as they are.
+    }
+    await this.#loadFirstPage(true, index);
+  }
+
   async loadMore(): Promise<void> {
     const cursor = this.nextCursor;
     if (cursor === null || this.loading) return;
@@ -113,7 +143,8 @@ export class ClipsStore {
       });
   }
 
-  async #loadFirstPage(keepSelection: boolean): Promise<void> {
+  /** `fallbackIndex`: where the selection goes when `keepSelection` is set and its clip is gone. */
+  async #loadFirstPage(keepSelection: boolean, fallbackIndex = 0): Promise<void> {
     const generation = ++this.#generation;
     this.loading = true;
     const asked = this.query;
@@ -125,10 +156,8 @@ export class ClipsStore {
       this.items = page.items;
       this.total = page.total;
       this.nextCursor = page.nextCursor;
-      this.selectedIndex = Math.max(
-        0,
-        page.items.findIndex((clip) => clip.id === selectedId),
-      );
+      const found = page.items.findIndex((clip) => clip.id === selectedId);
+      this.selectedIndex = found >= 0 ? found : Math.min(fallbackIndex, Math.max(0, page.items.length - 1));
       this.loaded = true;
     } catch {
       // The rows already shown stay.
