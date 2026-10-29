@@ -86,12 +86,14 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | Default Quick Panel shortcut | ⌘⇧V (`CmdOrCtrl+Shift+V`) |
 | Minimum macOS | 13 Ventura |
 | Build targets | `aarch64-apple-darwin`, `x86_64-apple-darwin`, `universal-apple-darwin` |
+| Universal build | `pnpm build:universal` → `src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app` and `bundle/dmg/*.dmg` |
+| Signing | `bundle.macOS.signingIdentity` is `null`; Tauri reads `APPLE_SIGNING_IDENTITY` ([runbook](runbooks/signing-identity.md)) |
 
 ## Environment variables
 
 | Variable | Used by | Meaning |
 |---|---|---|
-| `APPLE_SIGNING_IDENTITY` | `pnpm tauri build` (TAD-008) | Name of the code-signing identity in the login keychain ([runbook](runbooks/signing-identity.md)) |
+| `APPLE_SIGNING_IDENTITY` | `pnpm tauri build`, `pnpm build:universal` | Name of the code-signing identity in the login keychain ([runbook](runbooks/signing-identity.md)) |
 | `TADIDY_DATA_DIR` | the app, tests (*planned*, TAD-007) | Overrides the data folder; tests point it to a temporary folder |
 | `RUST_LOG` | the app | `tracing` filter, e.g. `tadidy_lib=debug` (the library crate's name) |
 | `TS_RS_EXPORT_DIR` | `cargo test` | Where `ts-rs` writes the bindings; set to `src/lib/bindings` by `.cargo/config.toml` at the repo root |

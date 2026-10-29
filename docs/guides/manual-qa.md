@@ -93,3 +93,18 @@ Open TextEdit with an empty document and the insertion point in it before each r
 | 9 | Left-click the tray icon to show the popover, then press `⌘⇧V`. | The panel appears. The popover hides (it lost the key window), and pressing `⌘⇧V` again hides the panel. |
 | 10 | Put Safari in full screen (own Space), press `⌘⇧V`. | The panel appears above Safari on that Space; Safari stays full screen and active. |
 | 11 | Quit Tadidy. Make another app hold `⌘⇧V` first (for example a Hammerspoon `hs.hotkey.bind({"cmd","shift"}, "v", …)`), then start Tadidy. | Tadidy starts and keeps running with its tray icon, and no warning is logged: macOS does not refuse a combination another app already holds (known limit, TAD-006 *Notes*). Note which app receives `⌘⇧V`. |
+
+### TAD-008 — Stable signing identity and universal build
+
+Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runbooks/signing-identity.md) and `export APPLE_SIGNING_IDENTITY="Tadidy Dev"` in the shell. `APP` below is `src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app`. Steps 1 to 5 need only this ticket. Steps 7 and 8 need a build that shows the permission state and opens the database (TAD-007 merged, then the UI tickets): TAD-019 runs them.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | `security find-identity -v -p codesigning` | Lists `"Tadidy Dev"` as a valid identity. |
+| 2 | `pnpm build:universal` | Succeeds and produces `APP` and a `.dmg` next to it, under `bundle/dmg/`. |
+| 3 | `codesign -dv --verbose=2 "$APP" 2>&1 \| grep -E 'Authority\|Signature'`, then `codesign --verify --deep --strict "$APP"` | `Authority=Tadidy Dev`, no `Signature=adhoc`; the verify command prints nothing and exits 0. |
+| 4 | `lipo -archs "$APP/Contents/MacOS/"*` | `x86_64 arm64`. |
+| 5 | `codesign -d -r- "$APP" 2>&1 \| grep designated > /tmp/dr-1.txt`; change any source file (a comment is enough); `pnpm build:universal`; the same command into `/tmp/dr-2.txt`; `diff /tmp/dr-1.txt /tmp/dr-2.txt` | No difference: the designated requirement does not depend on the build. |
+| 6 | Unset `APPLE_SIGNING_IDENTITY`, rebuild, and run `codesign -dv --verbose=2 "$APP" 2>&1 \| grep Signature` | `Signature=adhoc`: this is the failure the identity prevents. Export the variable again. |
+| 7 | Install build N in `/Applications`, grant it Accessibility, install build N+1 over it, launch it. | *System Settings → Privacy & Security → Accessibility* still lists Tadidy enabled, and `check_accessibility` returns `true` (TAD-019). |
+| 8 | With the database created by build N, launch build N+1. | The history opens without a Keychain prompt (TAD-019, needs TAD-007). |
