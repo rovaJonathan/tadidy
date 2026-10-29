@@ -11,7 +11,8 @@ pub fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
 }
 
-/// Hides the window that calls it (`Esc` in the popover). The window is hidden, not destroyed.
+/// Hides the window that calls it (`Esc` in the popover or the Quick Panel). The window is
+/// hidden, not destroyed.
 #[tauri::command]
 pub fn hide_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), AppError> {
     window
@@ -66,15 +67,17 @@ mod tests {
 
     #[test]
     fn hide_window_succeeds_and_keeps_the_window_alive() {
-        let app = tauri::test::mock_app();
-        let window = tauri::WebviewWindowBuilder::new(&app, "popover", Default::default())
-            .build()
-            .unwrap();
+        for label in ["popover", "panel"] {
+            let app = tauri::test::mock_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
+                .build()
+                .unwrap();
 
-        // Tauri's mock runtime ignores `hide`: that it hides is checked by the manual QA.
-        assert!(hide_window(window).is_ok());
+            // Tauri's mock runtime ignores `hide`: that it hides is checked by the manual QA.
+            assert!(hide_window(window).is_ok(), "{label}");
 
-        assert!(app.get_webview_window("popover").is_some());
+            assert!(app.get_webview_window(label).is_some(), "{label}");
+        }
     }
 
     #[test]

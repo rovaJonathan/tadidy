@@ -23,4 +23,53 @@ impl AppState {
             shortcut: Mutex::default(),
         }
     }
+
+    /// A copy of the shortcut's registration state.
+    pub fn shortcut_status(&self) -> ShortcutStatus {
+        ShortcutStatus {
+            accelerator: String::new(),
+            error: Some("stub".to_owned()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
+    use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
+    use std::sync::PoisonError;
+
+    fn state() -> AppState {
+        AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+        )
+    }
+
+    #[test]
+    fn the_shortcut_starts_as_the_default_without_error() {
+        assert_eq!(
+            state().shortcut_status(),
+            ShortcutStatus {
+                accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn the_shortcut_status_reflects_a_failed_registration() {
+        let state = state();
+        state
+            .shortcut
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .error = Some("unavailable".to_owned());
+
+        assert_eq!(
+            state.shortcut_status().error.as_deref(),
+            Some("unavailable")
+        );
+    }
 }
