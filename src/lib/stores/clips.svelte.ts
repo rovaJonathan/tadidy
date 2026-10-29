@@ -1,6 +1,6 @@
 // State of the clip browser: the search text, the pages of clips it shows, the selection and the
 // source-app icons. The core owns the data; this class only mirrors what `list_clips` returns.
-import { SvelteMap } from "svelte/reactivity";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { getAppIcon, listClips, onClipsChanged } from "../api";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
@@ -31,7 +31,7 @@ export class ClipsStore {
   #debounce: ReturnType<typeof setTimeout> | undefined;
   #frame: number | undefined;
   #unlisten: (() => void) | undefined;
-  readonly #requestedIcons = new Set<string>();
+  readonly #requestedIcons = new SvelteSet<string>();
 
   /** Loads the first page and follows `clips://changed` until `destroy`. */
   async start(): Promise<void> {

@@ -2,7 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clip, fakeCore, page } from "../../test/clips";
+import { clip, deferred, fakeCore, page } from "../../test/clips";
 import { ROW_HEIGHT } from "../virtual-list";
 import ClipBrowser from "./ClipBrowser.svelte";
 
@@ -23,10 +23,14 @@ function previews(container: HTMLElement): (string | undefined)[] {
   return rows(container).map((row) => row.querySelector(".clip-text")?.textContent?.trim());
 }
 
+function find<T extends HTMLElement>(container: HTMLElement, selector: string): T {
+  const element = container.querySelector<T>(selector);
+  if (!element) throw new Error(`${selector} is missing`);
+  return element;
+}
+
 function input(container: HTMLElement): HTMLInputElement {
-  const field = container.querySelector<HTMLInputElement>("#search-input");
-  if (!field) throw new Error("#search-input is missing");
-  return field;
+  return find<HTMLInputElement>(container, "#search-input");
 }
 
 /** jsdom has no layout: give the list the height a real popover would. */
@@ -208,7 +212,7 @@ describe("ClipBrowser search", () => {
     expect(container.querySelector("#btn-clear-search")).not.toHaveAttribute("hidden");
 
     core.queries.length = 0;
-    await fireEvent.click(container.querySelector("#btn-clear-search")!);
+    await fireEvent.click(find(container, "#btn-clear-search"));
     await settle(50);
 
     expect(input(container).value).toBe("");
@@ -261,7 +265,7 @@ describe("ClipBrowser empty states", () => {
   });
 
   it("shows no empty state until the first page has arrived", async () => {
-    const slow = Promise.withResolvers<ReturnType<typeof page>>();
+    const slow = deferred<ReturnType<typeof page>>();
     fakeCore(() => slow.promise);
 
     const { container } = render(ClipBrowser);
@@ -276,7 +280,7 @@ describe("ClipBrowser empty states", () => {
   });
 
   it("keeps the previous rows, with no empty state, while a search is loading", async () => {
-    const slow = Promise.withResolvers<ReturnType<typeof page>>();
+    const slow = deferred<ReturnType<typeof page>>();
     fakeCore((q) => (q.search ? slow.promise : page([clip(1)])));
     const { container } = render(ClipBrowser);
     await settle();
@@ -305,7 +309,7 @@ describe("ClipBrowser long lists", () => {
     expect(core.queries).toEqual([{}]);
     expect(container.querySelector("#clip-count")?.textContent).toBe("1,000 clips");
 
-    const list = container.querySelector<HTMLElement>("#clip-list")!;
+    const list = find(container, "#clip-list");
     list.scrollTop = 41 * ROW_HEIGHT;
     await fireEvent.scroll(list);
     await settle();
@@ -331,11 +335,11 @@ describe("ClipBrowser live updates", () => {
     let items = [clip(1)];
     fakeCore(() => page(items));
     const { container } = render(ClipBrowser);
-    await settle();
+    await settle(20);
 
     items = [clip(2, { preview: "Fresh synthetic clip" }), clip(1)];
     await emit("clips://changed", {});
-    await settle(20);
+    await settle(32);
 
     expect(previews(container)).toEqual(["Fresh synthetic clip", "Synthetic clip 1"]);
     expect(container.querySelector("#clip-count")?.textContent).toBe("2 clips");

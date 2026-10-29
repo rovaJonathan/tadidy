@@ -49,3 +49,12 @@ export function fakeCore(answer: (q: ClipQuery) => Page<ClipSummary> | Promise<P
   );
   return { queries, commands };
 }
+
+/** A promise settled by hand, to hold a `list_clips` answer back. */
+export function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}

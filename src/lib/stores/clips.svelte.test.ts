@@ -2,7 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClipSummary } from "../bindings/ClipSummary";
 import type { Page } from "../bindings/Page";
-import { clip, fakeCore, page } from "../../test/clips";
+import { clip, deferred, fakeCore, page } from "../../test/clips";
 import { ClipsStore } from "./clips.svelte";
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -145,7 +145,7 @@ describe("ClipsStore search", () => {
   });
 
   it("drops the answer of a search that was overtaken by a newer one", async () => {
-    const slow = Promise.withResolvers<Page<ClipSummary>>();
+    const slow = deferred<Page<ClipSummary>>();
     fakeCore((q) => (q.search === "a" ? slow.promise : page([clip(2)])));
     await store.start();
 
