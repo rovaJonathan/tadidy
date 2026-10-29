@@ -4,10 +4,13 @@ use std::sync::PoisonError;
 
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
 
+use crate::clip::{ClipQuery, ClipSummary, Page};
 use crate::error::AppError;
 use crate::events::TauriEventSink;
+use crate::history;
 use crate::settings::{self, Settings, SettingsPatch};
 use crate::state::AppState;
+use crate::storage::{self, Db};
 
 /// The version of the running app, from the crate manifest.
 #[tauri::command]
@@ -77,6 +80,56 @@ pub fn set_settings<R: Runtime>(
         &TauriEventSink::new(app),
         patch,
     )
+}
+
+/// The history database, or `storage_unavailable` when it could not be opened at startup.
+fn database(state: &AppState) -> Result<&Db, AppError> {
+    state.db.as_ref().ok_or_else(|| {
+        AppError::new(
+            "storage_unavailable",
+            "The history database is unavailable.",
+        )
+    })
+}
+
+/// One page of the history, newest first, filtered by the search when there is one.
+#[tauri::command(async)]
+pub fn list_clips(state: State<'_, AppState>, q: ClipQuery) -> Result<Page<ClipSummary>, AppError> {
+    let _ = (state, q);
+    todo!("TAD-012")
+}
+
+/// Removes clips and announces it with `clips://changed`.
+#[tauri::command(async)]
+pub fn delete_clips<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), AppError> {
+    let _ = (app, state, ids);
+    todo!("TAD-012")
+}
+
+/// Empties the history and returns how many clips went; pinned clips stay when `keep_pinned`.
+#[tauri::command(async)]
+pub fn clear_history<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    keep_pinned: bool,
+) -> Result<u32, AppError> {
+    let _ = (app, state, keep_pinned);
+    todo!("TAD-012")
+}
+
+/// The cached icon of a source app as raw PNG bytes (no JSON round trip), `not_found` when the
+/// app has none.
+#[tauri::command(async)]
+pub fn get_app_icon(
+    state: State<'_, AppState>,
+    bundle_id: String,
+) -> Result<tauri::ipc::Response, AppError> {
+    let _ = (state, bundle_id);
+    todo!("TAD-012")
 }
 
 #[cfg(test)]
@@ -275,5 +328,191 @@ mod tests {
 
         assert_eq!(error.code, "storage_unavailable");
         assert_eq!(get_settings(app.state()), Settings::default());
+    }
+
+    use crate::clip::{ClipKind, NewClip, content_hash};
+    use crate::events::CLIPS_CHANGED;
+    use crate::platform::{Representation, UTI_PLAIN_TEXT};
+    use crate::storage::clips::{self, InsertOutcome};
+    use tauri::ipc::{InvokeResponseBody, IpcResponse};
+
+    /// Stores a text clip and returns its id.
+    fn add(db: &Db, text: &str, now: i64) -> String {
+        let clip = NewClip {
+            kind: ClipKind::Text,
+            content_hash: content_hash(text.as_bytes()),
+            plain_text: Some(text.to_owned()),
+            preview: Some(text.to_owned()),
+            source_bundle: None,
+            source_name: None,
+            byte_size: text.len() as i64,
+            representations: vec![Representation::new(UTI_PLAIN_TEXT, text.as_bytes())],
+            now,
+        };
+        match db
+            .with_conn(|conn| clips::insert_or_bump(conn, &clip))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) | InsertOutcome::Bumped(id) => id,
+        }
+    }
+
+    fn app_without_db() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        app.manage(AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+        ));
+        app
+    }
+
+    /// Collects the payloads of `clips://changed` the app emits.
+    fn clips_changed_payloads(
+        app: &tauri::App<tauri::test::MockRuntime>,
+    ) -> std::sync::mpsc::Receiver<String> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        app.listen_any(CLIPS_CHANGED, move |event| {
+            sender.send(event.payload().to_owned()).unwrap();
+        });
+        receiver
+    }
+
+    #[test]
+    fn list_clips_returns_the_page_the_query_asks_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, db) = app_with_db(&dir);
+        add(&db, "SELECT * FROM users", 1_000);
+        add(&db, "vessel", 2_000);
+        let selected = add(&db, "Selected items", 3_000);
+
+        let page = list_clips(
+            app.state(),
+            ClipQuery {
+                search: Some("sel".to_owned()),
+                ..ClipQuery::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(page.total, 2);
+        assert_eq!(
+            page.items.first().map(|clip| clip.id.clone()),
+            Some(selected)
+        );
+    }
+
+    #[test]
+    fn list_clips_maps_an_invalid_cursor_to_its_code() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _db) = app_with_db(&dir);
+
+        let error = list_clips(
+            app.state(),
+            ClipQuery {
+                cursor: Some("nonsense".to_owned()),
+                ..ClipQuery::default()
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "invalid_cursor");
+    }
+
+    #[test]
+    fn the_history_commands_fail_without_a_database() {
+        let app = app_without_db();
+        let handle = || app.handle().clone();
+
+        let codes = [
+            list_clips(app.state(), ClipQuery::default())
+                .unwrap_err()
+                .code,
+            delete_clips(handle(), app.state(), vec!["a".to_owned()])
+                .unwrap_err()
+                .code,
+            clear_history(handle(), app.state(), true).unwrap_err().code,
+            get_app_icon(app.state(), "com.example.Editor".to_owned())
+                .map(|_| ())
+                .unwrap_err()
+                .code,
+        ];
+
+        assert_eq!(codes, ["storage_unavailable"; 4]);
+    }
+
+    #[test]
+    fn delete_clips_removes_the_clips_and_emits_their_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, db) = app_with_db(&dir);
+        let a = add(&db, "first", 1_000);
+        let b = add(&db, "second", 2_000);
+        let receiver = clips_changed_payloads(&app);
+
+        delete_clips(
+            app.handle().clone(),
+            app.state(),
+            vec![a.clone(), b.clone()],
+        )
+        .unwrap();
+
+        assert_eq!(db.with_conn(clips::count).unwrap(), 0);
+        let payload = receiver
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+            serde_json::json!({ "added": null, "updated": null, "removed": [a, b] })
+        );
+    }
+
+    #[test]
+    fn clear_history_returns_how_many_went_and_emits_a_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, db) = app_with_db(&dir);
+        let pinned = add(&db, "pinned", 1_000);
+        add(&db, "other", 2_000);
+        db.with_conn(|conn| conn.execute("UPDATE clips SET pinned = 1 WHERE id = ?1", [&pinned]))
+            .unwrap();
+        let receiver = clips_changed_payloads(&app);
+
+        let removed = clear_history(app.handle().clone(), app.state(), true).unwrap();
+
+        assert_eq!(removed, 1);
+        assert_eq!(db.with_conn(clips::count).unwrap(), 1);
+        let payload = receiver
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+            serde_json::json!({ "added": null, "updated": null, "removed": null })
+        );
+    }
+
+    #[test]
+    fn get_app_icon_returns_the_cached_png_as_raw_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, db) = app_with_db(&dir);
+        let png = vec![0x89, b'P', b'N', b'G', 0, 1, 2];
+        db.with_conn(|conn| storage::app_icons::put(conn, "com.example.Editor", &png))
+            .unwrap();
+
+        let response = get_app_icon(app.state(), "com.example.Editor".to_owned()).unwrap();
+
+        match response.body().unwrap() {
+            InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, png),
+            InvokeResponseBody::Json(_) => panic!("the icon must travel as raw bytes"),
+        }
+    }
+
+    #[test]
+    fn get_app_icon_without_a_cached_icon_is_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _db) = app_with_db(&dir);
+
+        let error = get_app_icon(app.state(), "com.example.Unknown".to_owned())
+            .map(|_| ())
+            .unwrap_err();
+
+        assert_eq!(error.code, "not_found");
     }
 }
