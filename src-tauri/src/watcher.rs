@@ -2,17 +2,22 @@
 //! clip (CAP-01, CAP-02, CAP-08, CAP-09, CAP-12). Logs carry ids, kinds, sizes and durations,
 //! never a clip's content (AGENTS.md §2).
 
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use crate::clip::HistoryLimit;
+use serde_json::json;
+
+use crate::capture;
+use crate::clip::{HistoryLimit, content_hash};
 use crate::clock::Clock;
-use crate::events::EventSink;
-use crate::platform::{IdleProbe, Pasteboard, Workspace};
+use crate::error::AppError;
+use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink};
+use crate::platform::{IdleProbe, Pasteboard, UTI_PLAIN_TEXT, UTI_TADIDY_MARKER, Workspace};
 use crate::state::AppState;
-use crate::storage::{Db, StorageError};
+use crate::storage::clips::{self, InsertOutcome};
+use crate::storage::{Db, StorageError, app_icons};
 
 /// How often the change count is read while the user is around.
 pub const POLL_ACTIVE: Duration = Duration::from_millis(300);
@@ -52,9 +57,8 @@ impl WatcherError {
 
 impl From<StorageError> for WatcherError {
     fn from(error: StorageError) -> Self {
-        let _ = error;
         Self::Storage {
-            code: String::new(),
+            code: AppError::from(error).code,
         }
     }
 }
@@ -88,25 +92,131 @@ impl Watcher {
         }
     }
 
+    /// Looks at the pasteboard once. While the change count has not moved, nothing else is read.
     pub fn tick(&mut self) -> Result<TickOutcome, WatcherError> {
-        let _ = (&self.db, &self.limit, self.last_change_count);
-        Ok(TickOutcome::Unchanged)
+        let change_count = self.services.pasteboard.change_count();
+        if change_count == self.last_change_count {
+            return Ok(TickOutcome::Unchanged);
+        }
+        // Remembered first: a copy that fails to record is not retried at every tick.
+        self.last_change_count = change_count;
+        let seen = Instant::now();
+
+        if self
+            .services
+            .pasteboard
+            .types()
+            .iter()
+            .any(|uti| uti == UTI_TADIDY_MARKER)
+        {
+            return self.own_write();
+        }
+        let source = self.services.workspace.frontmost_app();
+        let Some(text) = self.services.pasteboard.read(UTI_PLAIN_TEXT) else {
+            return Ok(TickOutcome::Ignored);
+        };
+        let now = self.services.clock.now_ms();
+        let Some(clip) = capture::text_clip(&text, source.as_ref(), now) else {
+            return Ok(TickOutcome::Ignored);
+        };
+
+        // The icon is fetched outside the database lock: it is an AppKit call.
+        let icon = match &source {
+            Some(app)
+                if !self
+                    .db
+                    .with_conn(|conn| app_icons::has(conn, &app.bundle_id))? =>
+            {
+                self.services.workspace.app_icon_png(app)
+            }
+            _ => None,
+        };
+        // Written, then announced: the front reloads from the database when it hears about it.
+        let (outcome, removed) = self.db.with_conn(|conn| {
+            if let (Some(app), Some(png)) = (&source, &icon) {
+                app_icons::put(conn, &app.bundle_id, png)?;
+            }
+            let outcome = clips::insert_or_bump(conn, &clip)?;
+            let removed = clips::enforce_limit(conn, self.limit.get())?;
+            Ok::<_, StorageError>((outcome, removed))
+        })?;
+
+        let mut changed = ClipsChanged {
+            removed: (!removed.is_empty()).then_some(removed),
+            ..ClipsChanged::default()
+        };
+        let (result, id) = match outcome {
+            InsertOutcome::Inserted(id) => {
+                changed.added = Some(id.clone());
+                (TickOutcome::Added(id.clone()), id)
+            }
+            InsertOutcome::Bumped(id) => {
+                changed.updated = Some(id.clone());
+                (TickOutcome::Updated(id.clone()), id)
+            }
+        };
+        self.services.events.emit(CLIPS_CHANGED, json!(changed));
+        tracing::info!(
+            id,
+            kind = clip.kind.as_str(),
+            bytes = clip.byte_size,
+            elapsed_ms = seen.elapsed().as_millis(),
+            "clip recorded"
+        );
+        Ok(result)
     }
 
-    /// Runs [`Watcher::tick`] on the `tadidy-watcher` thread until the handle is stopped.
-    pub fn spawn(self) -> WatcherHandle {
-        let _ = self;
-        WatcherHandle {
-            stop: Arc::new(AtomicBool::new(false)),
-            thread: None,
+    /// Tadidy put a clip back on the pasteboard: the clip moves to the top, nothing is recorded
+    /// and no copy is counted (CAP-12).
+    fn own_write(&self) -> Result<TickOutcome, WatcherError> {
+        let Some(text) = self.services.pasteboard.read(UTI_PLAIN_TEXT) else {
+            return Ok(TickOutcome::OwnWrite);
+        };
+        let hash = content_hash(&text);
+        let now = self.services.clock.now_ms();
+        let moved = self
+            .db
+            .with_conn(|conn| clips::move_to_top(conn, &hash, now))?;
+        if let Some(id) = moved {
+            let changed = ClipsChanged {
+                updated: Some(id),
+                ..ClipsChanged::default()
+            };
+            self.services.events.emit(CLIPS_CHANGED, json!(changed));
         }
+        Ok(TickOutcome::OwnWrite)
+    }
+
+    /// Runs [`Watcher::tick`] on the `tadidy-watcher` thread until the handle is stopped. An
+    /// error is logged with its code and the loop goes on.
+    pub fn spawn(mut self) -> WatcherHandle {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = stop.clone();
+        let spawned = std::thread::Builder::new()
+            .name("tadidy-watcher".to_owned())
+            .spawn(move || {
+                while !stopped.load(Ordering::Acquire) {
+                    if let Err(error) = self.tick() {
+                        tracing::error!(code = error.code(), "the watcher could not record a copy");
+                    }
+                    let idle = self.services.idle.seconds_since_last_input();
+                    std::thread::park_timeout(poll_interval(idle));
+                }
+            });
+        let thread = spawned
+            .inspect_err(|error| tracing::error!(%error, "the watcher thread could not start"))
+            .ok();
+        WatcherHandle { stop, thread }
     }
 }
 
 /// How long to sleep before the next tick.
 pub fn poll_interval(idle_secs: f64) -> Duration {
-    let _ = idle_secs;
-    Duration::ZERO
+    if idle_secs >= IDLE_AFTER_SECS {
+        POLL_IDLE
+    } else {
+        POLL_ACTIVE
+    }
 }
 
 /// Stops the watcher thread when [`WatcherHandle::stop`] is called or the handle is dropped.
@@ -117,23 +227,39 @@ pub struct WatcherHandle {
 
 impl WatcherHandle {
     pub fn stop(self) {
-        let _ = (&self.stop, &self.thread);
+        drop(self);
+    }
+}
+
+impl Drop for WatcherHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            thread.thread().unpark();
+            // A thread that panicked has nothing left to tell.
+            let _ = thread.join();
+        }
     }
 }
 
 /// Starts the watcher once the database is open and keeps its handle in the app state. Returns
 /// `false`, starting nothing, when the database is unavailable.
 pub fn start(state: &AppState, services: Services) -> bool {
-    let _ = (state, services);
-    false
+    let Some(db) = state.db.clone() else {
+        tracing::warn!("the clipboard watcher is not started: no history database");
+        return false;
+    };
+    let handle = Watcher::new(services, db, state.history_limit.clone()).spawn();
+    *state.watcher.lock().unwrap_or_else(PoisonError::into_inner) = Some(handle);
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io;
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, MutexGuard};
     use std::time::Instant;
 
     use serde_json::json;
@@ -153,6 +279,11 @@ mod tests {
     use crate::storage::{app_icons, clips, open_in_dir};
 
     const CANARY: &str = "canary-7f3a9c-clip-text";
+
+    /// `tracing` decides once per callsite whether anyone listens. A scoped subscriber that
+    /// installs while another test thread first reaches the same callsite can miss its events,
+    /// so the tests that tick a watcher run one at a time.
+    static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
     fn editor() -> SourceApp {
         SourceApp::new("com.example.editor", "Editor", 77)
@@ -214,6 +345,7 @@ mod tests {
     }
 
     struct Harness {
+        _one_at_a_time: MutexGuard<'static, ()>,
         _dir: TempDir,
         db: Db,
         pasteboard: Arc<FakePasteboard>,
@@ -226,11 +358,13 @@ mod tests {
 
     impl Harness {
         fn new() -> Self {
+            let one_at_a_time = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
             let dir = tempfile::tempdir().unwrap();
             let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
             let workspace = Arc::new(FakeWorkspace::new());
             workspace.set_frontmost(Some(editor()));
             Self {
+                _one_at_a_time: one_at_a_time,
                 _dir: dir,
                 db,
                 pasteboard: Arc::new(FakePasteboard::new()),
@@ -645,6 +779,7 @@ mod tests {
 
     #[test]
     fn logs_never_contain_clip_text() {
+        let h = Harness::new();
         let logs = LogBuffer::default();
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::TRACE)
@@ -653,7 +788,6 @@ mod tests {
             .finish();
 
         tracing::subscriber::with_default(subscriber, || {
-            let h = Harness::new();
             let mut watcher = h.watcher();
             h.copy(&mut watcher, CANARY);
             h.copy(&mut watcher, CANARY);

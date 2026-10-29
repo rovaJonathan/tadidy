@@ -1,7 +1,7 @@
 //! Turns what is on the pasteboard into a clip to store. Pure: no clock, no database, no AppKit.
 
-use crate::clip::NewClip;
-use crate::platform::SourceApp;
+use crate::clip::{ClipKind, NewClip, content_hash};
+use crate::platform::{Representation, SourceApp, UTI_PLAIN_TEXT};
 
 /// How many characters of the text the list shows (CAP-02).
 pub const PREVIEW_CHARS: usize = 300;
@@ -9,8 +9,21 @@ pub const PREVIEW_CHARS: usize = 300;
 /// A text clip from the `public.utf8-plain-text` bytes. `None` for text that is not valid UTF-8,
 /// empty, or only whitespace: nothing worth keeping.
 pub fn text_clip(text: &[u8], source: Option<&SourceApp>, now: i64) -> Option<NewClip> {
-    let _ = (text, source, now);
-    None
+    let string = std::str::from_utf8(text).ok()?;
+    if string.trim().is_empty() {
+        return None;
+    }
+    Some(NewClip {
+        kind: ClipKind::Text,
+        content_hash: content_hash(text),
+        plain_text: Some(string.to_owned()),
+        preview: Some(string.chars().take(PREVIEW_CHARS).collect()),
+        source_bundle: source.map(|app| app.bundle_id.clone()),
+        source_name: source.map(|app| app.name.clone()),
+        byte_size: i64::try_from(text.len()).unwrap_or(i64::MAX),
+        representations: vec![Representation::new(UTI_PLAIN_TEXT, text)],
+        now,
+    })
 }
 
 #[cfg(test)]

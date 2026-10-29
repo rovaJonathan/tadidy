@@ -1,6 +1,7 @@
 //! The current time, behind a trait so the services that stamp clips are tested with a fixed one.
 
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub trait Clock: Send + Sync {
     /// Milliseconds since the Unix epoch.
@@ -13,7 +14,12 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now_ms(&self) -> i64 {
-        0
+        // A clock set before 1970 reads as the epoch rather than failing a capture.
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| {
+                i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+            })
     }
 }
 
