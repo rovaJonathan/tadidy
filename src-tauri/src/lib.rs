@@ -5,6 +5,7 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod events;
+pub mod history;
 pub mod macos;
 pub mod platform;
 pub mod settings;
@@ -94,7 +95,11 @@ pub fn run() {
             commands::check_accessibility,
             commands::open_accessibility_settings,
             commands::get_settings,
-            commands::set_settings
+            commands::set_settings,
+            commands::list_clips,
+            commands::delete_clips,
+            commands::clear_history,
+            commands::get_app_icon
         ])
         .run(tauri::generate_context!())
     {

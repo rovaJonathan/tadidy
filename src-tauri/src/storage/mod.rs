@@ -3,6 +3,7 @@
 
 pub mod app_icons;
 pub mod clips;
+pub mod fts;
 mod migrations;
 pub mod settings;
 
@@ -33,6 +34,9 @@ pub enum StorageError {
     Sqlite(#[from] rusqlite::Error),
     #[error("file system error: {0}")]
     Io(#[from] std::io::Error),
+    /// The cursor of a list query is not one this app handed out.
+    #[error("the list cursor is not valid")]
+    InvalidCursor,
 }
 
 /// The one connection, shared between threads. Services borrow it through [`Db::with_conn`];

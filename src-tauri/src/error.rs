@@ -36,6 +36,9 @@ impl From<StorageError> for AppError {
                 "storage_wrong_key",
                 "The history key does not match the database.",
             ),
+            StorageError::InvalidCursor => {
+                Self::new("invalid_cursor", "The list position is not valid.")
+            }
             _ => Self::new("storage_error", "The history database could not be used."),
         }
     }
