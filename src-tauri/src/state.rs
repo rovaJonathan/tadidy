@@ -7,6 +7,7 @@ use crate::clip::HistoryLimit;
 use crate::platform::{AccessibilityProbe, KeySender};
 use crate::shortcuts::ShortcutStatus;
 use crate::storage::Db;
+use crate::watcher::WatcherHandle;
 
 /// The platform services as trait objects: the real ones in `setup`, fakes in the tests.
 pub struct AppState {
@@ -19,6 +20,8 @@ pub struct AppState {
     pub db: Option<Db>,
     /// How many clips the history keeps (HIS-02), shared with the settings and the purger.
     pub history_limit: HistoryLimit,
+    /// The clipboard watcher thread, `None` until it starts (and when there is no database).
+    pub watcher: Mutex<Option<WatcherHandle>>,
 }
 
 impl AppState {
@@ -29,6 +32,7 @@ impl AppState {
             shortcut: Mutex::default(),
             db: None,
             history_limit: HistoryLimit::default(),
+            watcher: Mutex::default(),
         }
     }
 

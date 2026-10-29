@@ -4,11 +4,13 @@
 
 pub mod accessibility;
 pub mod fakes;
+pub mod idle;
 pub mod keys;
 pub mod pasteboard;
 pub mod workspace;
 
 pub use accessibility::AccessibilityProbe;
+pub use idle::IdleProbe;
 pub use keys::KeySender;
 pub use pasteboard::{
     IGNORED_TYPES, Pasteboard, Representation, UTI_PLAIN_TEXT, UTI_TADIDY_MARKER,

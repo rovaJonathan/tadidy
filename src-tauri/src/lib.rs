@@ -1,4 +1,6 @@
+pub mod capture;
 pub mod clip;
+pub mod clock;
 pub mod commands;
 pub mod crypto;
 pub mod error;
@@ -9,6 +11,7 @@ pub mod shortcuts;
 pub mod state;
 pub mod storage;
 pub mod tray;
+pub mod watcher;
 pub mod windows;
 
 use state::AppState;
