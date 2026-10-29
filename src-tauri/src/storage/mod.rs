@@ -3,6 +3,7 @@
 
 pub mod app_icons;
 pub mod clips;
+pub mod fts;
 mod migrations;
 pub mod settings;
 
