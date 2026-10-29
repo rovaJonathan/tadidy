@@ -4,10 +4,11 @@
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::clip::HistoryLimit;
+use crate::error::AppError;
 use crate::platform::{AccessibilityProbe, KeySender};
 use crate::settings::Settings;
 use crate::shortcuts::ShortcutStatus;
-use crate::storage::Db;
+use crate::storage::{self, Db};
 use crate::watcher::WatcherHandle;
 
 /// The platform services as trait objects: the real ones in `setup`, fakes in the tests.
@@ -40,8 +41,25 @@ impl AppState {
         }
     }
 
+    /// Attaches the database and loads the stored settings from it, so the history limit is
+    /// right before the watcher's first tick. Without a database the defaults stay.
     pub fn with_db(self, db: Option<Db>) -> Self {
-        Self { db, ..self }
+        let settings = db.as_ref().map_or_else(Settings::default, |db| {
+            db.with_conn(storage::settings::load)
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        code = %AppError::from(error).code,
+                        "the settings could not be read, using the defaults"
+                    );
+                    Settings::default()
+                })
+        });
+        self.history_limit.set(settings.history_limit());
+        Self {
+            db,
+            settings: RwLock::new(settings),
+            ..self
+        }
     }
 
     /// A copy of the shortcut's registration state.

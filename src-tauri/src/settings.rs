@@ -2,16 +2,18 @@
 //! stored settings live here; applying them (autostart, shortcut registration) is the job of
 //! the preferences window's ticket.
 
-use std::sync::RwLock;
+use std::sync::{PoisonError, RwLock};
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use ts_rs::TS;
 
 use crate::clip::{DEFAULT_HISTORY_SIZE, HistoryLimit};
 use crate::error::AppError;
-use crate::events::EventSink;
+use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, SETTINGS_CHANGED};
 use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
-use crate::storage::Db;
+use crate::storage::clips::enforce_limit;
+use crate::storage::{self, Db};
 
 /// The smallest history a user can pick (HIS-02); `0` is the separate "unlimited" value.
 const MIN_HISTORY_SIZE: u32 = 10;
@@ -68,6 +70,11 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// The history size as the purger reads it: `None` for "unlimited".
+    pub fn history_limit(&self) -> Option<u32> {
+        (self.history_size != 0).then_some(self.history_size)
+    }
+
     /// The settings after `patch`, or the first rule it breaks; `self` is left untouched.
     pub fn apply(&self, patch: SettingsPatch) -> Result<Settings, SettingsError> {
         let mut next = self.clone();
@@ -95,13 +102,42 @@ impl Settings {
 /// limit, and a `settings://changed` event with the full settings. When the history size
 /// changed, the history is trimmed at once and `clips://changed` lists what went.
 pub fn update(
-    _db: &Db,
-    _current: &RwLock<Settings>,
-    _limit: &HistoryLimit,
-    _events: &dyn EventSink,
-    _patch: SettingsPatch,
+    db: &Db,
+    current: &RwLock<Settings>,
+    limit: &HistoryLimit,
+    events: &dyn EventSink,
+    patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
-    todo!()
+    // Held to the end so two updates cannot interleave their writes and their events.
+    let mut current = current.write().unwrap_or_else(PoisonError::into_inner);
+    let next = current.apply(patch)?;
+    db.with_conn(|conn| storage::settings::save(conn, &next))?;
+    let history_size_changed = next.history_size != current.history_size;
+    *current = next.clone();
+    limit.set(next.history_limit());
+    events.emit(SETTINGS_CHANGED, json!(next));
+    if history_size_changed {
+        trim_history(db, limit, events);
+    }
+    Ok(next)
+}
+
+/// Applies the new limit to the clips already stored. The settings are saved by now, so a trim
+/// that fails is logged by code and the next capture trims again, as in the watcher.
+fn trim_history(db: &Db, limit: &HistoryLimit, events: &dyn EventSink) {
+    match db.with_conn(|conn| enforce_limit(conn, limit.get())) {
+        Ok(removed) if !removed.is_empty() => {
+            let changed = ClipsChanged {
+                removed: Some(removed),
+                ..ClipsChanged::default()
+            };
+            events.emit(CLIPS_CHANGED, json!(changed));
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(code = %AppError::from(error).code, "the history could not be trimmed");
+        }
+    }
 }
 
 #[cfg(test)]
