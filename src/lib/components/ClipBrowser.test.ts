@@ -319,6 +319,23 @@ describe("ClipBrowser long lists", () => {
     expect(previews(container)).toContain("Synthetic clip 45");
   });
 
+  it("goes back to the top when the search changes", async () => {
+    const items = Array.from({ length: 50 }, (_, i) => clip(i + 1));
+    fakeCore((q) => (q.search ? page([clip(7)], null, 1) : page(items, null, 50)));
+    stubListHeight(400);
+    const { container } = render(ClipBrowser);
+    await settle();
+    const list = find(container, "#clip-list");
+    list.scrollTop = 30 * ROW_HEIGHT;
+    await fireEvent.scroll(list);
+
+    await fireEvent.input(input(container), { target: { value: "7" } });
+    await settle(50);
+
+    expect(list.scrollTop).toBe(0);
+    expect(rows(container).map((row) => row.dataset.index)).toEqual(["0"]);
+  });
+
   it("positions each row by its index", async () => {
     fakeCore(() => page([clip(1), clip(2), clip(3)]));
 
