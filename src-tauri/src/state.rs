@@ -1,10 +1,11 @@
 //! State managed by Tauri and shared by the commands. Later tickets add fields
 //! (settings, last active app).
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::clip::HistoryLimit;
 use crate::platform::{AccessibilityProbe, KeySender};
+use crate::settings::Settings;
 use crate::shortcuts::ShortcutStatus;
 use crate::storage::Db;
 use crate::watcher::WatcherHandle;
@@ -20,6 +21,8 @@ pub struct AppState {
     pub db: Option<Db>,
     /// How many clips the history keeps (HIS-02), shared with the settings and the purger.
     pub history_limit: HistoryLimit,
+    /// The user's preferences, loaded from the database at startup.
+    pub settings: RwLock<Settings>,
     /// The clipboard watcher thread, `None` until it starts (and when there is no database).
     pub watcher: Mutex<Option<WatcherHandle>>,
 }
@@ -32,6 +35,7 @@ impl AppState {
             shortcut: Mutex::default(),
             db: None,
             history_limit: HistoryLimit::default(),
+            settings: RwLock::default(),
             watcher: Mutex::default(),
         }
     }
@@ -107,5 +111,46 @@ mod tests {
     #[test]
     fn the_history_limit_starts_at_the_default_size() {
         assert_eq!(state().history_limit.get(), Some(500));
+    }
+
+    #[test]
+    fn the_settings_start_as_the_defaults() {
+        let settings = state().settings.read().unwrap().clone();
+
+        assert_eq!(settings, Settings::default());
+    }
+
+    #[test]
+    fn the_stored_settings_are_loaded_with_the_database_and_set_the_history_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let stored = Settings {
+            history_size: 10,
+            launch_at_login: true,
+            ..Settings::default()
+        };
+        db.with_conn(|conn| crate::storage::settings::save(conn, &stored))
+            .unwrap();
+
+        let state = state().with_db(Some(db));
+
+        assert_eq!(*state.settings.read().unwrap(), stored);
+        assert_eq!(state.history_limit.get(), Some(10));
+    }
+
+    #[test]
+    fn an_unlimited_stored_history_size_lifts_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let stored = Settings {
+            history_size: 0,
+            ..Settings::default()
+        };
+        db.with_conn(|conn| crate::storage::settings::save(conn, &stored))
+            .unwrap();
+
+        let state = state().with_db(Some(db));
+
+        assert_eq!(state.history_limit.get(), None);
     }
 }

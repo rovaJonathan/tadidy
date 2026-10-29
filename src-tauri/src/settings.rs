@@ -2,12 +2,16 @@
 //! stored settings live here; applying them (autostart, shortcut registration) is the job of
 //! the preferences window's ticket.
 
+use std::sync::RwLock;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::clip::DEFAULT_HISTORY_SIZE;
+use crate::clip::{DEFAULT_HISTORY_SIZE, HistoryLimit};
 use crate::error::AppError;
+use crate::events::EventSink;
 use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
+use crate::storage::Db;
 
 /// The smallest history a user can pick (HIS-02); `0` is the separate "unlimited" value.
 const MIN_HISTORY_SIZE: u32 = 10;
@@ -85,6 +89,19 @@ impl Settings {
         next.launch_at_login = patch.launch_at_login.unwrap_or(next.launch_at_login);
         Ok(next)
     }
+}
+
+/// Validates `patch`, stores the result, then makes it live: the shared settings, the history
+/// limit, and a `settings://changed` event with the full settings. When the history size
+/// changed, the history is trimmed at once and `clips://changed` lists what went.
+pub fn update(
+    _db: &Db,
+    _current: &RwLock<Settings>,
+    _limit: &HistoryLimit,
+    _events: &dyn EventSink,
+    _patch: SettingsPatch,
+) -> Result<Settings, AppError> {
+    todo!()
 }
 
 #[cfg(test)]
