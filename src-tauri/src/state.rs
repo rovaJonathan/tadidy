@@ -1,7 +1,7 @@
 //! State managed by Tauri and shared by the commands. Later tickets add fields
 //! (database, settings, last active app).
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::platform::{AccessibilityProbe, KeySender};
 use crate::shortcuts::ShortcutStatus;
@@ -26,10 +26,10 @@ impl AppState {
 
     /// A copy of the shortcut's registration state.
     pub fn shortcut_status(&self) -> ShortcutStatus {
-        ShortcutStatus {
-            accelerator: String::new(),
-            error: Some("stub".to_owned()),
-        }
+        self.shortcut
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 

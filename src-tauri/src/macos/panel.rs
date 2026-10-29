@@ -2,6 +2,9 @@
 //! keyboard input while the app the user was typing in stays active, so `⌘V` lands in the
 //! right window. Needs a real window server, so it is covered by the manual QA of TAD-006.
 
+// The `panel_event!` macro requires the explicit `-> ()` of the delegate callbacks.
+#![allow(clippy::unused_unit)]
+
 use tauri::{AppHandle, LogicalSize, Manager, Runtime, Size, WebviewUrl, WebviewWindow};
 use tauri_nspanel::{
     CollectionBehavior, ManagerExt, PanelBuilder, PanelLevel, StyleMask, tauri_panel,
