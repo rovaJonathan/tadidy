@@ -10,3 +10,20 @@ pub trait AccessibilityProbe: Send + Sync {
     /// pane. Only called from a user action: the permission is never requested silently.
     fn request_and_open_settings(&self) -> Result<(), PlatformError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_settings_command_opens_the_accessibility_pane() {
+        let command = open_settings_command();
+
+        assert_eq!(command.get_program(), "/usr/bin/open");
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(
+            args,
+            ["x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]
+        );
+    }
+}
