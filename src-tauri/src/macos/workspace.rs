@@ -17,14 +17,13 @@ impl Workspace for NsWorkspace {
     fn frontmost_app(&self) -> Option<SourceApp> {
         autoreleasepool(|_| {
             let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
-            Some(SourceApp {
-                bundle_id: app.bundleIdentifier()?.to_string(),
-                name: app
-                    .localizedName()
+            Some(SourceApp::new(
+                app.bundleIdentifier()?.to_string(),
+                app.localizedName()
                     .map(|name| name.to_string())
                     .unwrap_or_default(),
-                pid: app.processIdentifier(),
-            })
+                app.processIdentifier(),
+            ))
         })
     }
 

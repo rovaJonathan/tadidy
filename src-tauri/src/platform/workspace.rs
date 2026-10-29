@@ -8,6 +8,16 @@ pub struct SourceApp {
     pub pid: i32,
 }
 
+impl SourceApp {
+    pub fn new(bundle_id: impl Into<String>, name: impl Into<String>, pid: i32) -> Self {
+        Self {
+            bundle_id: bundle_id.into(),
+            name: name.into(),
+            pid,
+        }
+    }
+}
+
 /// `NSWorkspace`.
 pub trait Workspace: Send + Sync {
     /// The frontmost application, `None` when macOS reports none.
