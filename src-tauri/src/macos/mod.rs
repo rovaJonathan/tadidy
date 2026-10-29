@@ -8,6 +8,8 @@ pub mod app_icon;
 #[cfg(target_os = "macos")]
 pub mod pasteboard;
 #[cfg(target_os = "macos")]
+pub mod run_loop;
+#[cfg(target_os = "macos")]
 pub mod tray;
 #[cfg(target_os = "macos")]
 pub mod vibrancy;

@@ -3,10 +3,21 @@
 //! prints the data itself (AGENTS.md §2). The first app icon seen is written to a temporary
 //! PNG so it can be opened in Preview.
 //!
+//! It polls from its own thread while the main thread runs the run loop, like the watcher
+//! inside Tauri: `frontmostApplication` is not refreshed without a running main run loop.
+//!
 //! `cargo run --manifest-path src-tauri/Cargo.toml --example pasteboard_probe`
 
 #[cfg(target_os = "macos")]
 fn main() {
+    use tadidy_lib::macos::run_loop;
+
+    std::thread::spawn(poll);
+    run_loop::run_forever()
+}
+
+#[cfg(target_os = "macos")]
+fn poll() {
     use std::time::Duration;
     use tadidy_lib::macos::{pasteboard::NsPasteboard, workspace::NsWorkspace};
     use tadidy_lib::platform::{Pasteboard, Workspace};
