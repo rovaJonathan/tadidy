@@ -708,6 +708,46 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_trim_still_announces_the_clip_that_was_committed() {
+        let h = Harness::new();
+        h.limit.set(Some(1));
+        let mut watcher = h.watcher();
+        h.clock.set(1_000);
+        let first = added_id(h.copy(&mut watcher, "first"));
+        h.db.with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TEMP TRIGGER no_trim BEFORE DELETE ON clips \
+                 BEGIN SELECT RAISE(ABORT, 'trim refused'); END;",
+            )
+        })
+        .unwrap();
+        h.clock.set(2_000);
+
+        let second = added_id(h.copy(&mut watcher, "second"));
+
+        assert_eq!(h.count(), 2);
+        assert_eq!(
+            h.events.events().last(),
+            Some(&(CLIPS_CHANGED, changed(Some(&second), None, None)))
+        );
+
+        // The next capture trims what the failed one left behind.
+        h.db.with_conn(|conn| conn.execute_batch("DROP TRIGGER no_trim;"))
+            .unwrap();
+        h.clock.set(3_000);
+        let third = added_id(h.copy(&mut watcher, "third"));
+
+        assert_eq!(h.count(), 1);
+        assert_eq!(
+            h.events.events().last(),
+            Some(&(
+                CLIPS_CHANGED,
+                changed(Some(&third), None, Some(&[first.as_str(), second.as_str()]))
+            ))
+        );
+    }
+
+    #[test]
     fn an_unlimited_history_never_removes_anything() {
         let h = Harness::new();
         h.limit.set(None);
