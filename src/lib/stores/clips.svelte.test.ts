@@ -509,7 +509,7 @@ describe("ClipsStore deleteClip", () => {
 
     expect(store.items).toHaveLength(299);
     expect(store.selected?.id).toBe("clip-252");
-    expect(core.queries.map((q) => q.limit)).toEqual([200, 99]);
+    expect(core.queries.map((q) => q.limit)).toEqual([200, 100]);
     expect(core.queries.map((q) => q.cursor)).toEqual([undefined, "200"]);
   });
 

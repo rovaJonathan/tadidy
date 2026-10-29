@@ -8,6 +8,10 @@ import type { ClipSummary } from "../bindings/ClipSummary";
 /** SRC-01: the list follows the typing, 50 ms after the last key. */
 const SEARCH_DEBOUNCE_MS = 50;
 
+/** The core's page sizes (`ClipQuery.limit`: 50 by default, 200 at most). */
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
+
 export class ClipsStore {
   /** What the search field holds, as typed. */
   search = $state("");
@@ -94,7 +98,12 @@ export class ClipsStore {
       this.#debounce = undefined;
       void this.#loadFirstPage(false);
     }
-    await this.#firstPage;
+    // A reload that starts meanwhile supersedes the one awaited: wait until the promise stops changing.
+    let current: Promise<void>;
+    do {
+      current = this.#firstPage;
+      await current;
+    } while (current !== this.#firstPage);
   }
 
   /** Selects the row at `index` when it is loaded. */
@@ -155,7 +164,10 @@ export class ClipsStore {
       });
   }
 
-  /** With `keepSelection`, the selection follows its clip; when the clip is gone it stays at its index. */
+  /**
+   * With `keepSelection`, the selection follows its clip (when the clip is gone it stays at its index) and the
+   * reload brings back as many rows as were loaded, so a list scrolled past the first page keeps its length.
+   */
   #loadFirstPage(keepSelection: boolean): Promise<void> {
     this.#firstPage = this.#fetchFirstPage(keepSelection);
     return this.#firstPage;
@@ -165,17 +177,24 @@ export class ClipsStore {
     const generation = ++this.#generation;
     this.loading = true;
     const asked = this.query;
+    const wanted = keepSelection ? this.items.length : 0;
     try {
-      const page = await listClips(this.#queryFor());
+      let page = await listClips(this.#queryFor(undefined, this.#limitFor(wanted)));
+      let items = page.items;
+      while (items.length < wanted && page.nextCursor !== null) {
+        if (generation !== this.#generation) return;
+        page = await listClips(this.#queryFor(page.nextCursor, this.#limitFor(wanted - items.length)));
+        items = [...items, ...page.items];
+      }
       if (generation !== this.#generation) return;
       this.loadedQuery = asked;
       const selectedId = keepSelection ? this.items[this.selectedIndex]?.id : undefined;
-      this.items = page.items;
+      this.items = items;
       this.total = page.total;
       this.nextCursor = page.nextCursor;
-      const found = page.items.findIndex((clip) => clip.id === selectedId);
+      const found = items.findIndex((clip) => clip.id === selectedId);
       const stay = keepSelection ? this.selectedIndex : 0;
-      this.selectedIndex = found >= 0 ? found : Math.min(stay, Math.max(0, page.items.length - 1));
+      this.selectedIndex = found >= 0 ? found : Math.min(stay, Math.max(0, items.length - 1));
       this.loaded = true;
     } catch {
       // The rows already shown stay.
@@ -184,10 +203,16 @@ export class ClipsStore {
     }
   }
 
-  #queryFor(cursor?: string): ClipQuery {
+  /** The page size that brings back `rows` rows, or none to leave it to the core's default. */
+  #limitFor(rows: number): number | undefined {
+    return rows > DEFAULT_PAGE_SIZE ? Math.min(rows, MAX_PAGE_SIZE) : undefined;
+  }
+
+  #queryFor(cursor?: string, limit?: number): ClipQuery {
     const query: ClipQuery = {};
     if (this.query) query.search = this.query;
     if (cursor !== undefined) query.cursor = cursor;
+    if (limit !== undefined) query.limit = limit;
     return query;
   }
 
