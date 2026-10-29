@@ -134,6 +134,29 @@ describe("ClipBrowser rows", () => {
     expect(options.map((option) => option.id)).toEqual(["clip-clip-1", "clip-clip-2"]);
     expect(input(container).getAttribute("aria-activedescendant")).toBe("clip-clip-1");
   });
+
+  it("points aria-activedescendant at a row that is in the DOM, or at none", async () => {
+    fakeCore(() =>
+      page(
+        Array.from({ length: 50 }, (_, i) => clip(i + 1)),
+        null,
+        50,
+      ),
+    );
+    stubListHeight(400);
+    const { container } = render(ClipBrowser);
+    await settle();
+    const list = find(container, "#clip-list");
+
+    list.scrollTop = 30 * ROW_HEIGHT;
+    await fireEvent.scroll(list);
+    expect(container.querySelector("#clip-clip-1")).toBeNull();
+    expect(input(container)).not.toHaveAttribute("aria-activedescendant");
+
+    list.scrollTop = 0;
+    await fireEvent.scroll(list);
+    expect(input(container).getAttribute("aria-activedescendant")).toBe("clip-clip-1");
+  });
 });
 
 describe("ClipBrowser app icons", () => {
@@ -291,6 +314,47 @@ describe("ClipBrowser empty states", () => {
     expect(rows(container)).toHaveLength(1);
     expect(container.querySelector("#empty-search")).toBeNull();
     slow.resolve(page([]));
+  });
+
+  it("keeps #empty-search and its count until the cleared search has reloaded", async () => {
+    let reload: Promise<ReturnType<typeof page>> | undefined;
+    fakeCore((q) => (q.search ? page([]) : (reload ?? page([clip(1), clip(2)], null, 2))));
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.input(input(container), { target: { value: "zzz" } });
+    await settle(50);
+    expect(container.querySelector("#empty-search")).not.toBeNull();
+
+    const held = deferred<ReturnType<typeof page>>();
+    reload = held.promise;
+    await fireEvent.input(input(container), { target: { value: "" } });
+    await settle(50);
+
+    expect(container.querySelector("#empty-history")).toBeNull();
+    expect(container.querySelector("#empty-search #empty-search-query")?.textContent).toBe("zzz");
+    expect(container.querySelector("#clip-count")?.textContent).toBe("0 results");
+
+    held.resolve(page([clip(1), clip(2)], null, 2));
+    await settle();
+
+    expect(container.querySelector("#empty-search")).toBeNull();
+    expect(rows(container)).toHaveLength(2);
+    expect(container.querySelector("#clip-count")?.textContent).toBe("2 clips");
+  });
+
+  it("keeps counting clips, not results, until the first search has loaded", async () => {
+    const slow = deferred<ReturnType<typeof page>>();
+    fakeCore((q) => (q.search ? slow.promise : page([clip(1)], null, 1000)));
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    await fireEvent.input(input(container), { target: { value: "c" } });
+    await settle(50);
+
+    expect(container.querySelector("#clip-count")?.textContent).toBe("1,000 clips");
+    slow.resolve(page([clip(1)], null, 12));
+    await settle();
+    expect(container.querySelector("#clip-count")?.textContent).toBe("12 results");
   });
 });
 
