@@ -113,7 +113,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --example keychain_probe
 
 ### TAD-008 — Stable signing identity and universal build
 
-Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runbooks/signing-identity.md) and `export APPLE_SIGNING_IDENTITY="Tadidy Dev"` in the shell. `APP` below is `src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app`. Steps 1 to 5 need only this ticket. Steps 7 and 8 need a build that shows the permission state and opens the database (TAD-007 merged, then the UI tickets): TAD-019 runs them.
+Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runbooks/signing-identity.md) and `export APPLE_SIGNING_IDENTITY="Tadidy Dev"` in the shell. `APP` below is `src-tauri/target/universal-apple-darwin/release/bundle/macos/Tadidy.app`. Steps 1 to 5 need only this ticket. Step 7 needs a build that shows the permission state (a UI ticket): TAD-019 runs it. Step 8 needs TAD-007 and can be run today.
 
 | # | Action | Expected |
 |---|---|---|
@@ -124,4 +124,4 @@ Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runb
 | 5 | `codesign -d -r- "$APP" 2>&1 \| grep designated > /tmp/dr-1.txt`; change any source file (a comment is enough); `pnpm build:universal`; the same command into `/tmp/dr-2.txt`; `diff /tmp/dr-1.txt /tmp/dr-2.txt` | No difference: the designated requirement does not depend on the build. |
 | 6 | Unset `APPLE_SIGNING_IDENTITY`, rebuild, and run `codesign -dv --verbose=2 "$APP" 2>&1 \| grep Signature` | `Signature=adhoc`: this is the failure the identity prevents. Export the variable again. |
 | 7 | Install build N in `/Applications`, grant it Accessibility, install build N+1 over it, launch it. | *System Settings → Privacy & Security → Accessibility* still lists Tadidy enabled, and `check_accessibility` returns `true` (TAD-019). |
-| 8 | With the database created by build N, launch build N+1. | The history opens without a Keychain prompt (TAD-019, needs TAD-007). |
+| 8 | Start from a clean state (no `~/Library/Application Support/app.tadidy/`, no `app.tadidy` / `database-key` item). Copy `APP` to `/tmp/N.app`, change a source file, `pnpm build:universal`, copy the new `APP` to `/tmp/N1.app`. Run `/tmp/N.app/Contents/MacOS/tadidy`, wait 5 s, quit it; run `/tmp/N1.app/Contents/MacOS/tadidy`, wait 5 s. Then `pgrep -x SecurityAgent`, `security dump-keychain ~/Library/Keychains/login.keychain-db \| grep -c '"svce"<blob>="app.tadidy"'` and `head -c 16 ~/Library/Application\ Support/app.tadidy/tadidy.db \| xxd` after each run. | Build N creates `tadidy.db` and one Keychain item; its header is not `SQLite format 3`. Build N+1 starts without any Keychain dialog (no `SecurityAgent`), still one item, the same header bytes (same key), and logs no `storage_key_missing`. Delete the item and the folder afterwards. |
