@@ -1,11 +1,15 @@
-//! What the services need from the operating system, as traits: the pasteboard and the
-//! workspace (frontmost app). The AppKit implementations live in `crate::macos`; the fakes in
+//! What the services need from the operating system, as traits: the pasteboard, the
+//! workspace (frontmost app), the key sender and the Accessibility permission. The AppKit implementations live in `crate::macos`; the fakes in
 //! [`fakes`] let the logic around them be tested without touching the real clipboard.
 
+pub mod accessibility;
 pub mod fakes;
+pub mod keys;
 pub mod pasteboard;
 pub mod workspace;
 
+pub use accessibility::AccessibilityProbe;
+pub use keys::KeySender;
 pub use pasteboard::{
     IGNORED_TYPES, Pasteboard, Representation, UTI_PLAIN_TEXT, UTI_TADIDY_MARKER,
 };
@@ -16,6 +20,10 @@ pub use workspace::{SourceApp, Workspace};
 pub enum PlatformError {
     #[error("the pasteboard refused the write")]
     PasteboardWrite,
+    #[error("the paste keystroke could not be sent")]
+    KeyEvent,
+    #[error("the Accessibility settings could not be opened")]
+    AccessibilitySettings,
 }
 
 #[cfg(test)]

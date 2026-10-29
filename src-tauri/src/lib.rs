@@ -10,6 +10,15 @@ pub mod windows;
 use state::AppState;
 use tracing_subscriber::EnvFilter;
 
+/// The platform services of the running app: the AppKit and CoreGraphics ones.
+#[cfg(target_os = "macos")]
+fn real_state() -> AppState {
+    AppState::new(
+        std::sync::Arc::new(macos::accessibility::AxProbe),
+        std::sync::Arc::new(macos::keys::CgKeySender),
+    )
+}
+
 pub fn run() {
     // Filter with RUST_LOG, e.g. `tadidy_lib=debug`. Never log clip content (AGENTS.md §2).
     let _ = tracing_subscriber::fmt()
@@ -18,7 +27,7 @@ pub fn run() {
 
     if let Err(error) = tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
-        .manage(AppState::default())
+        .manage(real_state())
         .manage(windows::PopoverState::default())
         .setup(|app| {
             // Menu-bar app: no Dock icon and not in ⌘Tab, also in `tauri dev` where the
@@ -36,7 +45,9 @@ pub fn run() {
         .on_window_event(windows::on_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::app_version,
-            commands::hide_window
+            commands::hide_window,
+            commands::check_accessibility,
+            commands::open_accessibility_settings
         ])
         .run(tauri::generate_context!())
     {

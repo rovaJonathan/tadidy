@@ -1,8 +1,9 @@
 //! IPC commands: thin wrappers that delegate to the services (AGENTS.md §13).
 
-use tauri::{Runtime, WebviewWindow};
+use tauri::{Runtime, State, WebviewWindow};
 
 use crate::error::AppError;
+use crate::state::AppState;
 
 /// The version of the running app, from the crate manifest.
 #[tauri::command]
@@ -16,6 +17,27 @@ pub fn hide_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), AppError>
     window
         .hide()
         .map_err(|_| AppError::new("window", "The window could not be hidden."))
+}
+
+/// Whether Tadidy may post the paste keystroke. Never shows the system prompt.
+#[tauri::command]
+pub fn check_accessibility(state: State<'_, AppState>) -> bool {
+    state.accessibility.is_trusted()
+}
+
+/// Lists Tadidy under *Privacy & Security → Accessibility* and opens that pane. Called from a
+/// user click only: the permission is never requested silently.
+#[tauri::command]
+pub fn open_accessibility_settings(state: State<'_, AppState>) -> Result<(), AppError> {
+    state
+        .accessibility
+        .request_and_open_settings()
+        .map_err(|_| {
+            AppError::new(
+                "accessibility_settings_unavailable",
+                "The Accessibility settings could not be opened.",
+            )
+        })
 }
 
 #[cfg(test)]
