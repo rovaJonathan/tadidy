@@ -40,7 +40,7 @@ Manual QA (docs/guides/manual-qa.md#tad-004) — signed build, macOS 15.1, Apple
 
 ### TAD-004 — Pasteboard and workspace layer
 
-Run a developer probe; no signing or Accessibility is involved. The probe prints types, byte sizes and the frontmost app, never the clipboard data. Start it from a terminal and keep it running for steps 1 to 6. It polls without a run loop, so a frontmost app that never changes in step 2 or 3 is the first thing to report (the real watcher runs inside Tauri's run loop).
+Run a developer probe; no signing or Accessibility is involved. The probe prints types, byte sizes and the frontmost app, never the clipboard data. Start it from a terminal and keep it running for steps 1 to 6. It polls from its own thread while the main thread runs the run loop, like the watcher inside Tauri: `frontmostApplication` is only refreshed while the main run loop runs, so a probe without one keeps reporting the app it started in.
 
 ```
 cargo run --manifest-path src-tauri/Cargo.toml --example pasteboard_probe
