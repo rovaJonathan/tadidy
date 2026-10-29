@@ -123,11 +123,7 @@ mod tests {
     }
 
     fn textedit() -> SourceApp {
-        SourceApp {
-            bundle_id: "com.apple.TextEdit".into(),
-            name: "TextEdit".into(),
-            pid: 4242,
-        }
+        SourceApp::new("com.apple.TextEdit", "TextEdit", 4242)
     }
 
     #[test]

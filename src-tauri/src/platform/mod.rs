@@ -17,3 +17,16 @@ pub enum PlatformError {
     #[error("the pasteboard refused the write")]
     PasteboardWrite,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_write_error_message_carries_no_clip_content() {
+        assert_eq!(
+            PlatformError::PasteboardWrite.to_string(),
+            "the pasteboard refused the write"
+        );
+    }
+}
