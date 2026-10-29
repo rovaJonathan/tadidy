@@ -1523,8 +1523,9 @@ have to be re-authorized every time. <strong>Solution</strong>: sign
 with a stable identity, either a “Developer ID Application” certificate
 ($99/year, which also allows notarization) or, for strictly personal
 use, a self-signed certificate created in Keychain Access and referenced
-in
-<code>tauri.conf.json &gt; bundle &gt; macOS &gt; signingIdentity</code>.</td>
+through the <code>APPLE_SIGNING_IDENTITY</code> environment variable
+(<code>signingIdentity</code> stays <code>null</code> in
+<code>tauri.conf.json</code>, so no identity name is committed).</td>
 </tr>
 <tr class="odd">
 <td><strong>Notarization</strong></td>
