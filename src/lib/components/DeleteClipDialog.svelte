@@ -170,7 +170,7 @@
 
   .btn-destructive {
     background: var(--color-destructive);
-    color: #fff;
+    color: var(--color-on-accent);
     box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2);
   }
 

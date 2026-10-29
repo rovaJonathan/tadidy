@@ -1,7 +1,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { clip, deferred, fakeCore, page } from "../../test/clips";
 import { ROW_HEIGHT } from "../virtual-list";
 import ClipBrowser from "./ClipBrowser.svelte";
@@ -428,20 +428,20 @@ describe("ClipBrowser live updates", () => {
 });
 
 type Handlers = {
-  onpaste: ReturnType<typeof vi.fn>;
-  oncopy: ReturnType<typeof vi.fn>;
-  onclose: ReturnType<typeof vi.fn>;
-  onopenpreferences: ReturnType<typeof vi.fn>;
-  ondisableconfirm: ReturnType<typeof vi.fn>;
+  onpaste: Mock<(id: string) => void>;
+  oncopy: Mock<(id: string) => void>;
+  onclose: Mock<() => void>;
+  onopenpreferences: Mock<() => void>;
+  ondisableconfirm: Mock<() => void>;
 };
 
 function mountBrowser(props: { confirmBeforeDelete?: boolean } = {}) {
   const handlers: Handlers = {
-    onpaste: vi.fn(),
-    oncopy: vi.fn(),
-    onclose: vi.fn(),
-    onopenpreferences: vi.fn(),
-    ondisableconfirm: vi.fn(),
+    onpaste: vi.fn<(id: string) => void>(),
+    oncopy: vi.fn<(id: string) => void>(),
+    onclose: vi.fn<() => void>(),
+    onopenpreferences: vi.fn<() => void>(),
+    ondisableconfirm: vi.fn<() => void>(),
   };
   const view = render(ClipBrowser, { ...handlers, ...props });
   return { ...view, ...handlers };
@@ -449,6 +449,12 @@ function mountBrowser(props: { confirmBeforeDelete?: boolean } = {}) {
 
 function key(target: Element, key: string, modifiers: KeyboardEventInit = {}) {
   return fireEvent.keyDown(target, { key, ...modifiers });
+}
+
+function rowAt(container: HTMLElement, index: number): HTMLElement {
+  const row = rows(container)[index];
+  if (!row) throw new Error(`row ${index} is missing`);
+  return row;
 }
 
 function selectedIds(container: HTMLElement): (string | undefined)[] {
@@ -544,7 +550,7 @@ describe("ClipBrowser keyboard", () => {
     const field = input(container);
     field.focus();
 
-    const row = rows(container)[2]!;
+    const row = rowAt(container, 2);
     const notPrevented = await fireEvent.mouseDown(row);
     await fireEvent.click(row);
 
@@ -558,7 +564,7 @@ describe("ClipBrowser keyboard", () => {
     const { container, onpaste } = mountBrowser();
     await settle();
 
-    await fireEvent.dblClick(rows(container)[1]!);
+    await fireEvent.dblClick(rowAt(container, 1));
 
     expect(onpaste).toHaveBeenCalledExactlyOnceWith("clip-2");
   });

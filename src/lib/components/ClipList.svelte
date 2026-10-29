@@ -20,9 +20,24 @@
     onrange: (range: RowRange) => void;
     onneedmore: () => void;
     onneedicon: (bundleId: string) => void;
+    onselect: (index: number) => void;
+    /** A row was double-clicked. */
+    onactivate: (index: number) => void;
   }
 
-  let { items, total, selectedIndex, now, iconUrls, resetKey, onrange, onneedmore, onneedicon }: Props = $props();
+  let {
+    items,
+    total,
+    selectedIndex,
+    now,
+    iconUrls,
+    resetKey,
+    onrange,
+    onneedmore,
+    onneedicon,
+    onselect,
+    onactivate,
+  }: Props = $props();
 
   let list = $state<HTMLElement>();
   let scrollTop = $state(0);
@@ -30,6 +45,17 @@
 
   const visible = $derived(visibleRange(scrollTop, viewportHeight, ROW_HEIGHT, items.length, OVERSCAN));
   const rendered = $derived(items.slice(visible.start, visible.end));
+
+  /** Scrolls the least that brings the row at `index` fully into view, keeping the list's padding around it. */
+  export function reveal(index: number) {
+    if (!list) return;
+    const padding = Number.parseFloat(getComputedStyle(list).paddingTop) || 0;
+    const top = padding + index * ROW_HEIGHT;
+    const bottom = top + ROW_HEIGHT;
+    if (top - padding < list.scrollTop) list.scrollTop = top - padding;
+    else if (bottom + padding > list.scrollTop + viewportHeight) list.scrollTop = bottom + padding - viewportHeight;
+    scrollTop = list.scrollTop;
+  }
 
   $effect.pre(() => {
     onrange(visible);
@@ -73,6 +99,8 @@
         {now}
         selected={index === selectedIndex}
         iconUrl={clip.sourceBundle ? iconUrls.get(clip.sourceBundle) : undefined}
+        onselect={() => onselect(index)}
+        onactivate={() => onactivate(index)}
       />
     {/each}
   </div>
