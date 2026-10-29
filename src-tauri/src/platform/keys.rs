@@ -2,6 +2,25 @@
 
 use super::PlatformError;
 
+/// A key and the modifiers held with it. Only what the paster sends, so only `Command`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyChord {
+    /// Virtual key code: a physical position on the keyboard, not a character.
+    pub key_code: u16,
+    pub command: bool,
+}
+
+impl KeyChord {
+    /// `⌘V`: `kVK_ANSI_V` is the physical `V` of an ANSI keyboard. The flags are explicit, so a
+    /// modifier the user still holds (the `⇧` of `⌘⇧V`) is not merged into the event.
+    pub const fn paste() -> Self {
+        Self {
+            key_code: 9,
+            command: true,
+        }
+    }
+}
+
 /// Posts keyboard events to the system.
 pub trait KeySender: Send + Sync {
     /// Posts `⌘V` (key down then key up, `Command` only) to the frontmost app. Needs the

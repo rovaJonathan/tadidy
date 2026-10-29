@@ -1,6 +1,18 @@
 //! The Accessibility (TCC) permission that synthetic keystrokes depend on.
 
+use std::process::Command;
+
 use super::PlatformError;
+
+const SETTINGS_URL: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+
+/// The command that opens *Privacy & Security → Accessibility* in System Settings.
+pub fn open_settings_command() -> Command {
+    let mut command = Command::new("/usr/bin/open");
+    command.arg(SETTINGS_URL);
+    command
+}
 
 /// `AXIsProcessTrusted` and the System Settings pane that grants it.
 pub trait AccessibilityProbe: Send + Sync {

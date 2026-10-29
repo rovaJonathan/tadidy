@@ -61,6 +61,8 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `tauri-plugin-positioner` | 2.4.0 | added by TAD-003, feature `tray-icon`; crates.io's latest is `3.0.0-alpha.3` (Tauri 3 pre-release), so the newest 2.x is used |
 | `window-vibrancy` | 0.8.1 | added by TAD-003, popover material (`src-tauri/src/macos/vibrancy.rs`) |
 | `objc2` / `objc2-foundation` / `objc2-app-kit` | 0.6.5 / 0.3.2 / 0.3.2 | added by TAD-004, macOS target only, `default-features = false` and only the AppKit and Foundation classes used by `src-tauri/src/macos/` (+ `libc` for `pid_t`) |
+| `core-graphics` | 0.25.0 | added by TAD-005, macOS target only, the synthetic `⌘V` (`src-tauri/src/macos/keys.rs`) |
+| `objc2-application-services` / `objc2-core-foundation` | 0.3.2 / 0.3.2 | added by TAD-005 (not listed in the ticket), macOS target only, `default-features = false`: `AXIsProcessTrustedWithOptions` without hand-written FFI (`src-tauri/src/macos/accessibility.rs`); `objc2-core-foundation` builds its options dictionary |
 
 ### Planned (later tickets, latest stable seen on 2026-10-28)
 
@@ -69,7 +71,6 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `rusqlite` / `rusqlite_migration` | 0.41.0 / 2.6.0 | feature `bundled-sqlcipher-vendored-openssl` |
 | `tauri-nspanel` | 2.1.1 | |
 | `security-framework` | 3.7.0 | |
-| `core-graphics` | 0.25.0 | |
 
 ## Identifiers and paths
 

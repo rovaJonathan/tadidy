@@ -2,15 +2,11 @@
 //! [`AccessibilityProbe`] trait. The answer depends on the TCC database and the binary's
 //! signature, so it is covered by the manual QA of TAD-005, not by a unit test.
 
-use std::process::Command;
-
 use objc2_application_services::{AXIsProcessTrustedWithOptions, kAXTrustedCheckOptionPrompt};
 use objc2_core_foundation::{CFBoolean, CFDictionary, CFString, kCFBooleanTrue};
 
+use crate::platform::accessibility::open_settings_command;
 use crate::platform::{AccessibilityProbe, PlatformError};
-
-const SETTINGS_URL: &str =
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 
 /// The Accessibility permission of this process.
 #[derive(Debug, Default, Clone, Copy)]
@@ -32,8 +28,7 @@ impl AccessibilityProbe for AxProbe {
         // `prompt` the call lists this binary under Accessibility; the answer is not needed.
         unsafe { AXIsProcessTrustedWithOptions(Some(options.as_opaque())) };
 
-        let status = Command::new("/usr/bin/open")
-            .arg(SETTINGS_URL)
+        let status = open_settings_command()
             .status()
             .map_err(|_| PlatformError::AccessibilitySettings)?;
         if status.success() {
