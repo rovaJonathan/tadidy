@@ -95,4 +95,9 @@ mod tests {
 
         assert!(state().with_db(Some(db)).db.is_some());
     }
+
+    #[test]
+    fn the_history_limit_starts_at_the_default_size() {
+        assert_eq!(state().history_limit.get(), Some(500));
+    }
 }

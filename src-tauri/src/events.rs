@@ -144,4 +144,22 @@ mod tests {
             vec![(PANEL_SHOWN, json!({ "window": "panel" }))]
         );
     }
+
+    #[test]
+    fn clips_changed_serializes_to_camel_case_with_nothing_set_by_default() {
+        let changed = ClipsChanged {
+            added: Some("0192".to_owned()),
+            removed: Some(vec!["a".to_owned(), "b".to_owned()]),
+            ..ClipsChanged::default()
+        };
+
+        assert_eq!(
+            json!(changed),
+            json!({ "added": "0192", "updated": null, "removed": ["a", "b"] })
+        );
+        assert_eq!(
+            json!(ClipsChanged::default()),
+            json!({ "added": null, "updated": null, "removed": null })
+        );
+    }
 }
