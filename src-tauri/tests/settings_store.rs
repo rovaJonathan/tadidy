@@ -5,13 +5,13 @@
 // `allow-unwrap-in-tests` covers the `#[test]` functions, not the helpers around them.
 #![allow(clippy::unwrap_used)]
 
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 
 use rusqlite::Connection;
-use serde_json::json;
+use serde_json::{Value, json};
 use tadidy_lib::clip::{ClipKind, HistoryLimit, NewClip, content_hash};
 use tadidy_lib::crypto::DbKey;
-use tadidy_lib::events::{CLIPS_CHANGED, RecordingEventSink, SETTINGS_CHANGED};
+use tadidy_lib::events::{CLIPS_CHANGED, EventSink, RecordingEventSink, SETTINGS_CHANGED};
 use tadidy_lib::platform::{Representation, UTI_PLAIN_TEXT};
 use tadidy_lib::settings::{Settings, SettingsPatch, update};
 use tadidy_lib::storage::clips::{InsertOutcome, count, insert_or_bump};
@@ -294,6 +294,42 @@ fn lowering_the_history_size_trims_the_oldest_unpinned_clips_at_once() {
     expected.sort();
     removed_sorted.sort();
     assert_eq!(removed_sorted, expected);
+}
+
+/// Notes, when the trim announces its clips, whether the settings could be read right then.
+struct ReadDuringTrim<'a> {
+    current: &'a RwLock<Settings>,
+    readable: Mutex<Option<bool>>,
+}
+
+impl EventSink for ReadDuringTrim<'_> {
+    fn emit(&self, event: &'static str, _payload: Value) {
+        if event == CLIPS_CHANGED {
+            *self.readable.lock().unwrap() = Some(self.current.try_read().is_ok());
+        }
+    }
+}
+
+#[test]
+fn the_settings_stay_readable_while_the_history_is_trimmed() {
+    // `get_settings` runs on the main thread: it must never wait for a trim.
+    let rig = Rig::new();
+    insert_clips(&rig.db, 12);
+    let sink = ReadDuringTrim {
+        current: &rig.current,
+        readable: Mutex::default(),
+    };
+
+    update(
+        &rig.db,
+        &rig.current,
+        &rig.limit,
+        &sink,
+        Rig::history_size(10),
+    )
+    .unwrap();
+
+    assert_eq!(*sink.readable.lock().unwrap(), Some(true));
 }
 
 #[test]
