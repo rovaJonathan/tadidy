@@ -5,6 +5,7 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod events;
+pub mod history;
 pub mod macos;
 pub mod platform;
 pub mod settings;

@@ -5,10 +5,13 @@
 // `allow-unwrap-in-tests` covers the `#[test]` functions, not the helpers around them.
 #![allow(clippy::unwrap_used)]
 
+use serde_json::json;
 use tadidy_lib::clip::{ClipKind, ClipQuery, ClipSummary, NewClip, Page, content_hash};
 use tadidy_lib::error::AppError;
+use tadidy_lib::events::{CLIPS_CHANGED, RecordingEventSink};
+use tadidy_lib::history::{clear_history, delete_clips};
 use tadidy_lib::platform::{Representation, UTI_PLAIN_TEXT};
-use tadidy_lib::storage::clips::{InsertOutcome, insert_or_bump, list};
+use tadidy_lib::storage::clips::{InsertOutcome, count, insert_or_bump, list};
 use tadidy_lib::storage::{Db, StorageError, open};
 use tempfile::TempDir;
 
@@ -373,4 +376,124 @@ fn an_invalid_cursor_is_refused_with_its_own_code() {
         assert!(matches!(error, StorageError::InvalidCursor), "{cursor:?}");
         assert_eq!(AppError::from(error).code, "invalid_cursor");
     }
+}
+
+fn pin(db: &Db, id: &str) {
+    db.with_conn(|conn| conn.execute("UPDATE clips SET pinned = 1 WHERE id = ?1", [id]))
+        .unwrap();
+}
+
+fn clip_count(db: &Db) -> u32 {
+    db.with_conn(count).unwrap()
+}
+
+#[test]
+fn deleting_clips_removes_them_and_announces_their_ids() {
+    let (_dir, db) = open_db();
+    let a = add(&db, "first", 1_000);
+    let b = add(&db, "second", 2_000);
+    let kept = add(&db, "third", 3_000);
+    let sink = RecordingEventSink::default();
+
+    delete_clips(&db, &sink, &[a.clone(), b.clone()]).unwrap();
+
+    assert_eq!(ids(&list_all(&db, &ClipQuery::default())), [kept.as_str()]);
+    assert_eq!(
+        sink.events(),
+        [(
+            CLIPS_CHANGED,
+            json!({ "added": null, "updated": null, "removed": [a, b] })
+        )]
+    );
+}
+
+#[test]
+fn a_deleted_clip_no_longer_matches_a_search() {
+    let (_dir, db) = open_db();
+    let id = add(&db, "needle", 1_000);
+
+    delete_clips(&db, &RecordingEventSink::default(), &[id]).unwrap();
+
+    assert_eq!(list_all(&db, &search("needle")).total, 0);
+}
+
+#[test]
+fn only_the_ids_that_existed_are_announced() {
+    let (_dir, db) = open_db();
+    let id = add(&db, "first", 1_000);
+    let sink = RecordingEventSink::default();
+
+    delete_clips(
+        &db,
+        &sink,
+        &[id.clone(), "no-such-clip".to_owned(), id.clone()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        sink.events(),
+        [(
+            CLIPS_CHANGED,
+            json!({ "added": null, "updated": null, "removed": [id] })
+        )]
+    );
+}
+
+#[test]
+fn deleting_nothing_announces_nothing() {
+    let (_dir, db) = open_db();
+    add(&db, "first", 1_000);
+    let sink = RecordingEventSink::default();
+
+    delete_clips(&db, &sink, &[]).unwrap();
+    delete_clips(&db, &sink, &["no-such-clip".to_owned()]).unwrap();
+
+    assert_eq!(sink.events(), []);
+    assert_eq!(clip_count(&db), 1);
+}
+
+#[test]
+fn clearing_the_history_keeping_pinned_clips_returns_how_many_went() {
+    let (_dir, db) = open_db();
+    let all: Vec<String> = (0..10)
+        .map(|n| add(&db, &format!("clip {n}"), 1_000 + n))
+        .collect();
+    pin(&db, &all[0]);
+    pin(&db, &all[4]);
+    let sink = RecordingEventSink::default();
+
+    let removed = clear_history(&db, &sink, true).unwrap();
+
+    assert_eq!(removed, 8);
+    assert_eq!(clip_count(&db), 2);
+    assert_eq!(
+        sink.events(),
+        [(
+            CLIPS_CHANGED,
+            json!({ "added": null, "updated": null, "removed": null })
+        )]
+    );
+}
+
+#[test]
+fn clearing_the_history_without_keeping_pinned_clips_removes_everything() {
+    let (_dir, db) = open_db();
+    let id = add(&db, "pinned", 1_000);
+    add(&db, "other", 2_000);
+    pin(&db, &id);
+
+    let removed = clear_history(&db, &RecordingEventSink::default(), false).unwrap();
+
+    assert_eq!(removed, 2);
+    assert_eq!(clip_count(&db), 0);
+}
+
+#[test]
+fn clearing_an_empty_history_announces_nothing() {
+    let (_dir, db) = open_db();
+    let sink = RecordingEventSink::default();
+
+    assert_eq!(clear_history(&db, &sink, true).unwrap(), 0);
+
+    assert_eq!(sink.events(), []);
 }
