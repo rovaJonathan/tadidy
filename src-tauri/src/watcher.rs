@@ -14,16 +14,17 @@ use crate::clip::{HistoryLimit, content_hash};
 use crate::clock::Clock;
 use crate::error::AppError;
 use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink};
-use crate::platform::{IdleProbe, Pasteboard, UTI_PLAIN_TEXT, UTI_TADIDY_MARKER, Workspace};
+use crate::platform::{
+    IdleProbe, Pasteboard, UTI_PLAIN_TEXT, UTI_TADIDY_MARKER, Workspace, is_idle,
+};
 use crate::state::AppState;
 use crate::storage::clips::{self, InsertOutcome};
 use crate::storage::{Db, StorageError, app_icons};
 
 /// How often the change count is read while the user is around.
 pub const POLL_ACTIVE: Duration = Duration::from_millis(300);
-/// How often once the session has been idle for [`IDLE_AFTER_SECS`] (saves battery).
+/// How often once the session is idle (saves battery).
 pub const POLL_IDLE: Duration = Duration::from_secs(1);
-pub const IDLE_AFTER_SECS: f64 = 300.0;
 
 /// What one [`Watcher::tick`] did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,7 +213,7 @@ impl Watcher {
 
 /// How long to sleep before the next tick.
 pub fn poll_interval(idle_secs: f64) -> Duration {
-    if idle_secs >= IDLE_AFTER_SECS {
+    if is_idle(idle_secs) {
         POLL_IDLE
     } else {
         POLL_ACTIVE
@@ -339,7 +340,7 @@ mod tests {
 
     impl EventSink for CommitCheckSink {
         fn emit(&self, _event: &'static str, _payload: serde_json::Value) {
-            let count = self.db.with_conn(|conn| clips::count(conn)).unwrap();
+            let count = self.db.with_conn(clips::count).unwrap();
             self.clips_at_emit.lock().unwrap().push(count);
         }
     }
@@ -411,7 +412,7 @@ mod tests {
         }
 
         fn count(&self) -> u32 {
-            self.db.with_conn(|conn| clips::count(conn)).unwrap()
+            self.db.with_conn(clips::count).unwrap()
         }
     }
 

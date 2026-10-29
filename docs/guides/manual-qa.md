@@ -125,3 +125,20 @@ Needs the `Tadidy Dev` identity from [docs/runbooks/signing-identity.md](../runb
 | 6 | Unset `APPLE_SIGNING_IDENTITY`, rebuild, and run `codesign -dv --verbose=2 "$APP" 2>&1 \| grep Signature` | `Signature=adhoc`: this is the failure the identity prevents. Export the variable again. |
 | 7 | Install build N in `/Applications`, grant it Accessibility, install build N+1 over it, launch it. | *System Settings → Privacy & Security → Accessibility* still lists Tadidy enabled, and `check_accessibility` returns `true` (TAD-019). |
 | 8 | Start from a clean state (no `~/Library/Application Support/app.tadidy/`, no `app.tadidy` / `database-key` item). Copy `APP` to `/tmp/N.app`, change a source file, `pnpm build:universal`, copy the new `APP` to `/tmp/N1.app`. Run `/tmp/N.app/Contents/MacOS/tadidy`, wait 5 s, quit it; run `/tmp/N1.app/Contents/MacOS/tadidy`, wait 5 s. Then `pgrep -x SecurityAgent`, `security dump-keychain ~/Library/Keychains/login.keychain-db \| grep -c '"svce"<blob>="app.tadidy"'` and `head -c 16 ~/Library/Application\ Support/app.tadidy/tadidy.db \| xxd` after each run. | Build N creates `tadidy.db` and one Keychain item; its header is not `SQLite format 3`. Build N+1 starts without any Keychain dialog (no `SecurityAgent`), still one item, the same header bytes (same key), and logs no `storage_key_missing`. Delete the item and the folder afterwards. |
+
+### TAD-010 — Clipboard watcher for text clips
+
+Needs the signed build of TAD-008 and the terminal, because the only trace of a clip is the log line (id, kind, byte size and duration; never the text). `APP` is the `Tadidy.app` of the build. Start it with `RUST_LOG=tadidy_lib=info "$APP/Contents/MacOS/tadidy"` and keep the terminal visible. The history database is encrypted and no list exists before TAD-013: the source app and its icon are checked there (the automated tests cover them with fakes).
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Copy a sentence in TextEdit (`⌘C`), then start the app. | The tray icon appears and no `clip recorded` line is printed: what was on the clipboard at launch is not captured. |
+| 2 | In TextEdit, select a few words and press `⌘C`. | At once (< 500 ms after the keystroke) one line `clip recorded id=<uuid> kind="text" bytes=<N> elapsed_ms=<M>`, `N` the byte size of the selection and `M` a few milliseconds. The line does not contain the copied words. |
+| 3 | Press `⌘C` again on the same selection. | A new `clip recorded` line with the **same** `id` as step 2: the clip was bumped, not duplicated. |
+| 4 | Select other words and press `⌘C`. | A `clip recorded` line with a **different** `id`. |
+| 5 | Select only a space or an empty line in TextEdit and press `⌘C`; then copy a screenshot to the clipboard (`⌃⌘⇧4`). | No line is printed for either (empty text and images are not captured in this phase). |
+| 6 | Quit the app and start it again with the same clipboard content. | No `clip recorded` line at launch. |
+| 7 | With the app running, leave the Mac idle (no keyboard or mouse) for 6 min and watch `tadidy` in Activity Monitor (CPU column). | CPU stays under 0.5 %, also after the 5 min mark when the poll slows from 300 ms to 1 s. |
+| 8 | Follow step 6 of [TAD-007](#tad-007--encrypted-database-foundation) (Keychain item deleted, `tadidy.db` kept) and start the app with `RUST_LOG=tadidy_lib=info`. | The terminal logs `storage_key_missing` and `the clipboard watcher is not started: no history database`; copying text prints no `clip recorded` line; the tray icon still works. |
+
+Until CAP-10 and CAP-11 land (phase 2), text copied from a password manager is recorded too (encrypted in the database): step 2 with a password from the password manager prints a `clip recorded` line.
