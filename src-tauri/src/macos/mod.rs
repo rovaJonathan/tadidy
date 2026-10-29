@@ -4,6 +4,12 @@
 #![allow(unsafe_code)]
 
 #[cfg(target_os = "macos")]
+pub mod app_icon;
+#[cfg(target_os = "macos")]
+pub mod pasteboard;
+#[cfg(target_os = "macos")]
 pub mod tray;
 #[cfg(target_os = "macos")]
 pub mod vibrancy;
+#[cfg(target_os = "macos")]
+pub mod workspace;
