@@ -5,7 +5,12 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::clip::DEFAULT_HISTORY_SIZE;
 use crate::error::AppError;
+use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
+
+/// The smallest history a user can pick (HIS-02); `0` is the separate "unlimited" value.
+const MIN_HISTORY_SIZE: u32 = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -42,21 +47,43 @@ pub enum SettingsError {
 }
 
 impl From<SettingsError> for AppError {
-    fn from(_error: SettingsError) -> Self {
-        todo!()
+    fn from(error: SettingsError) -> Self {
+        Self::new("invalid_settings", error.to_string())
     }
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        todo!()
+        Self {
+            history_size: DEFAULT_HISTORY_SIZE,
+            confirm_before_delete: true,
+            launch_at_login: false,
+            quick_panel_shortcut: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+        }
     }
 }
 
 impl Settings {
     /// The settings after `patch`, or the first rule it breaks; `self` is left untouched.
-    pub fn apply(&self, _patch: SettingsPatch) -> Result<Settings, SettingsError> {
-        todo!()
+    pub fn apply(&self, patch: SettingsPatch) -> Result<Settings, SettingsError> {
+        let mut next = self.clone();
+        if let Some(size) = patch.history_size {
+            if (1..MIN_HISTORY_SIZE).contains(&size) {
+                return Err(SettingsError::HistorySize);
+            }
+            next.history_size = size;
+        }
+        if let Some(shortcut) = patch.quick_panel_shortcut {
+            if shortcut.trim().is_empty() {
+                return Err(SettingsError::QuickPanelShortcut);
+            }
+            next.quick_panel_shortcut = shortcut;
+        }
+        next.confirm_before_delete = patch
+            .confirm_before_delete
+            .unwrap_or(next.confirm_before_delete);
+        next.launch_at_login = patch.launch_at_login.unwrap_or(next.launch_at_login);
+        Ok(next)
     }
 }
 
