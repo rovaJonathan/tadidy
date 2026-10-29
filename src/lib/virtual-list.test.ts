@@ -14,7 +14,8 @@ describe("visibleRange", () => {
   });
 
   it("stops at the last row", () => {
-    expect(visibleRange(900, 200, 50, 20, 3)).toEqual({ start: 15, end: 20 });
+    // 20 rows × 50 px in a 200 px viewport: the scroll is clamped to 800, rows 16..19 are in view.
+    expect(visibleRange(900, 200, 50, 20, 3)).toEqual({ start: 13, end: 20 });
   });
 
   it("is empty when there is no row", () => {
