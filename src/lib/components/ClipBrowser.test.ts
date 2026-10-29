@@ -668,6 +668,64 @@ describe("ClipBrowser keyboard", () => {
     expect(onopenpreferences).toHaveBeenCalledOnce();
   });
 
+  it("pastes the match of what was just typed, not the row of the previous list", async () => {
+    fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    const { container, onpaste } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Enter");
+    expect(onpaste).not.toHaveBeenCalled();
+    await settle(50);
+
+    expect(onpaste).toHaveBeenCalledExactlyOnceWith("clip-3");
+  });
+
+  it("copies the match of what was just typed", async () => {
+    fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    const { container, oncopy } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Enter", { altKey: true });
+    await settle(50);
+
+    expect(oncopy).toHaveBeenCalledExactlyOnceWith("clip-3");
+  });
+
+  it("asks to delete the match of what was just typed", async () => {
+    const core = fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    const { container } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Backspace", { metaKey: true });
+    await settle(50);
+    await key(find(container, "#dialog-delete-clip"), "Enter");
+    await settle();
+
+    expect(core.deleted).toEqual([["clip-3"]]);
+  });
+
+  it("does nothing, and does not hang, when the search a Return waits for fails", async () => {
+    fakeCore((q) => {
+      if (q.search) throw { code: "storage_error", message: "Storage failed." };
+      return THREE();
+    });
+    const { container, onpaste } = mountBrowser();
+    await settle();
+    const field = input(container);
+
+    await fireEvent.input(field, { target: { value: "3" } });
+    await key(field, "Enter");
+    await settle(50);
+
+    expect(onpaste).not.toHaveBeenCalled();
+  });
+
   it("ignores the keys of an input method that is composing", async () => {
     fakeCore(THREE);
     const { container, onpaste } = mountBrowser();
@@ -726,10 +784,52 @@ describe("ClipBrowser deleting", () => {
     await key(input(container), "Backspace", { metaKey: true });
 
     await key(find(container, "#btn-delete-cancel"), "ArrowDown");
-    await key(document.body, "Enter");
+    await key(document.body, "ArrowDown");
+    await key(document.body, "c", { metaKey: true });
 
     expect(selectedIds(container)).toEqual(["clip-1"]);
     expect(onpaste).not.toHaveBeenCalled();
+  });
+
+  it("still routes the keys to the dialog when the focus has left it (a click on the dim layer)", async () => {
+    const core = fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+    (document.activeElement as HTMLElement).blur();
+
+    await key(document.body, "Escape");
+
+    expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+    expect(core.deleted).toEqual([]);
+  });
+
+  it("confirms with Return when the focus has left the dialog", async () => {
+    const core = fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+    (document.activeElement as HTMLElement).blur();
+
+    await key(document.body, "Enter");
+    await settle();
+
+    expect(core.deleted).toEqual([["clip-1"]]);
+  });
+
+  it("brings Tab back into the dialog when the focus has left it", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+    await key(input(container), "Backspace", { metaKey: true });
+    (document.activeElement as HTMLElement).blur();
+
+    await key(document.body, "Tab");
+    expect(document.activeElement).toBe(find(container, "#chk-dont-ask-delete"));
+
+    (document.activeElement as HTMLElement).blur();
+    await key(document.body, "Tab", { shiftKey: true });
+    expect(document.activeElement).toBe(find(container, "#btn-delete-cancel"));
   });
 
   it("deletes and calls ondisableconfirm once when Don’t ask again was ticked", async () => {

@@ -339,6 +339,8 @@ describe("ClipsStore app icons", () => {
   });
 });
 
+const THREE = () => page([clip(1), clip(2), clip(3)]);
+
 describe("ClipsStore selection", () => {
   it("selects the first clip once loaded", async () => {
     fakeCore(() => page([clip(1), clip(2)]));
@@ -450,6 +452,23 @@ describe("ClipsStore deleteClip", () => {
     expect(store.selected?.id).toBe("clip-2");
   });
 
+  it("keeps the selection at the same index when a slow reload is superseded by clips://changed", async () => {
+    let items = [clip(1), clip(2), clip(3)];
+    fakeCore(() => new Promise((resolve) => setTimeout(() => resolve(page(items)), 30)));
+    const started = store.start();
+    await vi.advanceTimersByTimeAsync(30);
+    await started;
+    store.select(1);
+    items = [clip(1), clip(3)];
+
+    const deleting = store.deleteClip("clip-2");
+    await emit("clips://changed", { removed: ["clip-2"] });
+    await vi.advanceTimersByTimeAsync(100);
+    await deleting;
+
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
   it("keeps the rows when the core refuses to delete", async () => {
     fakeCore(() => page([clip(1), clip(2)]));
     await store.start();
@@ -464,5 +483,62 @@ describe("ClipsStore deleteClip", () => {
     await expect(store.deleteClip("clip-1")).resolves.toBeUndefined();
 
     expect(store.items.map((c) => c.id)).toEqual(["clip-1", "clip-2"]);
+  });
+});
+
+describe("ClipsStore settled", () => {
+  it("is not stale, and returns at once, when the list answers the search", async () => {
+    const core = fakeCore(THREE);
+    await store.start();
+    core.queries.length = 0;
+
+    await store.settled();
+
+    expect(store.stale).toBe(false);
+    expect(core.queries).toEqual([]);
+  });
+
+  it("flushes the pending search and waits for its first page", async () => {
+    fakeCore((q) => (q.search ? page([clip(3)]) : THREE()));
+    await store.start();
+    store.setSearch("3");
+    expect(store.stale).toBe(true);
+
+    await store.settled();
+
+    expect(store.stale).toBe(false);
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
+  it("waits for a search whose request is already out", async () => {
+    const slow = deferred<Page<ClipSummary>>();
+    fakeCore((q) => (q.search ? slow.promise : THREE()));
+    await store.start();
+    store.setSearch("3");
+    await vi.advanceTimersByTimeAsync(50);
+
+    let done = false;
+    void store.settled().then(() => (done = true));
+    await flush();
+    expect(done).toBe(false);
+
+    slow.resolve(page([clip(3)]));
+    await flush();
+
+    expect(done).toBe(true);
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
+  it("returns when the search fails, still stale, instead of waiting forever", async () => {
+    fakeCore((q) => {
+      if (q.search) throw { code: "storage_error", message: "Storage failed." };
+      return THREE();
+    });
+    await store.start();
+    store.setSearch("3");
+
+    await store.settled();
+
+    expect(store.stale).toBe(true);
   });
 });
