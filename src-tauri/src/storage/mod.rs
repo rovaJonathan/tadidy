@@ -137,6 +137,28 @@ mod tests {
     }
 
     #[test]
+    fn open_or_report_returns_the_database() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert!(open_or_report(dir.path(), &FakeKeyStore::default()).is_some());
+    }
+
+    #[test]
+    fn open_or_report_runs_without_a_database_when_the_key_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
+
+        let db = open_or_report(dir.path(), &FakeKeyStore::default());
+
+        assert!(db.is_none());
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+    }
+
+    #[test]
     fn open_in_dir_reports_a_wrong_key() {
         let dir = tempfile::tempdir().unwrap();
         open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
