@@ -30,6 +30,10 @@ impl Workspace for NsWorkspace {
     fn app_icon_png(&self, app: &SourceApp) -> Option<Vec<u8>> {
         autoreleasepool(|_| {
             let running = NSRunningApplication::runningApplicationWithProcessIdentifier(app.pid)?;
+            // The pid may have been reused by another app since `frontmost_app` returned.
+            if running.bundleIdentifier()?.to_string() != app.bundle_id {
+                return None;
+            }
             app_icon::png(&running)
         })
     }

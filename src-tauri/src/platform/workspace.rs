@@ -22,6 +22,7 @@ impl SourceApp {
 pub trait Workspace: Send + Sync {
     /// The frontmost application, `None` when macOS reports none.
     fn frontmost_app(&self) -> Option<SourceApp>;
-    /// The app's icon as a 64 × 64 px PNG (32 pt @2x).
+    /// The app's icon as a 64 × 64 px PNG (32 pt @2x). `None` once the app has quit: ask while
+    /// it is still running. The fake does not model quitting, so it always returns a set icon.
     fn app_icon_png(&self, app: &SourceApp) -> Option<Vec<u8>>;
 }

@@ -1,7 +1,7 @@
 //! Developer probe for the manual QA of TAD-004: polls the general pasteboard every 300 ms and
 //! prints the change count, the types with their byte sizes and the frontmost app. It never
-//! prints the data itself (AGENTS.md §2). The first app icon seen is written to a temporary
-//! PNG so it can be opened in Preview.
+//! prints the data itself (AGENTS.md §2). The icon of the frontmost app, rewritten at every
+//! change of app, goes to a temporary PNG so it can be opened in Preview.
 //!
 //! It polls from its own thread while the main thread runs the run loop, like the watcher
 //! inside Tauri: `frontmostApplication` is not refreshed without a running main run loop.
