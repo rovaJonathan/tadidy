@@ -1,10 +1,12 @@
 pub mod commands;
+pub mod crypto;
 pub mod error;
 pub mod events;
 pub mod macos;
 pub mod platform;
 pub mod shortcuts;
 pub mod state;
+pub mod storage;
 pub mod tray;
 pub mod windows;
 
