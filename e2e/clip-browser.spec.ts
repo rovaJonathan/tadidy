@@ -17,7 +17,7 @@ test("the browser lists the newest clips first with the count", async ({ page })
   await expect(page.locator("#search-input")).toBeFocused();
 });
 
-test("typing in the search narrows the list with a single query", async ({ page }) => {
+test("typing in the search narrows the list to the matching clips", async ({ page }) => {
   await mockIpc(page, { app_version: "1.2.3" }, { clips: syntheticClips(30) });
   await page.goto("/");
   await expect(rows(page).first()).toBeVisible();
