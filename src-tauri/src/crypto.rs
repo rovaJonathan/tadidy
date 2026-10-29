@@ -186,6 +186,33 @@ mod tests {
     }
 
     #[test]
+    fn set_never_replaces_a_stored_key() {
+        let store = FakeKeyStore::with_key(test_key());
+
+        let result = store.set(&DbKey::from_bytes([8; 32]));
+
+        assert_eq!(result, Err(KeyStoreError::AlreadyExists));
+        assert_eq!(
+            store.get().unwrap().unwrap().as_bytes(),
+            test_key().as_bytes()
+        );
+    }
+
+    #[test]
+    fn the_key_stored_first_by_a_racing_launch_wins() {
+        // Another launch stores its key between our `get` and our `set`.
+        let store = FakeKeyStore::racing(test_key());
+
+        let key = load_or_create_key(&store, false).unwrap();
+
+        assert_eq!(key.as_bytes(), test_key().as_bytes());
+        assert_eq!(
+            store.get().unwrap().unwrap().as_bytes(),
+            test_key().as_bytes()
+        );
+    }
+
+    #[test]
     fn a_key_store_failure_is_reported_as_a_key_store_error() {
         let store = FakeKeyStore::failing();
 
