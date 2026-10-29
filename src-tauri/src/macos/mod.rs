@@ -10,6 +10,8 @@ pub mod app_icon;
 #[cfg(target_os = "macos")]
 pub mod keys;
 #[cfg(target_os = "macos")]
+pub mod panel;
+#[cfg(target_os = "macos")]
 pub mod pasteboard;
 #[cfg(target_os = "macos")]
 pub mod run_loop;

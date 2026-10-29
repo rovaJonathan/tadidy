@@ -3,11 +3,13 @@ pub mod error;
 pub mod events;
 pub mod macos;
 pub mod platform;
+pub mod shortcuts;
 pub mod state;
 pub mod tray;
 pub mod windows;
 
 use state::AppState;
+use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
 /// The platform services of the running app: the AppKit and CoreGraphics ones.
@@ -25,8 +27,12 @@ pub fn run() {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 
-    if let Err(error) = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    if let Err(error) = builder
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(real_state())
         .manage(windows::PopoverState::default())
         .setup(|app| {
@@ -39,7 +45,13 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             macos::vibrancy::apply_popover_material(&popover)?;
             #[cfg(target_os = "macos")]
+            macos::panel::create(app.handle())?;
+            #[cfg(target_os = "macos")]
             macos::tray::setup(app.handle())?;
+            shortcuts::register_at_startup(
+                &shortcuts::AppShortcuts(app.handle().clone()),
+                &app.state::<AppState>().shortcut,
+            );
             Ok(())
         })
         .on_window_event(windows::on_window_event)

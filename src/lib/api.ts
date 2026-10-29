@@ -1,6 +1,8 @@
 // Typed wrappers over the core's IPC commands and events. Components never call invoke
 // directly (AGENTS.md §14); argument and result types come from ./bindings (ADR 0006).
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { PanelShown } from "./bindings/PanelShown";
 
 export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
@@ -22,4 +24,9 @@ export function checkAccessibility(): Promise<boolean> {
  */
 export async function openAccessibilitySettings(): Promise<void> {
   await invoke("open_accessibility_settings");
+}
+
+/** Runs `callback` each time the popover or the Quick Panel is shown (`panel://shown`). */
+export function onPanelShown(callback: (shown: PanelShown) => void): Promise<UnlistenFn> {
+  return listen<PanelShown>("panel://shown", (event) => callback(event.payload));
 }

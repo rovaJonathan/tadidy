@@ -3,8 +3,10 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use serde_json::Value;
+use serde::Serialize;
+use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Runtime, Wry};
+use ts_rs::TS;
 
 pub const CLIPS_CHANGED: &str = "clips://changed";
 pub const SETTINGS_CHANGED: &str = "settings://changed";
@@ -13,6 +15,22 @@ pub const PANEL_SHOWN: &str = "panel://shown";
 
 pub trait EventSink: Send + Sync {
     fn emit(&self, event: &'static str, payload: Value);
+}
+
+/// Payload of `panel://shown`: which window was just shown, by label (`popover` or `panel`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct PanelShown {
+    pub window: String,
+}
+
+/// Tells the webview that the popover or the Quick Panel was shown, so it can focus its
+/// search field and reset its selection.
+pub fn emit_panel_shown(sink: &impl EventSink, window: &str) {
+    let payload = PanelShown {
+        window: window.to_owned(),
+    };
+    sink.emit(PANEL_SHOWN, json!(payload));
 }
 
 /// Emits to every webview of the running app. Generic over the runtime so tests use
@@ -63,7 +81,6 @@ impl EventSink for RecordingEventSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use tauri::Listener;
 
     #[test]
@@ -113,6 +130,18 @@ mod tests {
                 "accessibility://changed",
                 "panel://shown"
             ]
+        );
+    }
+
+    #[test]
+    fn panel_shown_carries_the_window_label() {
+        let sink = RecordingEventSink::default();
+
+        emit_panel_shown(&sink, "panel");
+
+        assert_eq!(
+            sink.events(),
+            vec![(PANEL_SHOWN, json!({ "window": "panel" }))]
         );
     }
 }

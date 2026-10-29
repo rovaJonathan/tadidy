@@ -8,13 +8,20 @@ use tauri::{
     AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
     WindowEvent,
 };
-use tauri_plugin_positioner::{Position, WindowExt};
+use tauri_plugin_positioner::{Position as TrayPosition, WindowExt};
+
+use crate::events::{TauriEventSink, emit_panel_shown};
 
 pub const POPOVER_LABEL: &str = "popover";
+pub const PANEL_LABEL: &str = "panel";
 
 /// Popover size in logical pixels (DESIGN.md §3).
 const POPOVER_WIDTH: f64 = 380.0;
 const POPOVER_HEIGHT: f64 = 520.0;
+
+/// Quick Panel size in logical pixels (DESIGN.md §3).
+pub const PANEL_WIDTH: f64 = 640.0;
+pub const PANEL_HEIGHT: f64 = 460.0;
 
 /// A tray click that arrives this soon after a focus-loss hide is the click that caused the
 /// focus loss (the user clicked the icon to close the popover): it must not reopen it.
@@ -90,12 +97,17 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
 
     fn reveal(&self) {
         // Without a tray position yet (no tray event seen) the window keeps its place.
-        if let Err(error) = self.move_window(Position::TrayBottomCenter) {
+        if let Err(error) = self.move_window(TrayPosition::TrayBottomCenter) {
             tracing::warn!(%error, "could not place the popover under the tray icon");
         }
         if let Err(error) = self.show().and_then(|()| self.set_focus()) {
             tracing::error!(%error, "could not show the popover");
+            return;
         }
+        emit_panel_shown(
+            &TauriEventSink::new(self.app_handle().clone()),
+            self.label(),
+        );
     }
 
     fn conceal(&self) {
@@ -103,6 +115,132 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
             tracing::error!(%error, "could not hide the popover");
         }
     }
+}
+
+/// A screen rectangle, in the physical pixels of the desktop space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Size {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Where a window of `size` goes to be centered on `screen`.
+pub fn center_in(screen: Rect, size: Size) -> Position {
+    Position {
+        x: screen.x + (screen.width - size.width) / 2.0,
+        y: screen.y + (screen.height - size.height) / 2.0,
+    }
+}
+
+/// The screen that contains the mouse pointer, or the first one when it is outside all of them.
+pub fn target_screen(pointer: Position, screens: &[Rect]) -> Option<Rect> {
+    screens
+        .iter()
+        .find(|screen| {
+            (screen.x..screen.x + screen.width).contains(&pointer.x)
+                && (screen.y..screen.y + screen.height).contains(&pointer.y)
+        })
+        .or_else(|| screens.first())
+        .copied()
+}
+
+/// What the Quick Panel toggle needs from the panel, so it runs against a fake in the tests.
+pub trait QuickPanel {
+    fn is_shown(&self) -> bool;
+    /// Centers the panel on the screen under the pointer, shows it and makes it the key
+    /// window without activating the app.
+    fn reveal(&self);
+    fn conceal(&self);
+}
+
+/// The global shortcut (QPN-01): shows the Quick Panel, or hides it.
+pub fn toggle_panel(panel: &impl QuickPanel) {
+    if panel.is_shown() {
+        panel.conceal();
+    } else {
+        panel.reveal();
+    }
+}
+
+/// Entry point of the global shortcut.
+pub fn toggle_quick_panel<R: Runtime>(app: &AppHandle<R>) {
+    #[cfg(target_os = "macos")]
+    toggle_panel(&crate::macos::panel::NsQuickPanel::new(app.clone()));
+    #[cfg(not(target_os = "macos"))]
+    tracing::warn!(app = app.package_info().name, "the Quick Panel needs macOS");
+}
+
+/// A monitor's rectangle in logical points, the unit of `CGDisplayBounds`. tao reports a
+/// monitor's position and size in pixels of that monitor's own scale, so the rectangles of
+/// monitors with different scales do not tile one space until they are divided by their scale.
+pub fn logical_rect(position: (i32, i32), size: (u32, u32), scale: f64) -> Rect {
+    Rect {
+        x: f64::from(position.0) / scale,
+        y: f64::from(position.1) / scale,
+        width: f64::from(size.0) / scale,
+        height: f64::from(size.1) / scale,
+    }
+}
+
+/// The pointer in logical points. tao's `cursor_position` multiplies the global point by the
+/// primary monitor's scale, whichever monitor the pointer is on.
+pub fn pointer_in_points(cursor: (f64, f64), primary_scale: f64) -> Position {
+    Position {
+        x: cursor.0 / primary_scale,
+        y: cursor.1 / primary_scale,
+    }
+}
+
+/// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
+pub fn center_on_pointer_screen<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+) -> tauri::Result<()> {
+    // Everything is worked out in logical points, the unit AppKit places windows in: the
+    // physical values tao reports use a different scale for the pointer, for each monitor
+    // and for the window being moved.
+    let cursor = app.cursor_position()?;
+    let primary_scale = app
+        .primary_monitor()?
+        .map_or(1.0, |monitor| monitor.scale_factor());
+    let screens: Vec<Rect> = app
+        .available_monitors()?
+        .iter()
+        .map(|monitor| {
+            let (position, size) = (monitor.position(), monitor.size());
+            logical_rect(
+                (position.x, position.y),
+                (size.width, size.height),
+                monitor.scale_factor(),
+            )
+        })
+        .collect();
+    let pointer = pointer_in_points((cursor.x, cursor.y), primary_scale);
+    let Some(screen) = target_screen(pointer, &screens) else {
+        return Ok(());
+    };
+    let origin = center_in(
+        screen,
+        Size {
+            width: PANEL_WIDTH,
+            height: PANEL_HEIGHT,
+        },
+    );
+    window.set_position(tauri::LogicalPosition::new(origin.x, origin.y))
 }
 
 fn lock(state: &PopoverState) -> MutexGuard<'_, PopoverToggle> {
@@ -345,5 +483,181 @@ mod tests {
         on_window_event(&other.as_ref().window(), &WindowEvent::Focused(false));
 
         assert!(!click_is_debounced(&app));
+    }
+
+    const SCREEN: Rect = Rect {
+        x: 1440.0,
+        y: -200.0,
+        width: 2560.0,
+        height: 1440.0,
+    };
+
+    #[test]
+    fn center_in_centers_on_the_given_screen() {
+        let size = Size {
+            width: 640.0,
+            height: 460.0,
+        };
+
+        let position = center_in(SCREEN, size);
+
+        assert_eq!(
+            position,
+            Position {
+                x: 2400.0,
+                y: 290.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_target_screen_contains_the_pointer() {
+        let main = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1440.0,
+            height: 900.0,
+        };
+
+        let at = |x, y| target_screen(Position { x, y }, &[main, SCREEN]);
+
+        assert_eq!(at(10.0, 10.0), Some(main));
+        assert_eq!(at(1440.0, 0.0), Some(SCREEN));
+        assert_eq!(at(3999.0, 1239.0), Some(SCREEN));
+    }
+
+    #[test]
+    fn a_pointer_outside_every_screen_falls_back_to_the_first() {
+        let pointer = Position {
+            x: -50.0,
+            y: 5000.0,
+        };
+
+        assert_eq!(target_screen(pointer, &[SCREEN]), Some(SCREEN));
+        assert_eq!(target_screen(pointer, &[]), None);
+    }
+
+    #[derive(Default)]
+    struct FakePanel {
+        visible: Cell<bool>,
+    }
+
+    impl QuickPanel for FakePanel {
+        fn is_shown(&self) -> bool {
+            self.visible.get()
+        }
+        fn reveal(&self) {
+            self.visible.set(true);
+        }
+        fn conceal(&self) {
+            self.visible.set(false);
+        }
+    }
+
+    #[test]
+    fn panel_toggle_shows_when_hidden() {
+        let panel = FakePanel::default();
+
+        toggle_panel(&panel);
+
+        assert!(panel.is_shown());
+    }
+
+    #[test]
+    fn panel_toggle_hides_when_visible() {
+        let panel = FakePanel::default();
+        panel.reveal();
+
+        toggle_panel(&panel);
+
+        assert!(!panel.is_shown());
+    }
+
+    #[test]
+    fn revealing_the_popover_emits_panel_shown_with_its_label() {
+        use tauri::Listener;
+        let (app, popover) = app_with_popover();
+        app.handle()
+            .plugin(tauri_plugin_positioner::init())
+            .unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        app.listen_any(crate::events::PANEL_SHOWN, move |event| {
+            sender.send(event.payload().to_owned()).unwrap();
+        });
+
+        popover.reveal();
+
+        let payload = receiver.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(payload, r#"{"window":"popover"}"#);
+    }
+
+    /// A Retina laptop (1512 × 982 pt, scale 2) with a 1× external display on its right.
+    fn laptop_and_external() -> (Rect, Rect) {
+        (
+            logical_rect((0, 0), (3024, 1964), 2.0),
+            logical_rect((1512, 0), (1920, 1080), 1.0),
+        )
+    }
+
+    #[test]
+    fn a_monitor_rect_is_in_points_whatever_its_scale() {
+        let (laptop, external) = laptop_and_external();
+
+        assert_eq!(
+            laptop,
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1512.0,
+                height: 982.0
+            }
+        );
+        assert_eq!(
+            external,
+            Rect {
+                x: 1512.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_pointer_is_converted_with_the_primary_monitors_scale() {
+        let pointer = pointer_in_points((4800.0, 1000.0), 2.0);
+
+        assert_eq!(
+            pointer,
+            Position {
+                x: 2400.0,
+                y: 500.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_panel_follows_the_pointer_onto_a_one_x_screen_beside_a_retina_one() {
+        let (laptop, external) = laptop_and_external();
+        let size = Size {
+            width: PANEL_WIDTH,
+            height: PANEL_HEIGHT,
+        };
+
+        let on_external = target_screen(
+            pointer_in_points((4800.0, 1000.0), 2.0),
+            &[laptop, external],
+        );
+        let on_laptop = target_screen(pointer_in_points((600.0, 300.0), 2.0), &[laptop, external]);
+
+        assert_eq!(on_external, Some(external));
+        assert_eq!(on_laptop, Some(laptop));
+        assert_eq!(
+            center_in(external, size),
+            Position {
+                x: 2152.0,
+                y: 310.0
+            }
+        );
     }
 }
