@@ -67,14 +67,8 @@ pub fn set_settings<R: Runtime>(
     state: State<'_, AppState>,
     patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
-    let db = state.db.as_ref().ok_or_else(|| {
-        AppError::new(
-            "storage_unavailable",
-            "The history database is unavailable.",
-        )
-    })?;
     settings::update(
-        db,
+        database(&state)?,
         &state.settings,
         &state.history_limit,
         &TauriEventSink::new(app),
@@ -95,8 +89,7 @@ fn database(state: &AppState) -> Result<&Db, AppError> {
 /// One page of the history, newest first, filtered by the search when there is one.
 #[tauri::command(async)]
 pub fn list_clips(state: State<'_, AppState>, q: ClipQuery) -> Result<Page<ClipSummary>, AppError> {
-    let _ = (state, q);
-    todo!("TAD-012")
+    Ok(database(&state)?.with_conn(|conn| storage::clips::list(conn, &q))?)
 }
 
 /// Removes clips and announces it with `clips://changed`.
@@ -106,8 +99,7 @@ pub fn delete_clips<R: Runtime>(
     state: State<'_, AppState>,
     ids: Vec<String>,
 ) -> Result<(), AppError> {
-    let _ = (app, state, ids);
-    todo!("TAD-012")
+    history::delete_clips(database(&state)?, &TauriEventSink::new(app), &ids)
 }
 
 /// Empties the history and returns how many clips went; pinned clips stay when `keep_pinned`.
@@ -117,8 +109,7 @@ pub fn clear_history<R: Runtime>(
     state: State<'_, AppState>,
     keep_pinned: bool,
 ) -> Result<u32, AppError> {
-    let _ = (app, state, keep_pinned);
-    todo!("TAD-012")
+    history::clear_history(database(&state)?, &TauriEventSink::new(app), keep_pinned)
 }
 
 /// The cached icon of a source app as raw PNG bytes (no JSON round trip), `not_found` when the
@@ -128,8 +119,10 @@ pub fn get_app_icon(
     state: State<'_, AppState>,
     bundle_id: String,
 ) -> Result<tauri::ipc::Response, AppError> {
-    let _ = (state, bundle_id);
-    todo!("TAD-012")
+    database(&state)?
+        .with_conn(|conn| storage::app_icons::get(conn, &bundle_id))?
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| AppError::new("not_found", "No icon is cached for this app."))
 }
 
 #[cfg(test)]
