@@ -9,7 +9,7 @@ export default defineConfig({
   // One HTML entry per Tauri window (index.html is the dev harness).
   build: {
     rollupOptions: {
-      input: { main: "index.html", popover: "popover.html" },
+      input: { main: "index.html", popover: "popover.html", panel: "panel.html" },
     },
   },
   server: {
