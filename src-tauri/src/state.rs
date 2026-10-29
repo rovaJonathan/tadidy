@@ -77,3 +77,31 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::FakeKeyStore;
+    use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
+    use crate::storage::open_in_dir;
+
+    fn state() -> AppState {
+        AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+        )
+    }
+
+    #[test]
+    fn the_state_starts_without_a_database() {
+        assert!(state().db.is_none());
+    }
+
+    #[test]
+    fn the_state_holds_the_opened_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert!(state().with_db(Some(db)).db.is_some());
+    }
+}
