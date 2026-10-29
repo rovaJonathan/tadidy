@@ -184,6 +184,27 @@ pub fn toggle_quick_panel<R: Runtime>(app: &AppHandle<R>) {
     tracing::warn!(app = app.package_info().name, "the Quick Panel needs macOS");
 }
 
+/// A monitor's rectangle in logical points, the unit of `CGDisplayBounds`. tao reports a
+/// monitor's position and size in pixels of that monitor's own scale, so the rectangles of
+/// monitors with different scales do not tile one space until they are divided by their scale.
+pub fn logical_rect(position: (i32, i32), size: (u32, u32), _scale: f64) -> Rect {
+    Rect {
+        x: f64::from(position.0),
+        y: f64::from(position.1),
+        width: f64::from(size.0),
+        height: f64::from(size.1),
+    }
+}
+
+/// The pointer in logical points. tao's `cursor_position` multiplies the global point by the
+/// primary monitor's scale, whichever monitor the pointer is on.
+pub fn pointer_in_points(cursor: (f64, f64), _primary_scale: f64) -> Position {
+    Position {
+        x: cursor.0,
+        y: cursor.1,
+    }
+}
+
 /// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
 pub fn center_on_pointer_screen<R: Runtime>(
     app: &AppHandle<R>,
@@ -569,5 +590,75 @@ mod tests {
 
         let payload = receiver.recv_timeout(Duration::from_secs(1)).unwrap();
         assert_eq!(payload, r#"{"window":"popover"}"#);
+    }
+
+    /// A Retina laptop (1512 × 982 pt, scale 2) with a 1× external display on its right.
+    fn laptop_and_external() -> (Rect, Rect) {
+        (
+            logical_rect((0, 0), (3024, 1964), 2.0),
+            logical_rect((1512, 0), (1920, 1080), 1.0),
+        )
+    }
+
+    #[test]
+    fn a_monitor_rect_is_in_points_whatever_its_scale() {
+        let (laptop, external) = laptop_and_external();
+
+        assert_eq!(
+            laptop,
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 1512.0,
+                height: 982.0
+            }
+        );
+        assert_eq!(
+            external,
+            Rect {
+                x: 1512.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_pointer_is_converted_with_the_primary_monitors_scale() {
+        let pointer = pointer_in_points((4800.0, 1000.0), 2.0);
+
+        assert_eq!(
+            pointer,
+            Position {
+                x: 2400.0,
+                y: 500.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_panel_follows_the_pointer_onto_a_one_x_screen_beside_a_retina_one() {
+        let (laptop, external) = laptop_and_external();
+        let size = Size {
+            width: PANEL_WIDTH,
+            height: PANEL_HEIGHT,
+        };
+
+        let on_external = target_screen(
+            pointer_in_points((4800.0, 1000.0), 2.0),
+            &[laptop, external],
+        );
+        let on_laptop = target_screen(pointer_in_points((600.0, 300.0), 2.0), &[laptop, external]);
+
+        assert_eq!(on_external, Some(external));
+        assert_eq!(on_laptop, Some(laptop));
+        assert_eq!(
+            center_in(external, size),
+            Position {
+                x: 2152.0,
+                y: 310.0
+            }
+        );
     }
 }
