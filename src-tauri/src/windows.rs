@@ -10,6 +10,8 @@ use tauri::{
 };
 use tauri_plugin_positioner::{Position as TrayPosition, WindowExt};
 
+use crate::events::{TauriEventSink, emit_panel_shown};
+
 pub const POPOVER_LABEL: &str = "popover";
 pub const PANEL_LABEL: &str = "panel";
 
@@ -100,7 +102,12 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
         }
         if let Err(error) = self.show().and_then(|()| self.set_focus()) {
             tracing::error!(%error, "could not show the popover");
+            return;
         }
+        emit_panel_shown(
+            &TauriEventSink::new(self.app_handle().clone()),
+            self.label(),
+        );
     }
 
     fn conceal(&self) {
@@ -132,13 +139,23 @@ pub struct Position {
 }
 
 /// Where a window of `size` goes to be centered on `screen`.
-pub fn center_in(_screen: Rect, _size: Size) -> Position {
-    Position { x: 0.0, y: 0.0 }
+pub fn center_in(screen: Rect, size: Size) -> Position {
+    Position {
+        x: screen.x + (screen.width - size.width) / 2.0,
+        y: screen.y + (screen.height - size.height) / 2.0,
+    }
 }
 
 /// The screen that contains the mouse pointer, or the first one when it is outside all of them.
-pub fn target_screen(_pointer: Position, _screens: &[Rect]) -> Option<Rect> {
-    None
+pub fn target_screen(pointer: Position, screens: &[Rect]) -> Option<Rect> {
+    screens
+        .iter()
+        .find(|screen| {
+            (screen.x..screen.x + screen.width).contains(&pointer.x)
+                && (screen.y..screen.y + screen.height).contains(&pointer.y)
+        })
+        .or_else(|| screens.first())
+        .copied()
 }
 
 /// What the Quick Panel toggle needs from the panel, so it runs against a fake in the tests.
@@ -151,7 +168,60 @@ pub trait QuickPanel {
 }
 
 /// The global shortcut (QPN-01): shows the Quick Panel, or hides it.
-pub fn toggle_panel(_panel: &impl QuickPanel) {}
+pub fn toggle_panel(panel: &impl QuickPanel) {
+    if panel.is_shown() {
+        panel.conceal();
+    } else {
+        panel.reveal();
+    }
+}
+
+/// Entry point of the global shortcut.
+pub fn toggle_quick_panel<R: Runtime>(app: &AppHandle<R>) {
+    #[cfg(target_os = "macos")]
+    toggle_panel(&crate::macos::panel::NsQuickPanel::new(app.clone()));
+    #[cfg(not(target_os = "macos"))]
+    tracing::warn!(app = app.package_info().name, "the Quick Panel needs macOS");
+}
+
+/// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
+pub fn center_on_pointer_screen<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+) -> tauri::Result<()> {
+    let pointer = app.cursor_position()?;
+    let monitors = app.available_monitors()?;
+    let rect_of = |monitor: &tauri::Monitor| Rect {
+        x: f64::from(monitor.position().x),
+        y: f64::from(monitor.position().y),
+        width: f64::from(monitor.size().width),
+        height: f64::from(monitor.size().height),
+    };
+    let screens: Vec<Rect> = monitors.iter().map(rect_of).collect();
+    let pointer = Position {
+        x: pointer.x,
+        y: pointer.y,
+    };
+    let Some(screen) = target_screen(pointer, &screens) else {
+        return Ok(());
+    };
+    // The panel is sized in logical pixels: its physical size depends on the screen's scale.
+    let scale = monitors
+        .iter()
+        .find(|monitor| rect_of(monitor) == screen)
+        .map_or(1.0, tauri::Monitor::scale_factor);
+    let origin = center_in(
+        screen,
+        Size {
+            width: PANEL_WIDTH * scale,
+            height: PANEL_HEIGHT * scale,
+        },
+    );
+    window.set_position(tauri::PhysicalPosition::new(
+        origin.x.round() as i32,
+        origin.y.round() as i32,
+    ))
+}
 
 fn lock(state: &PopoverState) -> MutexGuard<'_, PopoverToggle> {
     state.lock().unwrap_or_else(PoisonError::into_inner)

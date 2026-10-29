@@ -1,12 +1,14 @@
 //! The global shortcut that opens the Quick Panel (QPN-01). Registration goes through the
 //! Rust side of `tauri-plugin-global-shortcut` only: the webview never registers a shortcut.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use serde::Serialize;
 use tauri::{AppHandle, Runtime};
-use tauri_plugin_global_shortcut::Shortcut;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use ts_rs::TS;
+
+use crate::windows;
 
 pub const DEFAULT_QUICK_PANEL_SHORTCUT: &str = "Cmd+Shift+V";
 
@@ -23,7 +25,10 @@ pub enum ShortcutError {
 impl ShortcutError {
     /// Stable code kept in `ShortcutStatus` and logged: never the accelerator text.
     pub fn code(&self) -> &'static str {
-        "unknown"
+        match self {
+            Self::Invalid(_) => "invalid",
+            Self::Unavailable(_) => "unavailable",
+        }
     }
 }
 
@@ -45,8 +50,10 @@ impl Default for ShortcutStatus {
     }
 }
 
-pub fn parse(_accelerator: &str) -> Result<Shortcut, ShortcutError> {
-    Err(ShortcutError::Unavailable(String::new()))
+pub fn parse(accelerator: &str) -> Result<Shortcut, ShortcutError> {
+    accelerator
+        .parse::<Shortcut>()
+        .map_err(|error| ShortcutError::Invalid(error.to_string()))
 }
 
 /// What registering needs from the plugin, so the startup rules run against a fake.
@@ -56,13 +63,43 @@ pub trait ShortcutRegistrar {
 
 /// Registers the default shortcut at startup. A failure does not stop the app: it is logged
 /// (code only) and kept in `status` for the preferences.
-pub fn register_at_startup(_registrar: &impl ShortcutRegistrar, _status: &Mutex<ShortcutStatus>) {}
+pub fn register_at_startup(registrar: &impl ShortcutRegistrar, status: &Mutex<ShortcutStatus>) {
+    let accelerator = DEFAULT_QUICK_PANEL_SHORTCUT;
+    let error = registrar.register(accelerator).err().map(|error| {
+        tracing::warn!(
+            code = error.code(),
+            "the Quick Panel shortcut is not registered"
+        );
+        error.code().to_owned()
+    });
+    *status.lock().unwrap_or_else(PoisonError::into_inner) = ShortcutStatus {
+        accelerator: accelerator.to_owned(),
+        error,
+    };
+}
 
+/// Registers `accelerator` to toggle the Quick Panel.
 pub fn register_quick_panel<R: Runtime>(
-    _app: &AppHandle<R>,
+    app: &AppHandle<R>,
     accelerator: &str,
 ) -> Result<(), ShortcutError> {
-    parse(accelerator).map(|_| ())
+    let shortcut = parse(accelerator)?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                windows::toggle_quick_panel(app);
+            }
+        })
+        .map_err(|error| ShortcutError::Unavailable(error.to_string()))
+}
+
+/// The plugin-backed registrar, for the real app.
+pub struct AppShortcuts<R: Runtime>(pub AppHandle<R>);
+
+impl<R: Runtime> ShortcutRegistrar for AppShortcuts<R> {
+    fn register(&self, accelerator: &str) -> Result<(), ShortcutError> {
+        register_quick_panel(&self.0, accelerator)
+    }
 }
 
 #[cfg(test)]

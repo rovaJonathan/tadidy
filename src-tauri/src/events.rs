@@ -26,7 +26,12 @@ pub struct PanelShown {
 
 /// Tells the webview that the popover or the Quick Panel was shown, so it can focus its
 /// search field and reset its selection.
-pub fn emit_panel_shown(_sink: &impl EventSink, _window: &str) {}
+pub fn emit_panel_shown(sink: &impl EventSink, window: &str) {
+    let payload = PanelShown {
+        window: window.to_owned(),
+    };
+    sink.emit(PANEL_SHOWN, json!(payload));
+}
 
 /// Emits to every webview of the running app. Generic over the runtime so tests use
 /// Tauri's mock runtime.
