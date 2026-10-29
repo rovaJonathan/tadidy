@@ -32,7 +32,9 @@ impl FakePasteboard {
 
     /// Replaces the content as another application would, bumping the change count.
     pub fn set(&self, items: Vec<Representation>) {
-        todo!("{items:?}")
+        let mut state = lock(&self.state);
+        state.items = items;
+        state.change_count += 1;
     }
 
     /// Every item list written through [`Pasteboard::write`], oldest first.
@@ -47,15 +49,27 @@ impl Pasteboard for FakePasteboard {
     }
 
     fn types(&self) -> Vec<String> {
-        todo!()
+        lock(&self.state)
+            .items
+            .iter()
+            .map(|item| item.uti.clone())
+            .collect()
     }
 
     fn read(&self, uti: &str) -> Option<Vec<u8>> {
-        todo!("{uti}")
+        lock(&self.state)
+            .items
+            .iter()
+            .find(|item| item.uti == uti)
+            .map(|item| item.data.clone())
     }
 
     fn write(&self, items: &[Representation]) -> Result<i64, PlatformError> {
-        todo!("{items:?}")
+        let mut state = lock(&self.state);
+        state.items = items.to_vec();
+        state.change_count += 1;
+        state.writes.push(items.to_vec());
+        Ok(state.change_count)
     }
 }
 
@@ -77,21 +91,21 @@ impl FakeWorkspace {
     }
 
     pub fn set_frontmost(&self, app: Option<SourceApp>) {
-        todo!("{app:?}")
+        lock(&self.state).frontmost = app;
     }
 
     pub fn set_icon(&self, bundle_id: &str, png: Vec<u8>) {
-        todo!("{bundle_id} {}", png.len())
+        lock(&self.state).icons.insert(bundle_id.to_owned(), png);
     }
 }
 
 impl Workspace for FakeWorkspace {
     fn frontmost_app(&self) -> Option<SourceApp> {
-        todo!()
+        lock(&self.state).frontmost.clone()
     }
 
     fn app_icon_png(&self, app: &SourceApp) -> Option<Vec<u8>> {
-        todo!("{app:?}")
+        lock(&self.state).icons.get(&app.bundle_id).cloned()
     }
 }
 

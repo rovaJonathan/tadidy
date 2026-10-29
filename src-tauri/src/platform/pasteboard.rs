@@ -1,5 +1,7 @@
 //! The general pasteboard, as seen by the watcher and the paster.
 
+use std::fmt;
+
 use super::PlatformError;
 
 /// Plain text, UTF-8.
@@ -14,7 +16,7 @@ pub const IGNORED_TYPES: [&str; 3] = [
 ];
 
 /// One data format of a clip, identified by its UTI.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Representation {
     pub uti: String,
     pub data: Vec<u8>,
@@ -26,6 +28,16 @@ impl Representation {
             uti: uti.into(),
             data: data.into(),
         }
+    }
+}
+
+// Printed by hand: a derived `Debug` would put the clip's bytes in a log or a test failure.
+impl fmt::Debug for Representation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Representation")
+            .field("uti", &self.uti)
+            .field("len", &self.data.len())
+            .finish()
     }
 }
 
