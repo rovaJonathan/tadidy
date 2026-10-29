@@ -1,10 +1,20 @@
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
 import type { Page } from "../bindings/Page";
 import { clip, deferred, fakeCore, page } from "../../test/clips";
 import { ClipsStore } from "./clips.svelte";
+
+/** A source of clips answering `list_clips` page by page: the cursor is the index of the next clip. */
+function pagedBy(source: ClipSummary[]) {
+  return (q: ClipQuery) => {
+    const from = Number(q.cursor ?? 0);
+    const to = from + (q.limit ?? 50);
+    return page(source.slice(from, to), to < source.length ? String(to) : null, source.length);
+  };
+}
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
 
@@ -469,6 +479,40 @@ describe("ClipsStore deleteClip", () => {
     expect(store.selected?.id).toBe("clip-3");
   });
 
+  it("keeps the loaded pages, and the selection's index, when a row past the first page is deleted", async () => {
+    const source = Array.from({ length: 100 }, (_, i) => clip(i + 1));
+    fakeCore(pagedBy(source));
+    await store.start();
+    await store.loadMore();
+    store.select(60);
+    expect(store.selected?.id).toBe("clip-61");
+    source.splice(60, 1);
+
+    await store.deleteClip("clip-61");
+
+    expect(store.items).toHaveLength(99);
+    expect(store.selectedIndex).toBe(60);
+    expect(store.selected?.id).toBe("clip-62");
+    expect(store.total).toBe(99);
+  });
+
+  it("reloads more than one maximal page when more rows than that were loaded", async () => {
+    const source = Array.from({ length: 300 }, (_, i) => clip(i + 1));
+    const core = fakeCore(pagedBy(source));
+    await store.start();
+    while (store.nextCursor !== null) await store.loadMore();
+    store.select(250);
+    source.splice(250, 1);
+    core.queries.length = 0;
+
+    await store.deleteClip("clip-251");
+
+    expect(store.items).toHaveLength(299);
+    expect(store.selected?.id).toBe("clip-252");
+    expect(core.queries.map((q) => q.limit)).toEqual([200, 99]);
+    expect(core.queries.map((q) => q.cursor)).toEqual([undefined, "200"]);
+  });
+
   it("keeps the rows when the core refuses to delete", async () => {
     fakeCore(() => page([clip(1), clip(2)]));
     await store.start();
@@ -526,6 +570,25 @@ describe("ClipsStore settled", () => {
     await flush();
 
     expect(done).toBe(true);
+    expect(store.selected?.id).toBe("clip-3");
+  });
+
+  it("keeps waiting when a clips://changed reload supersedes the search it waits for", async () => {
+    fakeCore((q) => {
+      const answer = q.search ? page([clip(3)]) : THREE();
+      return new Promise((resolve) => setTimeout(() => resolve(answer), 30));
+    });
+    const started = store.start();
+    await vi.advanceTimersByTimeAsync(30);
+    await started;
+    store.setSearch("3");
+
+    let staleWhenDone: boolean | undefined;
+    void store.settled().then(() => (staleWhenDone = store.stale));
+    await emit("clips://changed", {});
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(staleWhenDone).toBe(false);
     expect(store.selected?.id).toBe("clip-3");
   });
 
