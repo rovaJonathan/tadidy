@@ -75,3 +75,21 @@ Open TextEdit with an empty document and the insertion point in it before each r
 | 4 | Switch the keyboard layout to AZERTY (*System Settings → Keyboard → Input Sources*) and repeat step 3. | The sentence is pasted: `⌘V` is not read as another shortcut. |
 | 5 | Start the probe, bring TextEdit to the front, then hold `⇧` until the sentence appears (about 3 s after the start), and release it. | The sentence is pasted. The event carries `Command` only, so the held `⇧` is not merged in. If it were, the app would receive `⌘⇧V`, which does nothing in TextEdit: an empty document means the step failed. |
 | 6 | Turn the terminal off again in the Accessibility pane. | The state is back to step 1; restore your own layout and settings. |
+
+### TAD-006 — Non-activating Quick Panel and global shortcut
+
+`pnpm tauri dev` is enough for steps 1 to 9. Step 10 (full-screen app) is best run on a signed build. Keep the app running between steps 1 and 11. Use two screens for step 3 when you have them.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Run `pnpm tauri dev`, then press `⌘⇧V` from any app. | The Quick Panel (about 640 × 460 pt, translucent, 10 pt corners, placeholder "Tadidy") appears in the middle of the screen, without a perceptible delay. |
+| 2 | Press `⌘⇧V` again. | The panel hides. |
+| 3 | Move the pointer to the other screen, press `⌘⇧V`. | The panel appears centred on the screen under the pointer. |
+| 4 | Open TextEdit, type a few words, leave the caret in the middle of them, press `⌘⇧V`, then type `abc`. | TextEdit stays the active app: its menu bar stays visible and its title is still highlighted. The caret does not move and no `abc` appears in the document (the keys go to the panel). |
+| 5 | With the panel open over TextEdit, press `Esc`. | The panel hides. TextEdit is still the active app and its caret blinks where it was. |
+| 6 | Open the panel, then click in the TextEdit window. | The panel hides and the click reaches TextEdit (the caret moves to the click). |
+| 7 | Switch to another Space (`⌃→`), press `⌘⇧V`. | The panel appears on that Space, not on the previous one. |
+| 8 | Hold `⌘Tab` with the panel visible, and look at the Dock. | No Tadidy entry in the switcher, no Dock icon. |
+| 9 | Left-click the tray icon to show the popover, then press `⌘⇧V`. | The panel appears. The popover hides (it lost the key window), and pressing `⌘⇧V` again hides the panel. |
+| 10 | Put Safari in full screen (own Space), press `⌘⇧V`. | The panel appears above Safari on that Space; Safari stays full screen and active. |
+| 11 | Quit Tadidy. Run a second copy that holds `⌘⇧V` first (for example a Hammerspoon `hs.hotkey.bind({"cmd","shift"}, "v", …)`), then start Tadidy. | Tadidy starts and keeps running with the tray icon. `⌘⇧V` does not open the panel. The log line `the Quick Panel shortcut is not registered` with `code="unavailable"` is printed (and no clip content). |
