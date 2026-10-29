@@ -138,7 +138,15 @@ impl Watcher {
                 app_icons::put(conn, &app.bundle_id, png)?;
             }
             let outcome = clips::insert_or_bump(conn, &clip)?;
-            let removed = clips::enforce_limit(conn, self.limit.get())?;
+            // The clip is committed: a trim that fails must not hide it from the front. The
+            // next capture trims what is left over.
+            let removed = clips::enforce_limit(conn, self.limit.get()).unwrap_or_else(|error| {
+                tracing::error!(
+                    code = WatcherError::from(error).code(),
+                    "the history could not be trimmed"
+                );
+                Vec::new()
+            });
             Ok::<_, StorageError>((outcome, removed))
         })?;
 
@@ -731,7 +739,7 @@ mod tests {
             Some(&(CLIPS_CHANGED, changed(Some(&second), None, None)))
         );
 
-        // The next capture trims what the failed one left behind.
+        // The next capture trims what the failed one left behind, newest first.
         h.db.with_conn(|conn| conn.execute_batch("DROP TRIGGER no_trim;"))
             .unwrap();
         h.clock.set(3_000);
@@ -742,7 +750,7 @@ mod tests {
             h.events.events().last(),
             Some(&(
                 CLIPS_CHANGED,
-                changed(Some(&third), None, Some(&[first.as_str(), second.as_str()]))
+                changed(Some(&third), None, Some(&[second.as_str(), first.as_str()]))
             ))
         );
     }
@@ -889,15 +897,39 @@ mod tests {
         assert_eq!(h.count(), 2);
     }
 
+    /// An idle probe that counts the readings: the loop reads it right after each tick.
+    #[derive(Default)]
+    struct CountingIdle(AtomicUsize);
+
+    impl IdleProbe for CountingIdle {
+        fn seconds_since_last_input(&self) -> f64 {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            0.0
+        }
+    }
+
     #[test]
     fn the_watcher_thread_survives_a_database_error() {
         let h = Harness::new();
-        let watcher = h.watcher();
+        let ticks = Arc::new(CountingIdle::default());
+        let watcher = Watcher::new(
+            Services {
+                idle: ticks.clone(),
+                ..h.services()
+            },
+            h.db.clone(),
+            h.limit.clone(),
+        );
         h.db.with_conn(|conn| conn.execute_batch("ALTER TABLE representations RENAME TO parked;"))
             .unwrap();
         h.pasteboard.set(vec![text("lost")]);
         let handle = watcher.spawn();
-        std::thread::sleep(Duration::from_millis(100));
+        // The first tick sees "lost" and fails; the loop reads the idle time once it is over.
+        assert!(
+            wait_for(|| ticks.0.load(Ordering::Relaxed) >= 1),
+            "the first tick never ended"
+        );
+        assert_eq!(h.count(), 0);
         h.db.with_conn(|conn| conn.execute_batch("ALTER TABLE parked RENAME TO representations;"))
             .unwrap();
 
@@ -907,6 +939,7 @@ mod tests {
             wait_for(|| h.count() == 1),
             "the thread stopped after an error"
         );
+        assert_eq!(h.list()[0].plain_text.as_deref(), Some("kept"));
         handle.stop();
     }
 
