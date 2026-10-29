@@ -5,7 +5,9 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use uuid::Uuid;
 
 use super::StorageError;
-use crate::clip::{ClipRecord, ClipWithRepresentations, Cursor, NewClip};
+use crate::clip::{
+    ClipQuery, ClipRecord, ClipSummary, ClipWithRepresentations, Cursor, NewClip, Page,
+};
 use crate::platform::Representation;
 
 macro_rules! clip_columns {
@@ -145,6 +147,13 @@ pub fn list_recent(
             .collect::<Result<_, _>>()?,
     };
     Ok(rows)
+}
+
+/// One page of the list `query` asks for, newest first: every clip, or the ones matching its
+/// search. `total` counts all of them, not only this page.
+pub fn list(conn: &Connection, query: &ClipQuery) -> Result<Page<ClipSummary>, StorageError> {
+    let _ = (conn, query);
+    todo!("TAD-012")
 }
 
 pub fn get(conn: &Connection, id: &str) -> Result<Option<ClipWithRepresentations>, StorageError> {

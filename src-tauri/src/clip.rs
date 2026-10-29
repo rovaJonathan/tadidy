@@ -149,6 +149,81 @@ impl fmt::Debug for ClipRecord {
     }
 }
 
+/// Page size when the front does not ask for one, and the most it can ask for.
+pub const DEFAULT_PAGE_SIZE: u32 = 50;
+pub const MAX_PAGE_SIZE: u32 = 200;
+
+/// What `list_clips` is asked for. The filters of the spec that come later (kinds, app, tab,
+/// collection) join as optional fields.
+#[derive(Clone, Default, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct ClipQuery {
+    /// What the user typed in the search field; blank means no search.
+    #[ts(optional)]
+    pub search: Option<String>,
+    /// The `next_cursor` of the previous page; none for the first page.
+    #[ts(optional)]
+    pub cursor: Option<String>,
+    /// Page size: 50 by default, 200 at most.
+    #[ts(optional)]
+    pub limit: Option<u32>,
+}
+
+// Printed by hand: the search text is never logged, only its length (AGENTS.md §2).
+impl fmt::Debug for ClipQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClipQuery")
+            .field("search_len", &self.search.as_ref().map(String::len))
+            .field("cursor", &self.cursor)
+            .field("limit", &self.limit)
+            .finish()
+    }
+}
+
+/// A clip as the list shows it: no representations, no full text.
+#[derive(Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct ClipSummary {
+    pub id: String,
+    pub kind: ClipKind,
+    /// The text shown on two lines; none for an image.
+    pub preview: Option<String>,
+    pub source_bundle: Option<String>,
+    pub source_name: Option<String>,
+    pub pinned: bool,
+    pub copy_count: i64,
+    /// Milliseconds since the Unix epoch.
+    #[ts(type = "number")]
+    pub last_copied_at: i64,
+}
+
+// Printed by hand, like [`ClipRecord`]: the preview is clip content.
+impl fmt::Debug for ClipSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClipSummary")
+            .field("id", &self.id)
+            .field("kind", &self.kind)
+            .field("pinned", &self.pinned)
+            .field("copy_count", &self.copy_count)
+            .field("last_copied_at", &self.last_copied_at)
+            .finish_non_exhaustive()
+    }
+}
+
+/// One page of a list.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
+pub struct Page<T> {
+    pub items: Vec<T>,
+    /// What to hand back as `cursor` to get the next page; none on the last one.
+    pub next_cursor: Option<String>,
+    /// How many clips match the query in all, not only on this page.
+    pub total: u32,
+}
+
 /// A clip and every data format stored for it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipWithRepresentations {
