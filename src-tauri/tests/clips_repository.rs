@@ -208,7 +208,7 @@ fn the_same_content_later_bumps_the_existing_clip() {
     let outcome = insert(&db, &text_clip("same", 2_000));
 
     assert_eq!(outcome, InsertOutcome::Bumped(id.clone()));
-    assert_eq!(db.with_conn(|conn| count(conn)).unwrap(), 2);
+    assert_eq!(db.with_conn(count).unwrap(), 2);
     let found = db.with_conn(|conn| get(conn, &id)).unwrap().unwrap();
     assert_eq!(found.clip.copy_count, 2);
     assert_eq!(found.clip.created_at, 1_000);
@@ -373,10 +373,14 @@ fn the_limit_deletes_the_oldest_unpinned_clips_and_spares_the_pinned_ones() {
         .map(|i| inserted_id(insert(&db, &text_clip(&format!("clip {i}"), 100 + i))))
         .collect();
 
-    let deleted = db.with_conn(|conn| enforce_limit(conn, Some(10))).unwrap();
+    let mut deleted = db.with_conn(|conn| enforce_limit(conn, Some(10))).unwrap();
 
-    assert_eq!(deleted, unpinned[..2].to_vec());
-    assert_eq!(db.with_conn(|conn| count(conn)).unwrap(), 12);
+    // The order of the ids returned is not part of the contract.
+    deleted.sort();
+    let mut oldest = unpinned[..2].to_vec();
+    oldest.sort();
+    assert_eq!(deleted, oldest);
+    assert_eq!(db.with_conn(count).unwrap(), 12);
     for id in &pinned {
         assert!(db.with_conn(|conn| get(conn, id)).unwrap().is_some());
     }
@@ -395,7 +399,7 @@ fn a_history_under_the_limit_is_left_alone() {
     let deleted = db.with_conn(|conn| enforce_limit(conn, Some(10))).unwrap();
 
     assert!(deleted.is_empty());
-    assert_eq!(db.with_conn(|conn| count(conn)).unwrap(), 3);
+    assert_eq!(db.with_conn(count).unwrap(), 3);
 }
 
 #[test]
@@ -408,7 +412,7 @@ fn no_limit_deletes_nothing() {
     let deleted = db.with_conn(|conn| enforce_limit(conn, None)).unwrap();
 
     assert!(deleted.is_empty());
-    assert_eq!(db.with_conn(|conn| count(conn)).unwrap(), 30);
+    assert_eq!(db.with_conn(count).unwrap(), 30);
 }
 
 // --- delete and clear ------------------------------------------------------------------------
@@ -423,7 +427,7 @@ fn delete_reports_only_the_ids_it_removed() {
         .with_conn(|conn| delete(conn, &[first.clone(), "unknown".to_owned()]))
         .unwrap();
 
-    assert_eq!(removed, [first.clone()]);
+    assert_eq!(removed, std::slice::from_ref(&first));
     assert!(db.with_conn(|conn| get(conn, &first)).unwrap().is_none());
     assert!(db.with_conn(|conn| get(conn, &second)).unwrap().is_some());
     db.with_conn(|conn| {
@@ -450,7 +454,7 @@ fn clearing_can_keep_the_pinned_clips() {
     let everything = db.with_conn(|conn| clear(conn, false)).unwrap();
 
     assert_eq!(everything, 2);
-    assert_eq!(db.with_conn(|conn| count(conn)).unwrap(), 0);
+    assert_eq!(db.with_conn(count).unwrap(), 0);
 }
 
 #[test]
@@ -474,7 +478,8 @@ fn the_index_finds_accented_text_without_the_accent_until_the_clip_is_deleted() 
     let id = inserted_id(insert(&db, &text_clip("un café noir", 1_000)));
 
     let before = db.with_conn(|conn| fts_matches(conn, "cafe"));
-    db.with_conn(|conn| delete(conn, &[id.clone()])).unwrap();
+    db.with_conn(|conn| delete(conn, std::slice::from_ref(&id)))
+        .unwrap();
     let after = db.with_conn(|conn| fts_matches(conn, "cafe"));
 
     assert_eq!(before, [id]);
@@ -502,7 +507,7 @@ fn a_bump_does_not_write_to_the_index_but_a_new_source_app_does() {
     assert_eq!(plain_bump, 1);
     assert!(reindexed_bump > plain_bump, "{reindexed_bump}");
     db.with_conn(|conn| {
-        assert_eq!(fts_matches(conn, "Browser"), [id.clone()]);
+        assert_eq!(fts_matches(conn, "Browser"), std::slice::from_ref(&id));
         assert!(fts_matches(conn, "Editor").is_empty());
         assert_eq!(fts_matches(conn, "same"), [id]);
     });

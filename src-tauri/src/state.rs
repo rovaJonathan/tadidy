@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+use crate::clip::HistoryLimit;
 use crate::platform::{AccessibilityProbe, KeySender};
 use crate::shortcuts::ShortcutStatus;
 use crate::storage::Db;
@@ -16,6 +17,8 @@ pub struct AppState {
     pub shortcut: Mutex<ShortcutStatus>,
     /// `None` when the database could not be opened (e.g. its key is missing from the Keychain).
     pub db: Option<Db>,
+    /// How many clips the history keeps (HIS-02), shared with the settings and the purger.
+    pub history_limit: HistoryLimit,
 }
 
 impl AppState {
@@ -25,6 +28,7 @@ impl AppState {
             key_sender,
             shortcut: Mutex::default(),
             db: None,
+            history_limit: HistoryLimit::default(),
         }
     }
 

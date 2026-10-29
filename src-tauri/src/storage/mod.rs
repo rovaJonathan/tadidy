@@ -1,6 +1,8 @@
 //! The encrypted database (SQLCipher). The connection is opened with the key first, checked, set
 //! up, then migrated. Clip content never appears in an error or a log (AGENTS.md §2).
 
+pub mod app_icons;
+pub mod clips;
 mod migrations;
 
 use std::path::Path;
