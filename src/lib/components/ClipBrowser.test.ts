@@ -317,16 +317,16 @@ describe("ClipBrowser empty states", () => {
   });
 
   it("keeps #empty-search and its count until the cleared search has reloaded", async () => {
-    let reload: Promise<ReturnType<typeof page>> | undefined;
-    fakeCore((q) => (q.search ? page([]) : (reload ?? page([clip(1), clip(2)], null, 2))));
+    const held = deferred<ReturnType<typeof page>>();
+    let holding = false;
+    fakeCore((q) => (q.search ? page([]) : holding ? held.promise : page([clip(1), clip(2)], null, 2)));
     const { container } = render(ClipBrowser);
     await settle();
     await fireEvent.input(input(container), { target: { value: "zzz" } });
     await settle(50);
     expect(container.querySelector("#empty-search")).not.toBeNull();
 
-    const held = deferred<ReturnType<typeof page>>();
-    reload = held.promise;
+    holding = true;
     await fireEvent.input(input(container), { target: { value: "" } });
     await settle(50);
 

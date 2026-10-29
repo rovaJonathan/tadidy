@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { ClipSummary } from "../bindings/ClipSummary";
-  import { OVERSCAN, ROW_HEIGHT, visibleRange } from "../virtual-list";
+  import { OVERSCAN, ROW_HEIGHT, visibleRange, type RowRange } from "../virtual-list";
   import ClipRow from "./ClipRow.svelte";
 
   /** The next page is asked for when the last rows of what is loaded come into view. */
@@ -16,18 +16,24 @@
     iconUrls: ReadonlyMap<string, string>;
     /** Changes with the search: the list goes back to the top. */
     resetKey: string;
+    /** Told which rows are in the DOM, so `aria-activedescendant` never points at a missing one. */
+    onrange: (range: RowRange) => void;
     onneedmore: () => void;
     onneedicon: (bundleId: string) => void;
   }
 
-  let { items, total, selectedIndex, now, iconUrls, resetKey, onneedmore, onneedicon }: Props = $props();
+  let { items, total, selectedIndex, now, iconUrls, resetKey, onrange, onneedmore, onneedicon }: Props = $props();
 
   let list = $state<HTMLElement>();
   let scrollTop = $state(0);
   let viewportHeight = $state(0);
 
-  const range = $derived(visibleRange(scrollTop, viewportHeight, ROW_HEIGHT, items.length, OVERSCAN));
-  const rendered = $derived(items.slice(range.start, range.end));
+  const visible = $derived(visibleRange(scrollTop, viewportHeight, ROW_HEIGHT, items.length, OVERSCAN));
+  const rendered = $derived(items.slice(visible.start, visible.end));
+
+  $effect.pre(() => {
+    onrange(visible);
+  });
 
   $effect(() => {
     for (const clip of rendered) {
@@ -37,7 +43,7 @@
   });
 
   $effect(() => {
-    if (range.end > items.length - LOAD_AHEAD) untrack(onneedmore);
+    if (visible.end > items.length - LOAD_AHEAD) untrack(onneedmore);
   });
 
   $effect(() => {
@@ -59,7 +65,7 @@
 >
   <div class="clip-rows" role="presentation" style:height="{items.length * ROW_HEIGHT}px">
     {#each rendered as clip, offset (clip.id)}
-      {@const index = range.start + offset}
+      {@const index = visible.start + offset}
       <ClipRow
         {clip}
         {index}

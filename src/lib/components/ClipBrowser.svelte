@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { clipCountLabel } from "../format";
   import { ClipsStore } from "../stores/clips.svelte";
+  import type { RowRange } from "../virtual-list";
   import BrowserFooter from "./BrowserFooter.svelte";
   import ClipList from "./ClipList.svelte";
   import EmptyState from "./EmptyState.svelte";
@@ -14,7 +15,14 @@
   /** Rows show their age against this, moved forward every minute. */
   let now = $state(Date.now());
 
-  const selectedId = $derived(store.items[store.selectedIndex]?.id);
+  let renderedRange = $state<RowRange>({ start: 0, end: 0 });
+
+  /** Virtualization drops rows far from the viewport: only a row in the DOM can be the active one. */
+  const activeId = $derived(
+    store.selectedIndex >= renderedRange.start && store.selectedIndex < renderedRange.end
+      ? store.items[store.selectedIndex]?.id
+      : undefined,
+  );
 
   onMount(() => {
     void store.start();
@@ -29,7 +37,7 @@
 <div id="clip-browser" class="clip-browser" data-layout="popover">
   <SearchBar
     value={store.search}
-    activeDescendant={selectedId === undefined ? undefined : `clip-${selectedId}`}
+    activeDescendant={activeId === undefined ? undefined : `clip-${activeId}`}
     onsearch={(text) => store.setSearch(text)}
   />
 
@@ -40,20 +48,21 @@
       selectedIndex={store.selectedIndex}
       {now}
       iconUrls={store.iconUrls}
+      onrange={(range) => (renderedRange = range)}
       resetKey={store.query}
       onneedmore={() => void store.loadMore()}
       onneedicon={(bundleId) => store.requestIcon(bundleId)}
     />
     {#if store.loaded && store.items.length === 0}
-      {#if store.query}
-        <EmptyState variant="search" query={store.query} />
+      {#if store.loadedQuery}
+        <EmptyState variant="search" query={store.loadedQuery} />
       {:else}
         <EmptyState variant="history" />
       {/if}
     {/if}
   </div>
 
-  <BrowserFooter count={clipCountLabel(store.total, store.query !== "")} />
+  <BrowserFooter count={clipCountLabel(store.total, store.loadedQuery !== "")} />
 </div>
 
 <style>

@@ -24,6 +24,8 @@ export class ClipsStore {
 
   /** The search the core is asked for. */
   query = $derived(this.search.trim());
+  /** The search `items` and `total` answer: it trails `query` until the reload arrives. */
+  loadedQuery = $state("");
 
   /** Bumped by every first-page load and by `destroy`: an older answer is dropped. */
   #generation = 0;
@@ -114,9 +116,11 @@ export class ClipsStore {
   async #loadFirstPage(keepSelection: boolean): Promise<void> {
     const generation = ++this.#generation;
     this.loading = true;
+    const asked = this.query;
     try {
       const page = await listClips(this.#queryFor());
       if (generation !== this.#generation) return;
+      this.loadedQuery = asked;
       const selectedId = keepSelection ? this.items[this.selectedIndex]?.id : undefined;
       this.items = page.items;
       this.total = page.total;
