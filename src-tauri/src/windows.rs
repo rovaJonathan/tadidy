@@ -187,21 +187,21 @@ pub fn toggle_quick_panel<R: Runtime>(app: &AppHandle<R>) {
 /// A monitor's rectangle in logical points, the unit of `CGDisplayBounds`. tao reports a
 /// monitor's position and size in pixels of that monitor's own scale, so the rectangles of
 /// monitors with different scales do not tile one space until they are divided by their scale.
-pub fn logical_rect(position: (i32, i32), size: (u32, u32), _scale: f64) -> Rect {
+pub fn logical_rect(position: (i32, i32), size: (u32, u32), scale: f64) -> Rect {
     Rect {
-        x: f64::from(position.0),
-        y: f64::from(position.1),
-        width: f64::from(size.0),
-        height: f64::from(size.1),
+        x: f64::from(position.0) / scale,
+        y: f64::from(position.1) / scale,
+        width: f64::from(size.0) / scale,
+        height: f64::from(size.1) / scale,
     }
 }
 
 /// The pointer in logical points. tao's `cursor_position` multiplies the global point by the
 /// primary monitor's scale, whichever monitor the pointer is on.
-pub fn pointer_in_points(cursor: (f64, f64), _primary_scale: f64) -> Position {
+pub fn pointer_in_points(cursor: (f64, f64), primary_scale: f64) -> Position {
     Position {
-        x: cursor.0,
-        y: cursor.1,
+        x: cursor.0 / primary_scale,
+        y: cursor.1 / primary_scale,
     }
 }
 
@@ -210,38 +210,37 @@ pub fn center_on_pointer_screen<R: Runtime>(
     app: &AppHandle<R>,
     window: &WebviewWindow<R>,
 ) -> tauri::Result<()> {
-    let pointer = app.cursor_position()?;
-    let monitors = app.available_monitors()?;
-    let rect_of = |monitor: &tauri::Monitor| Rect {
-        x: f64::from(monitor.position().x),
-        y: f64::from(monitor.position().y),
-        width: f64::from(monitor.size().width),
-        height: f64::from(monitor.size().height),
-    };
-    let screens: Vec<Rect> = monitors.iter().map(rect_of).collect();
-    let pointer = Position {
-        x: pointer.x,
-        y: pointer.y,
-    };
+    // Everything is worked out in logical points, the unit AppKit places windows in: the
+    // physical values tao reports use a different scale for the pointer, for each monitor
+    // and for the window being moved.
+    let cursor = app.cursor_position()?;
+    let primary_scale = app
+        .primary_monitor()?
+        .map_or(1.0, |monitor| monitor.scale_factor());
+    let screens: Vec<Rect> = app
+        .available_monitors()?
+        .iter()
+        .map(|monitor| {
+            let (position, size) = (monitor.position(), monitor.size());
+            logical_rect(
+                (position.x, position.y),
+                (size.width, size.height),
+                monitor.scale_factor(),
+            )
+        })
+        .collect();
+    let pointer = pointer_in_points((cursor.x, cursor.y), primary_scale);
     let Some(screen) = target_screen(pointer, &screens) else {
         return Ok(());
     };
-    // The panel is sized in logical pixels: its physical size depends on the screen's scale.
-    let scale = monitors
-        .iter()
-        .find(|monitor| rect_of(monitor) == screen)
-        .map_or(1.0, tauri::Monitor::scale_factor);
     let origin = center_in(
         screen,
         Size {
-            width: PANEL_WIDTH * scale,
-            height: PANEL_HEIGHT * scale,
+            width: PANEL_WIDTH,
+            height: PANEL_HEIGHT,
         },
     );
-    window.set_position(tauri::PhysicalPosition::new(
-        origin.x.round() as i32,
-        origin.y.round() as i32,
-    ))
+    window.set_position(tauri::LogicalPosition::new(origin.x, origin.y))
 }
 
 fn lock(state: &PopoverState) -> MutexGuard<'_, PopoverToggle> {
