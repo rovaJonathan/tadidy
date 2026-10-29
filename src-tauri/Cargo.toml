@@ -23,6 +23,7 @@ anyhow = "1.0.104"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tauri = { version = "2.12", features = ["tray-icon", "macos-private-api", "image-png"] }
+tauri-plugin-global-shortcut = "2.4.1"
 tauri-plugin-positioner = { version = "2.4.0", features = ["tray-icon"] }
 thiserror = "2.0.21"
 tracing = "0.1.44"
@@ -65,3 +66,4 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
     "NSRunLoop",
     "NSString",
 ] }
+tauri-nspanel = "2.1.1"
