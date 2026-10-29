@@ -17,7 +17,8 @@ pub enum ShortcutError {
     /// The accelerator string does not describe a key combination.
     #[error("invalid accelerator: {0}")]
     Invalid(String),
-    /// The system refused the registration, typically because another app owns the combination.
+    /// The system refused the registration. macOS does not refuse a combination another app
+    /// already holds (the plugin registers it non-exclusively), so this stays rare.
     #[error("shortcut unavailable: {0}")]
     Unavailable(String),
 }
