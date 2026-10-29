@@ -29,11 +29,14 @@ export class ClipsStore {
   query = $derived(this.search.trim());
   /** The search `items` and `total` answer: it trails `query` until the reload arrives. */
   loadedQuery = $state("");
+  /** The list still shows the answer to an older search: a key that acts on a row must wait (`settled`). */
+  stale = $derived(this.query !== this.loadedQuery);
 
   /** Bumped by every first-page load and by `destroy`: an older answer is dropped. */
   #generation = 0;
   #destroyed = false;
   #debounce: ReturnType<typeof setTimeout> | undefined;
+  #firstPage: Promise<void> = Promise.resolve();
   #frame: number | undefined;
   #unlisten: (() => void) | undefined;
   readonly #requestedIcons = new SvelteSet<string>();
@@ -84,6 +87,16 @@ export class ClipsStore {
     return this.#loadFirstPage(false);
   }
 
+  /** Runs the pending search now and resolves once its first page (or its failure) has landed. */
+  async settled(): Promise<void> {
+    if (this.#debounce !== undefined) {
+      clearTimeout(this.#debounce);
+      this.#debounce = undefined;
+      void this.#loadFirstPage(false);
+    }
+    await this.#firstPage;
+  }
+
   /** Selects the row at `index` when it is loaded. */
   select(index: number): void {
     if (index >= 0 && index < this.items.length) this.selectedIndex = index;
@@ -102,13 +115,12 @@ export class ClipsStore {
 
   /** Deletes a clip; the selection stays at the same index, on whatever took the clip's place. */
   async deleteClip(id: string): Promise<void> {
-    const index = this.selectedIndex;
     try {
       await deleteClips([id]);
     } catch {
       return; // The rows stay as they are.
     }
-    await this.#loadFirstPage(true, index);
+    await this.#loadFirstPage(true);
   }
 
   async loadMore(): Promise<void> {
@@ -143,8 +155,13 @@ export class ClipsStore {
       });
   }
 
-  /** `fallbackIndex`: where the selection goes when `keepSelection` is set and its clip is gone. */
-  async #loadFirstPage(keepSelection: boolean, fallbackIndex = 0): Promise<void> {
+  /** With `keepSelection`, the selection follows its clip; when the clip is gone it stays at its index. */
+  #loadFirstPage(keepSelection: boolean): Promise<void> {
+    this.#firstPage = this.#fetchFirstPage(keepSelection);
+    return this.#firstPage;
+  }
+
+  async #fetchFirstPage(keepSelection: boolean): Promise<void> {
     const generation = ++this.#generation;
     this.loading = true;
     const asked = this.query;
@@ -157,7 +174,8 @@ export class ClipsStore {
       this.total = page.total;
       this.nextCursor = page.nextCursor;
       const found = page.items.findIndex((clip) => clip.id === selectedId);
-      this.selectedIndex = found >= 0 ? found : Math.min(fallbackIndex, Math.max(0, page.items.length - 1));
+      const stay = keepSelection ? this.selectedIndex : 0;
+      this.selectedIndex = found >= 0 ? found : Math.min(stay, Math.max(0, page.items.length - 1));
       this.loaded = true;
     } catch {
       // The rows already shown stay.
