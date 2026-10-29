@@ -26,8 +26,9 @@ pub fn check_accessibility(state: State<'_, AppState>) -> bool {
 }
 
 /// Lists Tadidy under *Privacy & Security → Accessibility* and opens that pane. Called from a
-/// user click only: the permission is never requested silently.
-#[tauri::command]
+/// user click only: the permission is never requested silently. `async` keeps the wait for
+/// `open` off the main thread, where a plain command would run.
+#[tauri::command(async)]
 pub fn open_accessibility_settings(state: State<'_, AppState>) -> Result<(), AppError> {
     state
         .accessibility
