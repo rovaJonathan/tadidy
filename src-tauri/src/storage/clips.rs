@@ -80,7 +80,8 @@ pub fn insert_or_bump(conn: &Connection, clip: &NewClip) -> Result<InsertOutcome
              last_copied_at = excluded.last_copied_at,
              copy_count = copy_count + 1,
              source_bundle = coalesce(excluded.source_bundle, source_bundle),
-             source_name = coalesce(excluded.source_name, source_name)
+             source_name = CASE WHEN excluded.source_bundle IS NULL
+                 THEN source_name ELSE excluded.source_name END
          RETURNING id, copy_count",
         params![
             Uuid::now_v7().to_string(),
@@ -152,7 +153,7 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<ClipWithRepresentations
         return Ok(None);
     };
     let representations = conn
-        .prepare_cached("SELECT uti, data FROM representations WHERE clip_id = ?1 ORDER BY uti")?
+        .prepare_cached("SELECT uti, data FROM representations WHERE clip_id = ?1 ORDER BY rowid")?
         .query_map([id], |row| {
             Ok(Representation::new(
                 row.get::<_, String>(0)?,
