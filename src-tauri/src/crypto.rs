@@ -50,6 +50,9 @@ impl fmt::Debug for DbKey {
 pub enum KeyStoreError {
     #[error("the key store is unavailable")]
     Unavailable,
+    /// `set` found a key already stored: it never replaces one (see [`KeyStore::set`]).
+    #[error("a key is already stored")]
+    AlreadyExists,
     #[error("the stored key is malformed")]
     Malformed,
     #[error("the system random generator failed")]
@@ -59,6 +62,8 @@ pub enum KeyStoreError {
 /// Where the database key is kept between launches.
 pub trait KeyStore: Send + Sync {
     fn get(&self) -> Result<Option<DbKey>, KeyStoreError>;
+    /// Stores `key` if none is stored, else [`KeyStoreError::AlreadyExists`]. Never overwrites:
+    /// a key that a database already uses would be lost for good (two first launches can race).
     fn set(&self, key: &DbKey) -> Result<(), KeyStoreError>;
 }
 
@@ -67,21 +72,31 @@ pub trait KeyStore: Send + Sync {
 pub struct FakeKeyStore {
     key: Mutex<Option<DbKey>>,
     failing: bool,
+    /// The next `get` answers "no key" although one is stored: a launch that lost a race.
+    hide_next_get: Mutex<bool>,
 }
 
 impl FakeKeyStore {
     pub fn with_key(key: DbKey) -> Self {
         Self {
             key: Mutex::new(Some(key)),
-            failing: false,
+            ..Self::default()
+        }
+    }
+
+    /// A store where another launch stores `key` right after our first `get` found nothing.
+    pub fn racing(key: DbKey) -> Self {
+        Self {
+            hide_next_get: Mutex::new(true),
+            ..Self::with_key(key)
         }
     }
 
     /// A store whose every call fails, as a locked Keychain would.
     pub fn failing() -> Self {
         Self {
-            key: Mutex::new(None),
             failing: true,
+            ..Self::default()
         }
     }
 }
@@ -91,6 +106,11 @@ impl KeyStore for FakeKeyStore {
         if self.failing {
             return Err(KeyStoreError::Unavailable);
         }
+        let hidden =
+            std::mem::take(&mut *self.hide_next_get.lock().unwrap_or_else(|e| e.into_inner()));
+        if hidden {
+            return Ok(None);
+        }
         Ok(self.key.lock().unwrap_or_else(|e| e.into_inner()).clone())
     }
 
@@ -98,7 +118,11 @@ impl KeyStore for FakeKeyStore {
         if self.failing {
             return Err(KeyStoreError::Unavailable);
         }
-        *self.key.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.clone());
+        let mut stored = self.key.lock().unwrap_or_else(|e| e.into_inner());
+        if stored.is_some() {
+            return Err(KeyStoreError::AlreadyExists);
+        }
+        *stored = Some(key.clone());
         Ok(())
     }
 }
@@ -106,6 +130,7 @@ impl KeyStore for FakeKeyStore {
 /// The key to open the database with. A stored key is returned as is. With no key, a new one is
 /// created only when there is no database yet: a database without its key can never be read
 /// again, and a fresh key must not silently replace it (the caller offers a reset instead).
+/// If another launch stored its key first, that key wins.
 pub fn load_or_create_key(store: &dyn KeyStore, db_exists: bool) -> Result<DbKey, StorageError> {
     if let Some(key) = store.get()? {
         return Ok(key);
@@ -114,8 +139,11 @@ pub fn load_or_create_key(store: &dyn KeyStore, db_exists: bool) -> Result<DbKey
         return Err(StorageError::KeyMissing);
     }
     let key = DbKey::generate()?;
-    store.set(&key)?;
-    Ok(key)
+    match store.set(&key) {
+        Ok(()) => Ok(key),
+        Err(KeyStoreError::AlreadyExists) => Ok(store.get()?.ok_or(KeyStoreError::Unavailable)?),
+        Err(error) => Err(error.into()),
+    }
 }
 
 #[cfg(test)]

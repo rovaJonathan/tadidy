@@ -6,7 +6,7 @@ use core_foundation::data::CFData;
 use core_foundation::dictionary::CFDictionary;
 use core_foundation::string::{CFString, CFStringRef};
 use security_framework::base::Error;
-use security_framework::passwords::{PasswordOptions, delete_generic_password, generic_password};
+use security_framework::passwords::{PasswordOptions, generic_password};
 use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
 use security_framework_sys::item::{
     kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecValueData,
@@ -22,6 +22,8 @@ pub const ACCOUNT: &str = "database-key";
 
 /// `errSecItemNotFound`: no item matches the query.
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+/// `errSecDuplicateItem`: an item with this service and account already exists.
+const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
 
 // SAFETY: the symbol is a `CFStringRef` constant exported by the Security framework, which
 // `security-framework-sys` already links; `security-framework-sys` does not declare this one.
@@ -69,7 +71,7 @@ impl KeyStore for KeychainKeyStore {
     }
 
     /// Readable after the first unlock (the watcher runs while the screen is locked) and never
-    /// copied to another device or a backup. An existing item is replaced.
+    /// copied to another device or a backup. An existing item is never replaced.
     fn set(&self, key: &DbKey) -> Result<(), KeyStoreError> {
         // The high-level `PasswordOptions` has no `kSecAttrAccessible`, and its access-control
         // flag needs the data-protection keychain (errSecMissingEntitlement for this app).
@@ -101,15 +103,13 @@ impl KeyStore for KeychainKeyStore {
             ]
         };
         let attributes = CFDictionary::from_CFType_pairs(&pairs);
-        // Nothing to delete on the first launch (errSecItemNotFound is expected).
-        let _ = delete_generic_password(&self.service, &self.account);
         // SAFETY: `attributes` is a valid dictionary for the whole call; the result is not
         // requested, so the null out-pointer is allowed.
         let status = unsafe { SecItemAdd(attributes.as_concrete_TypeRef(), std::ptr::null_mut()) };
-        if status == 0 {
-            Ok(())
-        } else {
-            Err(KeyStoreError::Unavailable)
+        match status {
+            0 => Ok(()),
+            ERR_SEC_DUPLICATE_ITEM => Err(KeyStoreError::AlreadyExists),
+            _ => Err(KeyStoreError::Unavailable),
         }
     }
 }

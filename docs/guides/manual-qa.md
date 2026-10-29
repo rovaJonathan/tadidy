@@ -104,7 +104,7 @@ cargo run --manifest-path src-tauri/Cargo.toml --example keychain_probe
 
 | # | Action | Expected |
 |---|---|---|
-| 1 | Run the `keychain_probe` example. | `before: Ok(false)`, `set: Ok(())`, `get: found true, same key: true`, `cleanup: Ok(())`. It uses the service `app.tadidy.probe` and prints no key. |
+| 1 | Run the `keychain_probe` example. | `before: Ok(false)`, `set: Ok(())`, `get: found true, same key: true`, `set again: Ok(Err(AlreadyExists)), key unchanged: true`, `cleanup: Ok(())`. It uses the service `app.tadidy.probe` and prints no key. |
 | 2 | Delete `~/Library/Application Support/app.tadidy/` and the item `app.tadidy` / `database-key` if they exist, then run `pnpm tauri dev`. | The app starts as before (tray icon). `tadidy.db` (+ `-wal`, `-shm`) exists in the folder. |
 | 3 | In Keychain Access, search `app.tadidy`. | One "application password": name `app.tadidy`, account `database-key`. |
 | 4 | `sqlite3 ~/Library/Application\ Support/app.tadidy/tadidy.db .tables` | `Error: file is not a database`. `head -c 16 tadidy.db` does not print `SQLite format 3`. |

@@ -7,6 +7,7 @@
 pub mod accessibility;
 #[cfg(target_os = "macos")]
 pub mod app_icon;
+#[cfg(target_os = "macos")]
 pub mod keychain;
 #[cfg(target_os = "macos")]
 pub mod keys;

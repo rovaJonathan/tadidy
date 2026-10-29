@@ -25,6 +25,16 @@ fn main() {
         read.is_some(),
         read.is_some_and(|read| read.as_bytes() == key.as_bytes())
     );
+    let other = DbKey::generate();
+    println!(
+        "set again: {:?}, key unchanged: {}",
+        other.as_ref().map(|other| store.set(other)),
+        store
+            .get()
+            .ok()
+            .flatten()
+            .is_some_and(|read| read.as_bytes() == key.as_bytes())
+    );
     println!("cleanup: {:?}", delete_generic_password(SERVICE, ACCOUNT));
 }
 
