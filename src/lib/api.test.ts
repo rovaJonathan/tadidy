@@ -1,6 +1,8 @@
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { describe, expect, it } from "vitest";
-import { appVersion, checkAccessibility, hideWindow, openAccessibilitySettings } from "./api";
+import { appVersion, checkAccessibility, hideWindow, onPanelShown, openAccessibilitySettings } from "./api";
+import type { PanelShown } from "./bindings/PanelShown";
 
 describe("appVersion", () => {
   it("invokes app_version and returns its value", async () => {
@@ -62,5 +64,39 @@ describe("openAccessibilitySettings", () => {
       code: "accessibility_settings_unavailable",
       message: "no",
     });
+  });
+});
+
+describe("onPanelShown", () => {
+  it("hands the payload of panel://shown to the callback", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const shown: PanelShown[] = [];
+    await onPanelShown((payload) => shown.push(payload));
+
+    await emit("panel://shown", { window: "panel" });
+    await emit("panel://shown", { window: "popover" });
+
+    expect(shown).toEqual([{ window: "panel" }, { window: "popover" }]);
+  });
+
+  it("stops calling the callback once unlistened", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const shown: PanelShown[] = [];
+    const unlisten = await onPanelShown((payload) => shown.push(payload));
+
+    unlisten();
+    await emit("panel://shown", { window: "panel" });
+
+    expect(shown).toEqual([]);
+  });
+
+  it("ignores other events", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const shown: PanelShown[] = [];
+    await onPanelShown((payload) => shown.push(payload));
+
+    await emit("clips://changed", { window: "panel" });
+
+    expect(shown).toEqual([]);
   });
 });
