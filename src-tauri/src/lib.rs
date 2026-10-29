@@ -17,13 +17,11 @@ use tracing_subscriber::EnvFilter;
 /// The platform services of the running app: the AppKit and CoreGraphics ones.
 #[cfg(target_os = "macos")]
 fn real_state(db: Option<storage::Db>) -> AppState {
-    AppState {
-        db,
-        ..AppState::new(
-            std::sync::Arc::new(macos::accessibility::AxProbe),
-            std::sync::Arc::new(macos::keys::CgKeySender),
-        )
-    }
+    AppState::new(
+        std::sync::Arc::new(macos::accessibility::AxProbe),
+        std::sync::Arc::new(macos::keys::CgKeySender),
+    )
+    .with_db(db)
 }
 
 pub fn run() {

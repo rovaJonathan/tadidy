@@ -28,6 +28,10 @@ impl AppState {
         }
     }
 
+    pub fn with_db(self, db: Option<Db>) -> Self {
+        Self { db, ..self }
+    }
+
     /// A copy of the shortcut's registration state.
     pub fn shortcut_status(&self) -> ShortcutStatus {
         self.shortcut
@@ -40,8 +44,10 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::FakeKeyStore;
     use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
     use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
+    use crate::storage::open_in_dir;
     use std::sync::PoisonError;
 
     fn state() -> AppState {
@@ -75,21 +81,6 @@ mod tests {
             state.shortcut_status().error.as_deref(),
             Some("unavailable")
         );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::crypto::FakeKeyStore;
-    use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
-    use crate::storage::open_in_dir;
-
-    fn state() -> AppState {
-        AppState::new(
-            Arc::new(FakeAccessibility::new()),
-            Arc::new(FakeKeySender::new()),
-        )
     }
 
     #[test]
