@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{Connection, ErrorCode};
 
 use crate::crypto::{DbKey, KeyStore, KeyStoreError, load_or_create_key};
+use crate::error::AppError;
 
 /// The database file inside the data folder.
 pub const DB_FILE_NAME: &str = "tadidy.db";
@@ -83,6 +84,19 @@ pub fn open_in_dir(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError>
     let path = dir.join(DB_FILE_NAME);
     let key = load_or_create_key(store, path.exists())?;
     open(&path, &key)
+}
+
+/// What `setup` does at startup: the database, or `None` after logging why not, so the app still
+/// runs (spec *Encryption*: a missing key leaves the file untouched). Only the error code is
+/// logged, never a path or a key.
+pub fn open_or_report(dir: &Path, store: &dyn KeyStore) -> Option<Db> {
+    match open_in_dir(dir, store) {
+        Ok(db) => Some(db),
+        Err(error) => {
+            tracing::error!(code = %AppError::from(error).code, "the history database is unavailable");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

@@ -67,6 +67,7 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `objc2-application-services` / `objc2-core-foundation` | 0.3.2 / 0.3.2 | added by TAD-005 (not listed in the ticket), macOS target only, `default-features = false`: `AXIsProcessTrustedWithOptions` without hand-written FFI (`src-tauri/src/macos/accessibility.rs`); `objc2-core-foundation` builds its options dictionary |
 | `rusqlite` / `rusqlite_migration` | 0.40.2 / 2.6.0 | added by TAD-007, feature `bundled-sqlcipher-vendored-openssl`; rusqlite stays on 0.40 because `rusqlite_migration` 2.6.0 requires `^0.40` (crates.io's newest rusqlite is 0.41.1); `rusqlite_migration` needs rustc 1.95 |
 | `security-framework` | 3.7.0 | added by TAD-007, macOS target only (Keychain, `src-tauri/src/macos/keychain.rs`) |
+| `core-foundation` / `security-framework-sys` | 0.10.1 / 2.17.0 | added by TAD-007, macOS target only: `kSecAttrAccessible` is not in the high-level `security-framework` API (`macos/keychain.rs`) |
 | `getrandom` | 0.4.3 | added by TAD-007, the OS RNG for the database key |
 | `tempfile` | 3.27.0 | added by TAD-007, dev-dependency (temporary databases in tests) |
 

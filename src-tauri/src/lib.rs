@@ -16,11 +16,14 @@ use tracing_subscriber::EnvFilter;
 
 /// The platform services of the running app: the AppKit and CoreGraphics ones.
 #[cfg(target_os = "macos")]
-fn real_state() -> AppState {
-    AppState::new(
-        std::sync::Arc::new(macos::accessibility::AxProbe),
-        std::sync::Arc::new(macos::keys::CgKeySender),
-    )
+fn real_state(db: Option<storage::Db>) -> AppState {
+    AppState {
+        db,
+        ..AppState::new(
+            std::sync::Arc::new(macos::accessibility::AxProbe),
+            std::sync::Arc::new(macos::keys::CgKeySender),
+        )
+    }
 }
 
 pub fn run() {
@@ -35,13 +38,18 @@ pub fn run() {
     if let Err(error) = builder
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(real_state())
         .manage(windows::PopoverState::default())
         .setup(|app| {
             // Menu-bar app: no Dock icon and not in ⌘Tab, also in `tauri dev` where the
             // bundle's Info.plist (LSUIElement) does not apply (MNU-06).
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // The history database; without it (key missing) the app still runs, see `storage`.
+            #[cfg(target_os = "macos")]
+            app.manage(real_state(storage::open_or_report(
+                &app.path().app_data_dir()?,
+                &macos::keychain::KeychainKeyStore::default(),
+            )));
             // Created hidden at startup so the tray click only has to show it (< 100 ms).
             let popover = windows::create_popover(app)?;
             #[cfg(target_os = "macos")]

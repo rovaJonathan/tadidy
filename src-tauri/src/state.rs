@@ -1,10 +1,11 @@
 //! State managed by Tauri and shared by the commands. Later tickets add fields
-//! (database, settings, last active app).
+//! (settings, last active app).
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::platform::{AccessibilityProbe, KeySender};
 use crate::shortcuts::ShortcutStatus;
+use crate::storage::Db;
 
 /// The platform services as trait objects: the real ones in `setup`, fakes in the tests.
 pub struct AppState {
@@ -13,6 +14,8 @@ pub struct AppState {
     pub key_sender: Arc<dyn KeySender>,
     /// Result of the Quick Panel shortcut registration, read by the preferences (TAD-017).
     pub shortcut: Mutex<ShortcutStatus>,
+    /// `None` when the database could not be opened (e.g. its key is missing from the Keychain).
+    pub db: Option<Db>,
 }
 
 impl AppState {
@@ -21,6 +24,7 @@ impl AppState {
             accessibility,
             key_sender,
             shortcut: Mutex::default(),
+            db: None,
         }
     }
 
