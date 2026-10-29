@@ -108,14 +108,17 @@ pub fn update(
     events: &dyn EventSink,
     patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
-    // Held to the end so two updates cannot interleave their writes and their events.
-    let mut current = current.write().unwrap_or_else(PoisonError::into_inner);
-    let next = current.apply(patch)?;
+    // Held until `settings://changed` so two updates cannot interleave their writes and their
+    // events, then released: `get_settings` runs on the main thread and must not wait for the
+    // trim. The trim reads only `limit` and is idempotent, so interleaved trims still end right.
+    let mut guard = current.write().unwrap_or_else(PoisonError::into_inner);
+    let next = guard.apply(patch)?;
     db.with_conn(|conn| storage::settings::save(conn, &next))?;
-    let history_size_changed = next.history_size != current.history_size;
-    *current = next.clone();
+    let history_size_changed = next.history_size != guard.history_size;
+    *guard = next.clone();
     limit.set(next.history_limit());
     events.emit(SETTINGS_CHANGED, json!(next));
+    drop(guard);
     if history_size_changed {
         trim_history(db, limit, events);
     }
