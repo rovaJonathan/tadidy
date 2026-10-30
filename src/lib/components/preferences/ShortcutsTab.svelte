@@ -1,8 +1,63 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { getShortcutStatus } from "../../api";
+  import { DEFAULT_QUICK_PANEL_SHORTCUT, isReserved } from "../../shortcut";
   import type { SettingsStore } from "../../stores/settings.svelte";
+  import ShortcutRecorder from "./ShortcutRecorder.svelte";
 
-  let { store }: { store: SettingsStore } = $props();
-  void store;
+  let { store, hidden = false }: { store: SettingsStore; hidden?: boolean } = $props();
+
+  /** The combination the user tried and the shortcut could not take; it stays on screen with the error ring. */
+  let rejected = $state<string | null>(null);
+  /** The stored shortcut failed to register when Tadidy started. */
+  let startupFailed = $state(false);
+
+  const stored = $derived(store.settings?.quickPanelShortcut ?? DEFAULT_QUICK_PANEL_SHORTCUT);
+  const failed = $derived(rejected !== null || startupFailed);
+
+  onMount(() => {
+    void getShortcutStatus().then((status) => {
+      startupFailed = status.error !== null;
+    });
+  });
+
+  function clearError() {
+    rejected = null;
+    startupFailed = false;
+  }
+
+  async function save(accelerator: string) {
+    // macOS does not refuse a combination it keeps for itself when it is registered: the front knows the list.
+    if (isReserved(accelerator) || !(await store.patch({ quickPanelShortcut: accelerator }))) {
+      rejected = accelerator;
+    }
+  }
+
+  async function reset() {
+    clearError();
+    if (stored !== DEFAULT_QUICK_PANEL_SHORTCUT) await save(DEFAULT_QUICK_PANEL_SHORTCUT);
+  }
 </script>
 
-<div></div>
+<div id="prefs-shortcuts" class="prefs-panel" role="tabpanel" aria-labelledby="prefs-tab-shortcuts" {hidden}>
+  <div class="pref-group">
+    <div class="pref-row">
+      <div>
+        <span class="pref-label" id="shortcut-label">Open Quick Panel</span>
+        <div class="pref-desc">Works in every app, even in full screen.</div>
+        <p id="shortcut-error" class="field-error" role="alert" hidden={!failed}>
+          This shortcut is already used by macOS or another app. Choose another one.
+        </p>
+      </div>
+      <ShortcutRecorder
+        accelerator={rejected ?? stored}
+        invalid={failed}
+        defaultAccelerator={DEFAULT_QUICK_PANEL_SHORTCUT}
+        onstart={clearError}
+        onrecord={save}
+        onreset={reset}
+      />
+      <span id="shortcut-help" class="sr-only">Click, then press the new key combination. Press Escape to cancel.</span>
+    </div>
+  </div>
+</div>

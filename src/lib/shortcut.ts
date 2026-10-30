@@ -4,6 +4,9 @@
 /** The part of a `KeyboardEvent` the recorder reads. */
 export type RecordedKey = Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
 
+/** The shortcut Tadidy ships with (QPN-01); the core's `DEFAULT_QUICK_PANEL_SHORTCUT`. */
+export const DEFAULT_QUICK_PANEL_SHORTCUT = "Cmd+Shift+V";
+
 /** The modifiers in the order the prototype writes them (⌃⌥⌘⇧), with the spellings the core accepts. */
 const MODIFIERS = [
   { name: "Ctrl", symbol: "⌃", aliases: ["ctrl", "control"] },
