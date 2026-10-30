@@ -30,11 +30,14 @@
     // macOS does not refuse a combination it keeps for itself when it is registered: the front knows the list.
     if (isReserved(accelerator) || !(await store.patch({ quickPanelShortcut: accelerator }))) {
       rejected = accelerator;
+      return;
     }
+    clearError();
   }
 
   async function reset() {
-    clearError();
+    // The default already stored has nothing to change, so a startup failure is still there to show.
+    rejected = null;
     if (stored !== DEFAULT_QUICK_PANEL_SHORTCUT) await save(DEFAULT_QUICK_PANEL_SHORTCUT);
   }
 </script>
