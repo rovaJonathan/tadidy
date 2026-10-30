@@ -247,9 +247,9 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 | Measurement | Target | Result | Values | Note |
 |---|---|---|---|---|
 | Idle CPU, 10 min (Activity Monitor and `top -l` samples) | < 0.5 % | ✅ | mean 0.028 %, median 0.0 %, max 0.90 % (120 samples after the first) | `tadidy` main process only; WebKit helper processes not sampled. |
-| Popover opening, 10 openings | < 100 ms | not run | | median: |
-| Quick Panel opening, 10 openings | < 100 ms | not run | | median: |
-| Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | ✅ (automated part) | `search_perf`, debug profile: median 8.8 ms, worst 10.5 ms | The check on a seeded database in the real app is not run yet. |
+| Popover opening, 10 openings | < 100 ms | not measured | none | Owner: opens instantly. No timing log exists on the show path, so there are no 10 values and no median (owner chose "feel only"). |
+| Quick Panel opening, 10 openings | < 100 ms | not measured | none | Owner: opens instantly (after the first-launch problem of TAD-026). No 10 values and no median (owner chose "feel only"). |
+| Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | ✅ (automated part) | `search_perf`, debug profile: median 8.8 ms, worst 10.5 ms | Not run in the real app: seeding 10 000 clips means writing into the encrypted database with its key. The automated test and the owner's check of criterion 6 (few clips) stand in for it. |
 | RAM with both windows used | < 120 MB | ✅ | `tadidy` footprint 40 MB (peak 41 MB); one WebContent process 24 MB in the system log | about 65 MB in total, recorded only. The WebKit network process was not attributed. |
 | `.app` binary size | < 15 MB | ❌ accepted | universal `.app` 36.6 MiB, executable 38.4 MB; arm64-only `.app` 17.8 MiB, executable 18.7 MB; `.dmg` 12.5 MiB | recorded only. The owner said the size does not matter: no follow-up ticket. The spec line still says 15 MB. |
 
@@ -257,14 +257,14 @@ Signed-build manual QA of the earlier tickets, re-run on this build:
 
 | Section | Result | Note |
 |---|---|---|
-| TAD-003 — tray and popover | not run | |
-| TAD-004 — pasteboard and workspace | not run | |
-| TAD-005 — key sender and Accessibility | not run | |
-| TAD-006 — Quick Panel and global shortcut | not run | |
-| TAD-007 — encrypted database | not run | |
-| TAD-008 — signing and universal build (incl. steps 7 and 8) | partial | Steps 1 to 4 ✅ on this build: `Authority=Tadidy Dev`, `codesign --verify --deep --strict` exits 0, `lipo` gives `x86_64 arm64`. Steps 5 to 8 not run. |
-| TAD-010 — clipboard watcher | not run | |
-| TAD-015 — paste and copy commands | not run | |
-| TAD-016 — clip browser in both windows | not run | |
-| TAD-017 — Preferences | not run | |
-| TAD-018 — tray menu actions | not run | |
+| TAD-003 — tray and popover | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
+| TAD-004 — pasteboard and workspace | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
+| TAD-005 — key sender and Accessibility | covered | Paste (criterion 3) and the revoked-permission path (criterion 4) pass; the rest is not replayed. |
+| TAD-006 — Quick Panel and global shortcut | partial | The shortcut opens the panel after a restart; not on the first launch (TAD-026). The rest is not replayed. |
+| TAD-007 — encrypted database | covered | Criterion 8 and TAD-008 step 8: encrypted header, one Keychain item, no dialog. |
+| TAD-008 — signing and universal build (incl. steps 7 and 8) | ✅ | Steps 1 to 4: `Authority=Tadidy Dev`, verify exits 0, `x86_64 arm64`. Step 5: the designated requirement is identical across two builds (binaries differ). Step 6: with the identity unset the bundle is `Signature=adhoc`. Step 7 (owner): Accessibility still granted after installing build N+1 over N. Step 8: both builds use the same key (same header bytes), one Keychain item, no `SecurityAgent`, no `storage_key_missing`. The ad-hoc build's `.dmg` step failed on a leftover mounted image (`hdiutil` busy), unrelated to signing. |
+| TAD-010 — clipboard watcher | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
+| TAD-015 — paste and copy commands | covered | Criteria 3 and 4. |
+| TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem is TAD-026. |
+| TAD-017 — Preferences | ❌ (steps 6 to 8) | *Launch at login* cannot be switched on (TAD-025), so steps 6 to 8 cannot run. History size (criterion 5) works. The rest is not replayed. |
+| TAD-018 — tray menu actions | ✅ (step 7) | Step 7 on the bundled build (owner): About opens in front of TextEdit with the copyright line. The other steps are not replayed. |
