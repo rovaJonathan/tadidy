@@ -8,12 +8,15 @@
   import ClipList from "./ClipList.svelte";
   import DeleteClipDialog from "./DeleteClipDialog.svelte";
   import EmptyState from "./EmptyState.svelte";
+  import PermissionBanner from "./PermissionBanner.svelte";
   import SearchBar from "./SearchBar.svelte";
 
   const MINUTE_MS = 60_000;
 
   /** The host decides what pasting, copying, closing and the preferences do (TAD-016): by default, nothing. */
   interface Props {
+    /** Which window hosts the browser: the footer shows its hints in the panel only. */
+    layout?: "popover" | "panel";
     /** Ask before deleting a clip (Preferences › Confirm before delete). */
     confirmBeforeDelete?: boolean;
     onpaste?: (id: string) => void;
@@ -27,6 +30,7 @@
   const noop = () => undefined;
 
   let {
+    layout = "popover",
     confirmBeforeDelete = true,
     onpaste = noop,
     oncopy = noop,
@@ -120,6 +124,14 @@
     }
   }
 
+  /** Back to the state of a fresh window: no search, first row selected, list reloaded, search focused. */
+  export async function reset(): Promise<void> {
+    const loaded = store.reset();
+    searchBar?.focus();
+    await loaded;
+    list?.reveal(0);
+  }
+
   function confirmDelete(dontAskAgain: boolean) {
     const id = pendingDelete;
     closeDialog();
@@ -149,7 +161,7 @@
 
 <svelte:window {onkeydown} />
 
-<div id="clip-browser" class="clip-browser" data-layout="popover">
+<div id="clip-browser" class="clip-browser" data-layout={layout}>
   <SearchBar
     bind:this={searchBar}
     value={store.search}
@@ -181,7 +193,9 @@
     {/if}
   </div>
 
-  <BrowserFooter count={clipCountLabel(store.total, store.loadedQuery !== "")} />
+  <PermissionBanner />
+
+  <BrowserFooter count={clipCountLabel(store.total, store.loadedQuery !== "")} onpreferences={onopenpreferences} />
 
   {#if pendingDelete !== undefined}
     <div id="modal-layer">
@@ -196,8 +210,8 @@
     height: 100%;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas: "search" "list" "footer";
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "search" "list" "banner" "footer";
   }
 
   /* The prototype's dim layer over the browser while a dialog is open. */
