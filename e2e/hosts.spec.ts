@@ -75,15 +75,18 @@ for (const { label, page: url, section } of WINDOWS) {
       await expect.poll(async () => (await ipcCalls(page)).filter((cmd) => cmd === "open_preferences")).toHaveLength(2);
     });
 
-    test("a paste that only copied keeps the window open and shows the banner", async ({ page }) => {
-      await open(page, url, { paste_clip: "copied_only", check_accessibility: false });
-      await expect(page.locator("#banner-accessibility")).toBeVisible();
+    test("a paste that only copied, with Accessibility revoked, keeps the window open and shows the banner", async ({
+      page,
+    }) => {
+      await open(page, url, { paste_clip: "copied_only", check_accessibility: true });
+      await expect(page.locator("#banner-accessibility")).toBeHidden();
 
       await page.keyboard.press("Enter");
+      await emitEvent(page, "accessibility://changed", { trusted: false });
 
       await expect.poll(() => ipcArgs(page, "paste_clip")).toHaveLength(1);
-      expect(await ipcCalls(page)).not.toContain("hide_window");
       await expect(page.locator("#banner-accessibility")).toBeVisible();
+      expect(await ipcCalls(page)).not.toContain("hide_window");
     });
 
     test("showing the window again starts afresh, for its own label only", async ({ page }) => {

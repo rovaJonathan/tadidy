@@ -133,11 +133,12 @@ export function describeHost(name: string, Window: Component, label: "popover" |
       expect(core.commands().filter((cmd) => cmd === "hide_window")).toEqual(["hide_window"]);
     });
 
-    it("stays open and shows the banner when the paste only copied", async () => {
-      const { core, container, field } = await open({ paste: "copied_only", trusted: false });
-      expect(find(container, "#banner-accessibility")).toBeVisible();
+    it("stays open and shows the banner when Accessibility is revoked and the paste only copied", async () => {
+      const { core, container, field } = await open({ paste: "copied_only", trusted: true });
+      expect(find(container, "#banner-accessibility")).not.toBeVisible();
 
       await fireEvent.keyDown(field, { key: "Enter" });
+      await emit("accessibility://changed", { trusted: false });
       await settle();
 
       expect(core.argsOf("paste_clip")).toHaveLength(1);
