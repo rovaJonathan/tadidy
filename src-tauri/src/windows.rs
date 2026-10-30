@@ -98,6 +98,8 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
     }
 
     fn reveal(&self) {
+        // Before the window takes the focus: afterwards it is the front app itself.
+        prepare_to_show(self.app_handle(), PasteOrigin::Popover);
         // Without a tray position yet (no tray event seen) the window keeps its place.
         if let Err(error) = self.move_window(TrayPosition::TrayBottomCenter) {
             tracing::warn!(%error, "could not place the popover under the tray icon");
@@ -122,10 +124,32 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
 /// What happens just before the popover or the Quick Panel is shown. Remembers the app in front
 /// (only for the popover: it takes the focus, so it is the one that has to give it back), and
 /// checks the Accessibility permission so the banner follows a change made in System Settings.
-pub fn prepare_to_show<R: Runtime>(_app: &AppHandle<R>, _origin: PasteOrigin) {}
+pub fn prepare_to_show<R: Runtime>(app: &AppHandle<R>, origin: PasteOrigin) {
+    let Some(state) = app.try_state::<AppState>() else {
+        tracing::error!("the app state is missing");
+        return;
+    };
+    if origin == PasteOrigin::Popover {
+        state.remember_frontmost_app();
+    }
+    state
+        .accessibility_monitor
+        .check(&TauriEventSink::new(app.clone()));
+}
 
 impl<R: Runtime> WindowHider for AppHandle<R> {
-    fn hide(&self, _origin: PasteOrigin) {}
+    fn hide(&self, origin: PasteOrigin) {
+        match origin {
+            PasteOrigin::Popover => match self.get_webview_window(POPOVER_LABEL) {
+                Some(popover) => popover.conceal(),
+                None => tracing::error!("the popover window is missing"),
+            },
+            #[cfg(target_os = "macos")]
+            PasteOrigin::Panel => crate::macos::panel::NsQuickPanel::new(self.clone()).conceal(),
+            #[cfg(not(target_os = "macos"))]
+            PasteOrigin::Panel => tracing::warn!("the Quick Panel needs macOS"),
+        }
+    }
 }
 
 /// A screen rectangle, in the physical pixels of the desktop space.

@@ -12,6 +12,7 @@ use tauri_nspanel::{
 use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState, apply_vibrancy};
 
 use crate::events::{TauriEventSink, emit_panel_shown};
+use crate::paster::PasteOrigin;
 use crate::windows::{self, PANEL_HEIGHT, PANEL_LABEL, PANEL_WIDTH, QuickPanel};
 
 /// `--radius-window` in points.
@@ -108,6 +109,7 @@ impl<R: Runtime> QuickPanel for NsQuickPanel<R> {
         if let Err(error) = windows::center_on_pointer_screen(&self.app, &window) {
             tracing::warn!(%error, "could not center the Quick Panel");
         }
+        windows::prepare_to_show(&self.app, PasteOrigin::Panel);
         // Never `set_focus()`: it activates the app and deactivates the target.
         panel.show_and_make_key();
         emit_panel_shown(&TauriEventSink::new(self.app.clone()), PANEL_LABEL);
