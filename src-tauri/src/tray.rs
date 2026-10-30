@@ -97,6 +97,7 @@ mod tests {
     use super::*;
     use crate::events::RecordingEventSink;
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
 
     fn labels(items: &[TrayItem]) -> Vec<String> {
         items
@@ -185,12 +186,13 @@ mod tests {
     #[test]
     fn clear_history_shows_the_popover_then_asks_for_the_dialog() {
         let popover = FakePopover::hidden();
-        let sink = RecordingEventSink::default();
+        let sink = LoggingSink(Arc::clone(&popover.log));
 
         request_clear_history(&popover, &sink);
 
-        assert_eq!(popover.reveals.get(), 1);
-        assert_eq!(sink.events(), vec![(MENU_CLEAR_HISTORY, json!(null))]);
+        // The order matters: `reveal` emits `panel://shown`, which closes a dialog that is open,
+        // so the request has to come after it.
+        assert_eq!(*popover.log.lock().unwrap(), ["reveal", MENU_CLEAR_HISTORY]);
     }
 
     #[test]
@@ -205,8 +207,20 @@ mod tests {
         assert_eq!(sink.events(), vec![(MENU_CLEAR_HISTORY, json!(null))]);
     }
 
+    /// What the fakes were asked to do, in order, across both of them.
+    type CallLog = Arc<Mutex<Vec<&'static str>>>;
+
+    struct LoggingSink(CallLog);
+
+    impl EventSink for LoggingSink {
+        fn emit(&self, event: &'static str, _payload: Value) {
+            self.0.lock().unwrap().push(event);
+        }
+    }
+
     struct FakePopover {
         shown: bool,
+        log: CallLog,
         reveals: std::cell::Cell<u32>,
         conceals: std::cell::Cell<u32>,
     }
@@ -215,6 +229,7 @@ mod tests {
         fn hidden() -> Self {
             Self {
                 shown: false,
+                log: CallLog::default(),
                 reveals: std::cell::Cell::default(),
                 conceals: std::cell::Cell::default(),
             }
@@ -234,6 +249,7 @@ mod tests {
         }
 
         fn reveal(&self) {
+            self.log.lock().unwrap().push("reveal");
             self.reveals.set(self.reveals.get() + 1);
         }
 
