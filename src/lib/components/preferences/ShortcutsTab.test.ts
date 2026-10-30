@@ -233,4 +233,16 @@ describe("ShortcutsTab", () => {
 
     expect(core.patches).toEqual([]);
   });
+
+  it("keeps the startup error when restoring the default has nothing to change", async () => {
+    const { container, error, recorder } = await open(
+      fakeSettingsCore({ shortcut: { accelerator: "Cmd+Shift+V", error: "unavailable" } }),
+    );
+
+    await fireEvent.click(find(container, "#btn-shortcut-reset"));
+    await settle();
+
+    expect(error().hasAttribute("hidden")).toBe(false);
+    expect(recorder.classList.contains("has-error")).toBe(true);
+  });
 });
