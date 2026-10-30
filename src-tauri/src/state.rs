@@ -83,9 +83,16 @@ impl AppState {
     }
 
     /// Remembers which app is in front. Called just before the popover is shown, while that app
-    /// still has the focus.
+    /// still has the focus. When Tadidy itself is in front (a Preferences window, say) the
+    /// previous app is kept: re-activating Tadidy would send `⌘V` to its own webview.
     pub fn remember_frontmost_app(&self) {
         let frontmost = self.workspace.frontmost_app();
+        if frontmost
+            .as_ref()
+            .is_some_and(|app| app.bundle_id == OWN_BUNDLE_ID)
+        {
+            return;
+        }
         *self
             .last_active_app
             .lock()
