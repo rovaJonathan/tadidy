@@ -34,7 +34,7 @@ Manual QA (docs/guides/manual-qa.md#tad-004) — signed build, macOS 15.1, Apple
 | 6 | Open it, then click the tray icon. | The popover closes and does **not** reopen. |
 | 6b | Open it, then click the tray icon slowly (hold the button more than 250 ms before releasing). | The popover closes and does not reopen. If it reopens, the focus loss happens on mouse down and the debounce must also be stamped on the press: report it. |
 | 7 | Hide the popover by clicking elsewhere, wait about a second, then click the icon. | The popover opens again. |
-| 8 | Right-click the icon. | A native menu: Preferences… `⌘,`, Clear history…, separator, About Tadidy, Check for updates…, separator, Quit Tadidy `⌘Q`. Only Quit Tadidy is enabled. |
+| 8 | Right-click the icon. | A native menu: Preferences… `⌘,`, Clear history…, separator, About Tadidy, Check for updates…, separator, Quit Tadidy `⌘Q`. Only Quit Tadidy was enabled at TAD-003; the other items are wired by [TAD-018](#tad-018--tray-menu-actions-preferences-clear-history-about-quit). |
 | 9 | With the popover visible, hold `⌘Tab` and look at the Dock. | No Tadidy entry in the switcher, no Dock icon. |
 | 10 | Choose Quit Tadidy (or `⌘Q` with the menu open). | The icon disappears and `pgrep -x tadidy` prints nothing. |
 
@@ -210,3 +210,19 @@ await window.__TAURI_INTERNALS__.invoke("open_preferences")
 | 14 | Quit Tadidy, make another app hold `⌘⇧V` (see [TAD-006](#tad-006--non-activating-quick-panel-and-global-shortcut) step 11), start Tadidy, open the Shortcuts tab. | Known limit: macOS does not refuse a combination another app holds, so no error shows and both apps receive the key. Note which one. The error text itself is checked by steps 12 and by the tests. |
 
 Run the steps on a screen where the pointer is not on the primary display too (step 1): the window opens centred on the primary display, as `.center()` does.
+
+### TAD-018 — Tray menu actions: preferences, clear history, about, quit
+
+Steps 1 to 6 and 9 only need `pnpm tauri dev`. Step 7 (the copyright line) needs a **bundled build** (`pnpm tauri build`): the line comes from the bundle's `Info.plist`. Copy a few synthetic sentences first (`Tadidy flow A`, `Tadidy flow B`, `Tadidy flow C`) and pin none of them, so the history holds three clips. Keep TextEdit in front between steps.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Right-click the tray icon. | Preferences… `⌘,`, Clear history…, separator, About Tadidy, Check for updates… (greyed), separator, Quit Tadidy `⌘Q`. Every item but Check for updates… is enabled. |
+| 2 | With TextEdit in front, choose Preferences…. | The Preferences window opens **in front of TextEdit and focused** (typing goes to it). Choosing Preferences… again brings the same window forward; there is never a second one. |
+| 3 | Close the Preferences. Choose Clear history… with the popover closed. | The popover opens under the icon, dimmed, with the alert "Clear clipboard history?", "3 clips will be permanently deleted from this Mac. This can’t be undone.", *Keep pinned clips and snippets* checked, **Cancel** focused. Nothing is deleted yet. |
+| 4 | Press `Return` (Cancel has the focus), then choose Clear history… again and press `Esc`. | Each time the alert closes, the search field has the focus, the three clips are still listed and the popover stays open. |
+| 5 | Choose Clear history… and click *Clear history* with the box checked. | The alert closes and the three clips go (none is pinned); the list shows the empty history state. |
+| 6 | Copy `Tadidy flow D`, open the popover, pin nothing. Choose Clear history… and click away on the desktop with the alert open. Open the popover again. | The popover hides with the alert; **nothing is deleted**. The popover shows `Tadidy flow D` and no alert. |
+| 7 | Choose About Tadidy with TextEdit in front. | The native about panel shows "Tadidy", its version and, on a bundled build, "Copyright © 2026 Tadidy. All rights reserved." It opens **in front of TextEdit**. If it opens behind, report it: the item fires no event, so the app has to be activated another way (see the PR). |
+| 8 | With the popover open, right-click the tray icon, choose Clear history…. | The popover closes on the right click (focus loss) and reopens with the alert. |
+| 9 | Choose Quit Tadidy. | The icon disappears and `pgrep -x tadidy` prints nothing. |

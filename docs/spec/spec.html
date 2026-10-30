@@ -1252,7 +1252,9 @@ export_history(path) -&gt; number ; import_history(path) -&gt; number</code></pr
 <p><strong>Events emitted by Rust</strong>: <code>clips://changed</code>
 (<code>{ added?: id, updated?: id, removed?: id[] }</code>),
 <code>settings://changed</code>, <code>accessibility://changed</code>,
-<code>panel://shown</code> (to reset the search and the selection).</p>
+<code>panel://shown</code> (to reset the search and the selection),
+<code>menu://clear-history</code> (no payload: the tray menu’s Clear
+history… asks the popover, already shown, to open its confirmation).</p>
 <h2 id="data-model">Data model (SQLite / SQLCipher)</h2>
 <pre class="sql"><code>CREATE TABLE clips (
   id              TEXT PRIMARY KEY,          -- UUID v7
