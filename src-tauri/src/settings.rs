@@ -113,7 +113,9 @@ pub struct Effects<'a> {
 impl Effects<'_> {
     /// Brings the system in line with `to`, for the fields that differ from `from`. All or
     /// nothing: when the shortcut is refused, the login item goes back to where it was.
-    fn apply(&self, from: &Settings, to: &Settings) -> Result<(), AppError> {
+    /// `shortcut_asked` is whether the patch carried a shortcut: only then is a stored shortcut
+    /// that failed to register tried again.
+    fn apply(&self, from: &Settings, to: &Settings, shortcut_asked: bool) -> Result<(), AppError> {
         let login_changed = from.launch_at_login != to.launch_at_login;
         if login_changed {
             self.login_item
@@ -122,14 +124,15 @@ impl Effects<'_> {
                     AppError::new("login_item_failed", "Launch at login could not be changed.")
                 })?;
         }
-        // The stored shortcut is tried again when it failed to register: saving it is a retry.
-        let shortcut_failed = self
-            .shortcut_status
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .error
-            .is_some();
-        if (from.quick_panel_shortcut != to.quick_panel_shortcut || shortcut_failed)
+        // Saving the stored shortcut again retries it when it failed to register.
+        let retry = shortcut_asked
+            && self
+                .shortcut_status
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .error
+                .is_some();
+        if (from.quick_panel_shortcut != to.quick_panel_shortcut || retry)
             && let Err(error) = shortcuts::switch(
                 self.shortcuts,
                 self.shortcut_status,
@@ -165,9 +168,10 @@ pub fn update(
         .read()
         .unwrap_or_else(PoisonError::into_inner)
         .clone();
+    let shortcut_asked = patch.quick_panel_shortcut.is_some();
     let next = before.apply(patch)?;
     // Before the write: a refusal must leave both the system and the stored value as they were.
-    effects.apply(&before, &next)?;
+    effects.apply(&before, &next, shortcut_asked)?;
     db.with_conn(|conn| storage::settings::save(conn, &next))?;
     let history_size_changed = next.history_size != before.history_size;
     *current.write().unwrap_or_else(PoisonError::into_inner) = next.clone();
