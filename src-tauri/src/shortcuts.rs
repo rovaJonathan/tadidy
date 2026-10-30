@@ -395,6 +395,47 @@ mod tests {
     }
 
     #[test]
+    fn every_accelerator_the_recorder_can_write_parses() {
+        // The keys of `NAMED_KEYS` in `src/lib/shortcut.ts`, with every modifier the recorder
+        // writes: the front and the core must agree on the names.
+        let keys = [
+            "V",
+            "7",
+            "F1",
+            "F19",
+            "Space",
+            "Tab",
+            "Esc",
+            "Enter",
+            "Backspace",
+            "Delete",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End",
+            "PageUp",
+            "PageDown",
+            "Comma",
+            "Period",
+            "Slash",
+            "Semicolon",
+            "Quote",
+            "Backquote",
+            "Backslash",
+            "BracketLeft",
+            "BracketRight",
+            "Minus",
+            "Equal",
+        ];
+        for key in keys {
+            let accelerator = format!("Ctrl+Alt+Cmd+Shift+{key}");
+            assert!(parse(&accelerator).is_ok(), "{accelerator}");
+        }
+    }
+
+    #[test]
     fn an_error_has_a_stable_code() {
         assert_eq!(ShortcutError::Invalid("x".into()).code(), "invalid");
         assert_eq!(ShortcutError::Unavailable("x".into()).code(), "unavailable");
