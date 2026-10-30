@@ -62,6 +62,7 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `window-vibrancy` | 0.8.1 | added by TAD-003, popover material (`src-tauri/src/macos/vibrancy.rs`) |
 | `tauri-plugin-global-shortcut` | 2.4.1 | added by TAD-006, Rust side only; crates.io's latest is `3.0.0-alpha.3` (Tauri 3 pre-release), so the newest 2.x is used |
 | `tauri-nspanel` | 2.1.1 | added by TAD-006, macOS target only, published on crates.io (no git dependency needed); the Quick Panel in `src-tauri/src/macos/panel.rs` |
+| `smappservice-rs` | 0.1.3 | added by TAD-017, macOS target only; launch at login through `SMAppService` in `src-tauri/src/macos/login_item.rs` ([ADR 0007](adr/0007-login-item-with-smappservice.md)). `tauri-plugin-autostart` is not used |
 | `objc2` / `objc2-foundation` / `objc2-app-kit` | 0.6.5 / 0.3.2 / 0.3.2 | added by TAD-004, macOS target only, `default-features = false` and only the AppKit and Foundation classes used by `src-tauri/src/macos/` (+ `libc` for `pid_t`) |
 | `core-graphics` | 0.25.0 | added by TAD-005, macOS target only, the synthetic `⌘V` (`src-tauri/src/macos/keys.rs`) |
 | `objc2-application-services` / `objc2-core-foundation` | 0.3.2 / 0.3.2 | added by TAD-005 (not listed in the ticket), macOS target only, `default-features = false`: `AXIsProcessTrustedWithOptions` without hand-written FFI (`src-tauri/src/macos/accessibility.rs`); `objc2-core-foundation` builds its options dictionary |

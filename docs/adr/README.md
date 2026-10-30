@@ -12,3 +12,4 @@ Format: Status · Date · Context · Decision · Consequences · Rejected altern
 | [0004](0004-local-hooks-no-ci.md) | No CI: lefthook hooks and `scripts/check.sh` are the only gate | Accepted |
 | [0005](0005-english-everywhere.md) | Everything in the repository is written in English | Accepted |
 | [0006](0006-ts-bindings-with-ts-rs.md) | TypeScript types of the IPC contract are generated from Rust with `ts-rs` | Accepted |
+| [0007](0007-login-item-with-smappservice.md) | Launch at login through `SMAppService` (`smappservice-rs`), not `tauri-plugin-autostart` | Accepted |
