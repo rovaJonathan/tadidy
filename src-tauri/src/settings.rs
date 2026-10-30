@@ -105,6 +105,9 @@ pub struct Effects<'a> {
     pub login_item: &'a dyn LoginItem,
     pub shortcuts: &'a dyn ShortcutRegistrar,
     pub shortcut_status: &'a Mutex<ShortcutStatus>,
+    /// Serializes the updates. The effects can wait for the main thread (the shortcut plugin
+    /// does), so they cannot run under the settings lock `get_settings` reads on that thread.
+    pub gate: &'a Mutex<()>,
 }
 
 impl Effects<'_> {
@@ -119,7 +122,14 @@ impl Effects<'_> {
                     AppError::new("login_item_failed", "Launch at login could not be changed.")
                 })?;
         }
-        if from.quick_panel_shortcut != to.quick_panel_shortcut
+        // The stored shortcut is tried again when it failed to register: saving it is a retry.
+        let shortcut_failed = self
+            .shortcut_status
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .error
+            .is_some();
+        if (from.quick_panel_shortcut != to.quick_panel_shortcut || shortcut_failed)
             && let Err(error) = shortcuts::switch(
                 self.shortcuts,
                 self.shortcut_status,
@@ -147,18 +157,23 @@ pub fn update(
     patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
     // Held until `settings://changed` so two updates cannot interleave their writes and their
-    // events, then released: `get_settings` runs on the main thread and must not wait for the
-    // trim. The trim reads only `limit` and is idempotent, so interleaved trims still end right.
-    let mut guard = current.write().unwrap_or_else(PoisonError::into_inner);
-    let next = guard.apply(patch)?;
+    // events, then released: the trim reads only `limit` and is idempotent, so interleaved trims
+    // still end right. `current` is locked for writing only to swap the value: `get_settings`
+    // runs on the main thread, which the effects may be waiting for.
+    let serial = effects.gate.lock().unwrap_or_else(PoisonError::into_inner);
+    let before = current
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let next = before.apply(patch)?;
     // Before the write: a refusal must leave both the system and the stored value as they were.
-    effects.apply(&guard, &next)?;
+    effects.apply(&before, &next)?;
     db.with_conn(|conn| storage::settings::save(conn, &next))?;
-    let history_size_changed = next.history_size != guard.history_size;
-    *guard = next.clone();
+    let history_size_changed = next.history_size != before.history_size;
+    *current.write().unwrap_or_else(PoisonError::into_inner) = next.clone();
     limit.set(next.history_limit());
     events.emit(SETTINGS_CHANGED, json!(next));
-    drop(guard);
+    drop(serial);
     if history_size_changed {
         trim_history(db, limit, events);
     }
@@ -334,6 +349,7 @@ mod tests {
         login_item: FakeLoginItem,
         shortcuts: FakeShortcutRegistrar,
         shortcut_status: Mutex<ShortcutStatus>,
+        gate: Mutex<()>,
         _dir: tempfile::TempDir,
     }
 
@@ -352,6 +368,7 @@ mod tests {
             login_item: FakeLoginItem::new(false),
             shortcuts,
             shortcut_status,
+            gate: Mutex::new(()),
             _dir: dir,
         }
     }
@@ -367,6 +384,7 @@ mod tests {
                     login_item: &self.login_item,
                     shortcuts: &self.shortcuts,
                     shortcut_status: &self.shortcut_status,
+                    gate: &self.gate,
                 },
                 patch,
             )
@@ -597,6 +615,7 @@ mod tests {
                 login_item: &h.login_item,
                 shortcuts: &registrar,
                 shortcut_status: &h.shortcut_status,
+                gate: &h.gate,
             },
             shortcut("Ctrl+Alt+V"),
         )

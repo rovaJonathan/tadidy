@@ -79,6 +79,7 @@ pub fn set_settings<R: Runtime>(
             login_item: state.login_item.as_ref(),
             shortcuts: state.shortcuts.as_ref(),
             shortcut_status: &state.shortcut,
+            gate: &state.settings_gate,
         },
         patch,
     )

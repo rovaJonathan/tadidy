@@ -40,6 +40,8 @@ pub struct AppState {
     pub history_limit: HistoryLimit,
     /// The user's preferences, loaded from the database at startup.
     pub settings: RwLock<Settings>,
+    /// Serializes `set_settings` without holding `settings` across the system effects.
+    pub settings_gate: Mutex<()>,
     /// The clipboard watcher thread, `None` until it starts (and when there is no database).
     pub watcher: Mutex<Option<WatcherHandle>>,
 }
@@ -64,6 +66,7 @@ impl AppState {
             db: None,
             history_limit: HistoryLimit::default(),
             settings: RwLock::default(),
+            settings_gate: Mutex::default(),
             watcher: Mutex::default(),
         }
     }

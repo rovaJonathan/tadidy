@@ -79,6 +79,7 @@ struct Rig {
     login_item: FakeLoginItem,
     shortcuts: FakeShortcutRegistrar,
     shortcut_status: Mutex<ShortcutStatus>,
+    gate: Mutex<()>,
 }
 
 impl Rig {
@@ -93,6 +94,7 @@ impl Rig {
             login_item: FakeLoginItem::new(false),
             shortcuts: FakeShortcutRegistrar::default(),
             shortcut_status: Mutex::default(),
+            gate: Mutex::default(),
         }
     }
 
@@ -101,6 +103,7 @@ impl Rig {
             login_item: &self.login_item,
             shortcuts: &self.shortcuts,
             shortcut_status: &self.shortcut_status,
+            gate: &self.gate,
         }
     }
 
