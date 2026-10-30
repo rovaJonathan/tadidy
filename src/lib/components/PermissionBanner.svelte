@@ -38,10 +38,10 @@
 <div id="banner-accessibility" role="status" hidden={trusted !== false}>
   <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"
     ><path d="M8 2.2 14.2 13H1.8z" fill="currentColor" stroke="currentColor" stroke-width="1.6" /><path
+      class="mark"
       d="M8 6.3v3.2"
-      stroke="#fff"
       stroke-width="1.5"
-    /><circle cx="8" cy="11.3" r=".85" fill="#fff" stroke="none" /></svg
+    /><circle class="dot" cx="8" cy="11.3" r=".85" stroke="none" /></svg
   >
   <span class="banner-text">Auto-paste disabled — clips are copied only.</span>
   <button type="button" id="btn-enable-accessibility" class="btn btn-small" onclick={enable}>Enable</button>
@@ -71,6 +71,14 @@
     color: var(--color-warning);
     width: 15px;
     height: 15px;
+  }
+
+  .mark {
+    stroke: var(--color-on-accent);
+  }
+
+  .dot {
+    fill: var(--color-on-accent);
   }
 
   .banner-text {
