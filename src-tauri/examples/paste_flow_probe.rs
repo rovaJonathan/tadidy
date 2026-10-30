@@ -4,7 +4,9 @@
 //! After 3 s it records the frontmost app as the app to give the focus back to; 3 s later it
 //! pastes. With `--panel` the origin is the Quick Panel (no re-activation, the app in front
 //! keeps the focus); without it the origin is the popover (the recorded app is activated again
-//! first), so click another app in between to see it come back.
+//! first). Since macOS 14 an app can only bring another one forward while it is the active app
+//! itself (cooperative activation), and a command-line probe never is: the re-activation is
+//! checked from the real popover (TAD-016), not here.
 //!
 //! The data lives in a throwaway database with a fixed key, never the Keychain. The sentence is
 //! synthetic; the probe never reads or prints the clipboard (AGENTS.md §2).
@@ -102,7 +104,7 @@ fn run(panel: bool) -> ! {
         if panel {
             println!("origin: Quick Panel; the app in front keeps the focus");
         } else {
-            println!("origin: popover; click another app (Finder) now");
+            println!("origin: popover; the recorded app is activated again first");
         }
         std::thread::sleep(Duration::from_secs(3));
 
