@@ -99,6 +99,12 @@ impl AppState {
         }
     }
 
+    /// Brings the system in line with the stored settings at startup: the login item is read back
+    /// (the system wins) and the stored Quick Panel shortcut is registered, not the default.
+    pub fn apply_stored_settings(&self) {
+        todo!("TAD-017: reconcile the login item and register the stored shortcut")
+    }
+
     /// Remembers which app is in front. Called just before the popover is shown, while that app
     /// still has the focus. When Tadidy itself is in front (a Preferences window, say) the
     /// previous app is kept: re-activating Tadidy would send `⌘V` to its own webview.
@@ -321,5 +327,91 @@ mod tests {
         let state = state().with_db(Some(db));
 
         assert_eq!(state.history_limit.get(), None);
+    }
+    use crate::login_item::FakeLoginItem;
+    use crate::shortcuts::FakeShortcutRegistrar;
+
+    struct Wired {
+        state: AppState,
+        login_item: Arc<FakeLoginItem>,
+        shortcuts: Arc<FakeShortcutRegistrar>,
+        _dir: tempfile::TempDir,
+    }
+
+    /// A state over a database holding `stored`, with a login item that reads `system`.
+    fn wired(stored: Settings, system: bool) -> Wired {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        db.with_conn(|conn| crate::storage::settings::save(conn, &stored))
+            .unwrap();
+        let login_item = Arc::new(FakeLoginItem::new(system));
+        let shortcuts = Arc::new(FakeShortcutRegistrar::default());
+        let state = state()
+            .with_db(Some(db))
+            .with_login_item(login_item.clone())
+            .with_shortcuts(shortcuts.clone());
+        Wired {
+            state,
+            login_item,
+            shortcuts,
+            _dir: dir,
+        }
+    }
+
+    #[test]
+    fn startup_registers_the_stored_shortcut() {
+        let wired = wired(
+            Settings {
+                quick_panel_shortcut: "Ctrl+Alt+V".to_owned(),
+                ..Settings::default()
+            },
+            false,
+        );
+
+        wired.state.apply_stored_settings();
+
+        assert!(wired.shortcuts.is_registered("Ctrl+Alt+V"));
+        assert!(!wired.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(wired.state.shortcut_status().accelerator, "Ctrl+Alt+V");
+        assert_eq!(wired.state.shortcut_status().error, None);
+    }
+
+    #[test]
+    fn startup_records_a_stored_shortcut_the_system_refuses() {
+        let wired = wired(Settings::default(), false);
+        wired.shortcuts.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+
+        wired.state.apply_stored_settings();
+
+        assert_eq!(
+            wired.state.shortcut_status().error.as_deref(),
+            Some("unavailable")
+        );
+    }
+
+    #[test]
+    fn startup_lets_the_system_win_over_the_stored_login_item() {
+        let wired = wired(
+            Settings {
+                launch_at_login: true,
+                ..Settings::default()
+            },
+            false,
+        );
+
+        wired.state.apply_stored_settings();
+
+        assert!(!wired.state.settings.read().unwrap().launch_at_login);
+        assert_eq!(wired.login_item.changes(), 0);
+    }
+
+    #[test]
+    fn startup_without_a_database_still_registers_the_shortcut() {
+        let shortcuts = Arc::new(FakeShortcutRegistrar::default());
+        let state = state().with_shortcuts(shortcuts.clone());
+
+        state.apply_stored_settings();
+
+        assert!(shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
     }
 }
