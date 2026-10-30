@@ -226,3 +226,45 @@ Steps 1 to 6 and 9 only need `pnpm tauri dev`. Step 7 (the copyright line) needs
 | 7 | Choose About Tadidy with TextEdit in front. | The native about panel shows "Tadidy", its version and, on a bundled build, "Copyright © 2026 Tadidy. All rights reserved." It opens **in front of TextEdit**. If it opens behind, report it: the item fires no event, so the app has to be activated another way (see the PR). |
 | 8 | With the popover open, right-click the tray icon, choose Clear history…. | The popover closes on the right click (focus loss) and reopens with the alert. |
 | 9 | Choose Quit Tadidy. | The icon disappears and `pgrep -x tadidy` prints nothing. |
+
+### TAD-019 — MVP acceptance
+
+Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`), installed once in `/Applications` and granted Accessibility once; do not reinstall between rows 3, 4 and 7. Start from a clean state (no `~/Library/Application Support/app.tadidy/`, no `app.tadidy` / `database-key` Keychain item) and use synthetic clips only (`Tadidy flow A`, `select me`…). Plan row 7 last, with *Launch at login* checked. Criteria are those of [docs/spec/05-quality.md](../spec/05-quality.md#mvp-acceptance).
+
+| # | Criterion | Result | Measure / observation | Follow-up |
+|---|---|---|---|---|
+| 1 | Copy text in any app: it is at the top of the popover in < 500 ms | not run | | |
+| 2 | Copy the same text twice: one clip, moved to the top, `copy_count = 2` | not run | | |
+| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | not run | | |
+| 4 | Accessibility revoked: `Return` only copies and the banner shows | not run | | |
+| 5 | Limit 10: an 11th copy deletes the oldest unpinned clip | not run | | |
+| 6 | Typing "sel" filters in < 50 ms and shows only matching clips | not run | | |
+| 7 | After a restart of the Mac, Tadidy runs and the history is intact | not run | | |
+| 8 | `sqlite3` on `tadidy.db` without the key: "file is not a database" | not run | | |
+| 9 | No icon in the Dock or in `⌘Tab` | not run | | |
+| 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | not run | | |
+
+| Measurement | Target | Result | Values | Note |
+|---|---|---|---|---|
+| Idle CPU, 10 min (Activity Monitor and `top -l` samples) | < 0.5 % | not run | | |
+| Popover opening, 10 openings | < 100 ms | not run | | median: |
+| Quick Panel opening, 10 openings | < 100 ms | not run | | median: |
+| Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | not run | | |
+| RAM with both windows used | < 120 MB | not run | | recorded only |
+| `.app` binary size | < 15 MB | not run | | recorded only |
+
+Signed-build manual QA of the earlier tickets, re-run on this build:
+
+| Section | Result | Note |
+|---|---|---|
+| TAD-003 — tray and popover | not run | |
+| TAD-004 — pasteboard and workspace | not run | |
+| TAD-005 — key sender and Accessibility | not run | |
+| TAD-006 — Quick Panel and global shortcut | not run | |
+| TAD-007 — encrypted database | not run | |
+| TAD-008 — signing and universal build (incl. steps 7 and 8) | not run | |
+| TAD-010 — clipboard watcher | not run | |
+| TAD-015 — paste and copy commands | not run | |
+| TAD-016 — clip browser in both windows | not run | |
+| TAD-017 — Preferences | not run | |
+| TAD-018 — tray menu actions | not run | |
