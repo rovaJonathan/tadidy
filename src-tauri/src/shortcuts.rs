@@ -141,9 +141,18 @@ impl ShortcutRegistrar for FakeShortcutRegistrar {
 }
 
 impl From<ShortcutError> for AppError {
+    /// Fixed messages: the accelerator is the user's choice, not something to echo back.
     fn from(error: ShortcutError) -> Self {
-        let _ = error;
-        todo!("TAD-017: map a shortcut error to its code")
+        match error {
+            ShortcutError::Invalid(_) => Self::new(
+                "invalid_settings",
+                "quickPanelShortcut is not a valid key combination",
+            ),
+            ShortcutError::Unavailable(_) => Self::new(
+                "shortcut_unavailable",
+                "This shortcut is already used by macOS or another app.",
+            ),
+        }
     }
 }
 
@@ -154,8 +163,17 @@ pub fn register_at_startup(
     status: &Mutex<ShortcutStatus>,
     accelerator: &str,
 ) {
-    let _ = (registrar, status, accelerator);
-    todo!("TAD-017: register the stored accelerator")
+    let error = registrar.register(accelerator).err().map(|error| {
+        tracing::warn!(
+            code = error.code(),
+            "the Quick Panel shortcut is not registered"
+        );
+        error.code().to_owned()
+    });
+    *status.lock().unwrap_or_else(PoisonError::into_inner) = ShortcutStatus {
+        accelerator: accelerator.to_owned(),
+        error,
+    };
 }
 
 /// Moves the Quick Panel to `accelerator`. The new one is registered first: when that fails the
@@ -165,8 +183,22 @@ pub fn switch(
     status: &Mutex<ShortcutStatus>,
     accelerator: &str,
 ) -> Result<(), ShortcutError> {
-    let _ = (registrar, status, accelerator);
-    todo!("TAD-017: switch the registered accelerator")
+    registrar.register(accelerator)?;
+    let mut status = status.lock().unwrap_or_else(PoisonError::into_inner);
+    // A shortcut that never registered has nothing to release.
+    if status.error.is_none() {
+        if let Err(error) = registrar.unregister(&status.accelerator) {
+            tracing::warn!(
+                code = error.code(),
+                "the old Quick Panel shortcut was not released"
+            );
+        }
+    }
+    *status = ShortcutStatus {
+        accelerator: accelerator.to_owned(),
+        error: None,
+    };
+    Ok(())
 }
 
 /// Registers `accelerator` to toggle the Quick Panel.
