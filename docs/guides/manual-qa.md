@@ -233,15 +233,15 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 
 | # | Criterion | Result | Measure / observation | Follow-up |
 |---|---|---|---|---|
-| 1 | Copy text in any app: it is at the top of the popover in < 500 ms | not run | | |
-| 2 | Copy the same text twice: one clip, moved to the top, `copy_count = 2` | not run | | |
-| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | ❌ (first launch) | On the first launch of the fresh install the Quick Panel did not open on `⌘⇧V`; after quitting and starting Tadidy again it opens. The paste itself is not reported yet. | TAD-026 |
-| 4 | Accessibility revoked: `Return` only copies and the banner shows | not run | | |
-| 5 | Limit 10: an 11th copy deletes the oldest unpinned clip | not run | | |
-| 6 | Typing "sel" filters in < 50 ms and shows only matching clips | not run | | |
+| 1 | Copy text in any app: it is at the top of the popover in < 500 ms | ✅ | Reported by the owner; the watcher log shows `elapsed_ms` of 3 to 6 per recorded clip. | |
+| 2 | Copy the same text twice: one clip, moved to the top, `copy_count = 2` | ✅ | Reported by the owner. | |
+| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | ✅ after the first launch · ❌ first launch | Paste and focus OK (owner). On the first launch of the fresh install the Quick Panel did not open on `⌘⇧V`; after quitting and starting Tadidy again it opens. | TAD-026 |
+| 4 | Accessibility revoked: `Return` only copies and the banner shows | ✅ | Reported by the owner. | |
+| 5 | Limit 10: an 11th copy deletes the oldest unpinned clip | ✅ | Reported by the owner. | |
+| 6 | Typing "sel" filters in < 50 ms and shows only matching clips | ✅ | Reported by the owner; `search_perf` median 8.8 ms over 10 000 clips. | |
 | 7 | After a restart of the Mac, Tadidy runs and the history is intact | ❌ not runnable | *Launch at login* cannot be switched on in Preferences, and Tadidy is absent from *System Settings → General → Login Items & Extensions*; no warning in the log. | TAD-025 |
 | 8 | `sqlite3` on `tadidy.db` without the key: "file is not a database" | ✅ | `sqlite3 -readonly …/tadidy.db .tables` prints `Error: file is not a database`; header bytes `62da 6a71 …`, one Keychain item, no `SecurityAgent` dialog on launch. | |
-| 9 | No icon in the Dock or in `⌘Tab` | partial | `LSUIElement = true` in the bundle `Info.plist`. The visual check of the Dock and `⌘Tab` is not reported yet. | |
+| 9 | No icon in the Dock or in `⌘Tab` | ✅ | Checked by the owner; `LSUIElement = true` in the bundle `Info.plist`. | |
 | 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | not run | | |
 
 | Measurement | Target | Result | Values | Note |
