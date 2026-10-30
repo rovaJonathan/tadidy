@@ -14,6 +14,7 @@ interface MockWindow {
   __clips: ClipSummary[];
   __browserCalls?: string[];
   __settingsPatches: SettingsPatch[];
+  __ipcArgs: { cmd: string; args: unknown }[];
   __emit: (event: string, payload: unknown) => void;
 }
 
@@ -59,6 +60,8 @@ export async function mockIpc(
 
       Object.defineProperty(window, "__ipcCalls", { value: calls });
       Object.defineProperty(window, "__ipcQueries", { value: queries });
+      const argsOfCalls: { cmd: string; args: unknown }[] = [];
+      Object.defineProperty(window, "__ipcArgs", { value: argsOfCalls });
       const patches: SettingsPatch[] = [];
       Object.defineProperty(window, "__settingsPatches", { value: patches });
       Object.defineProperty(window, "__clips", { value: history });
@@ -89,6 +92,7 @@ export async function mockIpc(
         value: {
           invoke: async (cmd: string, args: Record<string, unknown> = {}) => {
             calls.push(cmd);
+            argsOfCalls.push({ cmd, args });
             if (cmd === "plugin:event|listen") {
               const event = args.event as string;
               const eventId = nextEventId++;
@@ -147,6 +151,23 @@ export async function mockIpc(
 /** The names of the commands the page has invoked so far, in order. */
 export function ipcCalls(page: Page): Promise<string[]> {
   return page.evaluate(() => [...(window as unknown as MockWindow).__ipcCalls]);
+}
+
+/** The arguments of every call to `command` so far, in order. */
+export function ipcArgs(page: Page, command: string): Promise<unknown[]> {
+  return page.evaluate(
+    (command) =>
+      (window as unknown as MockWindow).__ipcArgs.filter((call) => call.cmd === command).map((call) => call.args),
+    command,
+  );
+}
+
+/** Announces `event` with `payload` to the page, as the core would. */
+export function emitEvent(page: Page, event: string, payload: unknown): Promise<void> {
+  return page.evaluate(({ event, payload }) => (window as unknown as MockWindow).__emit(event, payload), {
+    event,
+    payload,
+  });
 }
 
 /** The `q` argument of every `list_clips` call so far, in order (needs `mockIpc` with `clips`). */
