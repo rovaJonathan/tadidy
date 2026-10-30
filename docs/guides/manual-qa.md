@@ -242,15 +242,15 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 | 7 | After a restart of the Mac, Tadidy runs and the history is intact | ❌ not runnable | *Launch at login* cannot be switched on in Preferences, and Tadidy is absent from *System Settings → General → Login Items & Extensions*; no warning in the log. | TAD-025 |
 | 8 | `sqlite3` on `tadidy.db` without the key: "file is not a database" | ✅ | `sqlite3 -readonly …/tadidy.db .tables` prints `Error: file is not a database`; header bytes `62da 6a71 …`, one Keychain item, no `SecurityAgent` dialog on launch. | |
 | 9 | No icon in the Dock or in `⌘Tab` | ✅ | Checked by the owner; `LSUIElement = true` in the bundle `Info.plist`. | |
-| 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | not run | | |
+| 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | ✅ | `top -l` on the `tadidy` process, 121 samples at 5 s (10 min), nothing touched: mean 0.03 %, median 0.0 %, max 0.9 % (one 5 s sample). Activity Monitor itself not opened; `top` is its source. | |
 
 | Measurement | Target | Result | Values | Note |
 |---|---|---|---|---|
-| Idle CPU, 10 min (Activity Monitor and `top -l` samples) | < 0.5 % | not run | | |
+| Idle CPU, 10 min (Activity Monitor and `top -l` samples) | < 0.5 % | ✅ | mean 0.028 %, median 0.0 %, max 0.90 % (120 samples after the first) | `tadidy` main process only; WebKit helper processes not sampled. |
 | Popover opening, 10 openings | < 100 ms | not run | | median: |
 | Quick Panel opening, 10 openings | < 100 ms | not run | | median: |
 | Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | ✅ (automated part) | `search_perf`, debug profile: median 8.8 ms, worst 10.5 ms | The check on a seeded database in the real app is not run yet. |
-| RAM with both windows used | < 120 MB | not run | | recorded only |
+| RAM with both windows used | < 120 MB | ✅ | `tadidy` footprint 40 MB (peak 41 MB); one WebContent process 24 MB in the system log | about 65 MB in total, recorded only. The WebKit network process was not attributed. |
 | `.app` binary size | < 15 MB | ❌ accepted | universal `.app` 36.6 MiB, executable 38.4 MB; arm64-only `.app` 17.8 MiB, executable 18.7 MB; `.dmg` 12.5 MiB | recorded only. The owner said the size does not matter: no follow-up ticket. The spec line still says 15 MB. |
 
 Signed-build manual QA of the earlier tickets, re-run on this build:
