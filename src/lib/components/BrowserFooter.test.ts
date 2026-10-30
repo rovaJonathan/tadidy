@@ -14,7 +14,7 @@ describe("BrowserFooter", () => {
 
     const hints = container.querySelector(".footer-hints");
     expect(hints).toHaveAttribute("aria-hidden", "true");
-    expect(hints?.textContent?.replace(/\s+/g, " ").trim()).toBe("↩ Paste ⌥↩ Copy");
+    expect([...(hints?.children ?? [])].map((hint) => hint.textContent)).toEqual(["↩ Paste", "⌥↩ Copy"]);
   });
 
   it("has a Preferences button that tells the host", async () => {
