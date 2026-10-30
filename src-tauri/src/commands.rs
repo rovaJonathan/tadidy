@@ -13,6 +13,7 @@ use crate::settings::{self, Settings, SettingsPatch};
 use crate::shortcuts::ShortcutStatus;
 use crate::state::AppState;
 use crate::storage::{self, Db};
+use crate::windows;
 
 /// The version of the running app, from the crate manifest.
 #[tauri::command]
@@ -87,16 +88,15 @@ pub fn set_settings<R: Runtime>(
 /// code of the registration error, if any.
 #[tauri::command]
 pub fn get_shortcut_status(state: State<'_, AppState>) -> ShortcutStatus {
-    let _ = state;
-    todo!("TAD-017: read the shortcut status")
+    state.shortcut_status()
 }
 
 /// Shows the Preferences window, creating it when it does not exist yet. A sync command: it runs
 /// on the main thread, where AppKit windows and the activation policy belong.
 #[tauri::command]
 pub fn open_preferences<R: Runtime>(app: AppHandle<R>) -> Result<(), AppError> {
-    let _ = app;
-    todo!("TAD-017: open the Preferences window")
+    windows::open_preferences(&app)
+        .map_err(|_| AppError::new("window", "The Preferences window could not be opened."))
 }
 
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
