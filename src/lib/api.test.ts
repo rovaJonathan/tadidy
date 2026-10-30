@@ -405,7 +405,7 @@ describe("openPreferences", () => {
     });
 
     await expect(openPreferences()).resolves.toBeUndefined();
-    expect(calls).toEqual([{ cmd: "open_preferences", args: undefined }]);
+    expect(calls).toEqual([{ cmd: "open_preferences", args: {} }]);
   });
 
   it("rejects with the core's window error", async () => {
