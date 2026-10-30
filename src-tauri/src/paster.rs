@@ -3,17 +3,23 @@
 //! pasteboard (SYS-03). Everything the system does goes through a trait, so the order of the
 //! steps is tested with fakes.
 
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use ts_rs::TS;
 
+use crate::clip::ClipWithRepresentations;
 use crate::clock::Clock;
 use crate::error::AppError;
-use crate::events::EventSink;
-use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
-use crate::storage::Db;
+use crate::events::{ACCESSIBILITY_CHANGED, EventSink};
+use crate::platform::{
+    AccessibilityProbe, KeySender, Pasteboard, Representation, SourceApp, UTI_PLAIN_TEXT,
+    UTI_TADIDY_MARKER, Workspace,
+};
+use crate::storage::{Db, clips};
+use crate::windows::{PANEL_LABEL, POPOVER_LABEL};
 
 /// How long the target app gets to take the focus back before `⌘V` is sent. One value, so QA
 /// can raise it if a loaded machine misses the keystroke.
@@ -56,8 +62,15 @@ pub enum PasteOrigin {
 
 impl PasteOrigin {
     /// The origin of the window that called the command; any other label is refused.
-    pub fn from_label(_label: &str) -> Result<Self, AppError> {
-        Ok(Self::Popover)
+    pub fn from_label(label: &str) -> Result<Self, AppError> {
+        match label {
+            POPOVER_LABEL => Ok(Self::Popover),
+            PANEL_LABEL => Ok(Self::Panel),
+            _ => Err(AppError::new(
+                "invalid_window",
+                "Only the popover and the Quick Panel can paste.",
+            )),
+        }
     }
 }
 
@@ -69,17 +82,36 @@ pub trait WindowHider: Send + Sync {
 /// Keeps the last known state of the Accessibility permission and announces its changes.
 pub struct AccessibilityMonitor {
     probe: Arc<dyn AccessibilityProbe>,
+    /// `None` until the first check.
+    last: Mutex<Option<bool>>,
 }
 
 impl AccessibilityMonitor {
     pub fn new(probe: Arc<dyn AccessibilityProbe>) -> Self {
-        Self { probe }
+        Self {
+            probe,
+            last: Mutex::new(None),
+        }
     }
 
     /// Whether the permission is granted now. Emits `accessibility://changed` when that is not
     /// what the last check saw (the first check counts as a change).
-    pub fn check(&self, _events: &dyn EventSink) -> bool {
-        self.probe.is_trusted()
+    pub fn check(&self, events: &dyn EventSink) -> bool {
+        let trusted = self.probe.is_trusted();
+        // Not held while emitting.
+        let changed = self
+            .last
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace(trusted)
+            != Some(trusted);
+        if changed {
+            events.emit(
+                ACCESSIBILITY_CHANGED,
+                json!(AccessibilityChanged { trusted }),
+            );
+        }
+        trusted
     }
 }
 
@@ -98,31 +130,128 @@ pub struct PasterServices {
 }
 
 pub struct Paster {
-    _services: PasterServices,
-    _delay: Duration,
+    services: PasterServices,
+    delay: Duration,
 }
 
 impl Paster {
     pub fn new(services: PasterServices, delay: Duration) -> Self {
-        Self {
-            _services: services,
-            _delay: delay,
-        }
+        Self { services, delay }
     }
 
-    /// PST-01: writes the clip, hides the window, gives the focus back, sends `⌘V`.
+    /// PST-01: writes the clip, hides the window, gives the focus back, sends `⌘V`. Without the
+    /// Accessibility permission it stops after the write and says so with `CopiedOnly`.
     pub fn paste(
         &self,
-        _id: &str,
-        _mode: PasteMode,
-        _origin: PasteOrigin,
+        id: &str,
+        mode: PasteMode,
+        origin: PasteOrigin,
     ) -> Result<PasteResult, AppError> {
+        let started = Instant::now();
+        self.write(id, mode)?;
+        if !self.services.monitor.check(&*self.services.events) {
+            tracing::info!(id, ?mode, result = "copied_only", "clip copied, not pasted");
+            return Ok(PasteResult::CopiedOnly);
+        }
+        self.services.hider.hide(origin);
+        self.give_the_focus_back(origin);
+        if !self.delay.is_zero() {
+            std::thread::sleep(self.delay);
+        }
+        self.services
+            .keys
+            .send_paste()
+            .map_err(|_| AppError::new("paste_failed", "The paste keystroke could not be sent."))?;
+        tracing::info!(
+            id,
+            ?mode,
+            result = "pasted",
+            elapsed_ms = started.elapsed().as_millis(),
+            "clip pasted"
+        );
         Ok(PasteResult::Pasted)
     }
 
     /// PST-02: writes the clip and hides the window, no keystroke.
-    pub fn copy(&self, _id: &str, _origin: PasteOrigin) -> Result<(), AppError> {
+    pub fn copy(&self, id: &str, origin: PasteOrigin) -> Result<(), AppError> {
+        self.write(id, PasteMode::Default)?;
+        self.services.hider.hide(origin);
+        self.give_the_focus_back(origin);
+        tracing::info!(id, "clip copied");
         Ok(())
+    }
+
+    /// Puts the clip and the marker on the pasteboard and records the use.
+    fn write(&self, id: &str, mode: PasteMode) -> Result<(), AppError> {
+        let clip = self
+            .services
+            .db
+            .with_conn(|conn| clips::get(conn, id))?
+            .ok_or_else(|| AppError::new("not_found", "The clip does not exist."))?;
+        self.services
+            .pasteboard
+            .write(&representations(&clip, mode))
+            .map_err(|_| {
+                AppError::new(
+                    "pasteboard_write",
+                    "The clip could not be put on the clipboard.",
+                )
+            })?;
+        // The clip is on the pasteboard: a failed bookkeeping write must not undo the paste.
+        let now = self.services.clock.now_ms();
+        if let Err(error) = self
+            .services
+            .db
+            .with_conn(|conn| clips::mark_used(conn, id, now))
+        {
+            tracing::warn!(code = %AppError::from(error).code, "the use of a clip was not recorded");
+        }
+        Ok(())
+    }
+
+    /// The popover is a real window: closing it leaves the focus in no app. The Quick Panel never
+    /// took it. An app that quit since is not an error: macOS picks the next one.
+    fn give_the_focus_back(&self, origin: PasteOrigin) {
+        if origin != PasteOrigin::Popover {
+            return;
+        }
+        let previous = self
+            .services
+            .last_active_app
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(app) = previous
+            && let Err(error) = self.services.workspace.activate(&app)
+        {
+            tracing::warn!(%error, "the previous app could not be brought back to the front");
+        }
+    }
+}
+
+/// What goes on the pasteboard: the stored representations (or the plain text alone) and the
+/// marker that tells the watcher the write is Tadidy's own.
+fn representations(clip: &ClipWithRepresentations, mode: PasteMode) -> Vec<Representation> {
+    let mut items = match mode {
+        PasteMode::Default => clip.representations.clone(),
+        PasteMode::Plain => plain_text_only(clip),
+    };
+    items.push(Representation::new(UTI_TADIDY_MARKER, Vec::new()));
+    items
+}
+
+/// A clip with no text (an image, say) has no plain version: it is written whole.
+fn plain_text_only(clip: &ClipWithRepresentations) -> Vec<Representation> {
+    if let Some(text) = clip
+        .representations
+        .iter()
+        .find(|representation| representation.uti == UTI_PLAIN_TEXT)
+    {
+        return vec![text.clone()];
+    }
+    match &clip.clip.plain_text {
+        Some(text) => vec![Representation::new(UTI_PLAIN_TEXT, text.as_bytes())],
+        None => clip.representations.clone(),
     }
 }
 
