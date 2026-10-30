@@ -2,7 +2,11 @@
 //! the order, the enabled state and the clicks are tested without AppKit; `macos::tray` builds
 //! the native menu and the status item from them.
 
+use serde_json::Value;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+
+use crate::events::{EventSink, MENU_CLEAR_HISTORY};
+use crate::windows::{self, PopoverWindow};
 
 pub const TRAY_ID: &str = "tadidy";
 
@@ -33,28 +37,46 @@ const fn entry(
     }
 }
 
-/// The tray menu. Preferences…, Clear history… and About are wired by TAD-018 and Check for
-/// updates… by the P2 updater ticket (SYS-04): until then they are shown but disabled.
+/// Id of the About entry: the native about panel shows itself, so it has no [`TrayAction`].
+pub const ABOUT_ID: &str = "about";
+
+/// The tray menu. Check for updates… is wired by the P2 updater ticket (SYS-04): until then it
+/// is shown but disabled.
 pub fn menu_items() -> Vec<TrayItem> {
     vec![
-        entry("preferences", "Preferences…", false, Some("CmdOrCtrl+,")),
-        entry("clear-history", "Clear history…", false, None),
+        entry("preferences", "Preferences…", true, Some("CmdOrCtrl+,")),
+        entry("clear-history", "Clear history…", true, None),
         TrayItem::Separator,
-        entry("about", "About Tadidy", false, None),
+        entry(ABOUT_ID, "About Tadidy", true, None),
         entry("check-updates", "Check for updates…", false, None),
         TrayItem::Separator,
         entry("quit", "Quit Tadidy", true, Some("CmdOrCtrl+Q")),
     ]
 }
 
-/// What choosing a menu item does. Only Quit is wired in this ticket.
+/// What choosing a menu item does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MenuAction {
+pub enum TrayAction {
+    Preferences,
+    ClearHistory,
     Quit,
 }
 
-pub fn menu_action(id: &str) -> Option<MenuAction> {
-    (id == "quit").then_some(MenuAction::Quit)
+pub fn action_for(id: &str) -> Option<TrayAction> {
+    match id {
+        "preferences" => Some(TrayAction::Preferences),
+        "clear-history" => Some(TrayAction::ClearHistory),
+        "quit" => Some(TrayAction::Quit),
+        _ => None,
+    }
+}
+
+/// Clear history… (HIS-06): shows the popover, without toggling it, and asks its webview to open
+/// the confirmation. The history is cleared by the webview's `clear_history` call, only once the
+/// user confirmed.
+pub fn request_clear_history(popover: &impl PopoverWindow, sink: &impl EventSink) {
+    windows::show(popover);
+    sink.emit(MENU_CLEAR_HISTORY, Value::Null);
 }
 
 /// A left click acts when the button is released (MNU-02). The right click opens the native
