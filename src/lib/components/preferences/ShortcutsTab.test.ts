@@ -245,4 +245,14 @@ describe("ShortcutsTab", () => {
     expect(error().hasAttribute("hidden")).toBe(false);
     expect(recorder.classList.contains("has-error")).toBe(true);
   });
+
+  it("shows no error when the shortcut status cannot be read", async () => {
+    const core = fakeSettingsCore();
+    core.statusUnreadable = { code: "window", message: "The window could not be reached." };
+    const { error, recorder, keys } = await open(core);
+
+    expect(error().hasAttribute("hidden")).toBe(true);
+    expect(recorder.classList.contains("has-error")).toBe(false);
+    expect(keys()).toBe("⌘⇧V");
+  });
 });

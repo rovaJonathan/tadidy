@@ -29,6 +29,8 @@ export function fakeSettingsCore(initial: { settings?: Partial<Settings>; shortc
     refuse: undefined as AppError | undefined,
     /** When set, `get_settings` rejects with it. */
     unreadable: undefined as AppError | undefined,
+    /** When set, `get_shortcut_status` rejects with it. */
+    statusUnreadable: undefined as AppError | undefined,
   };
   mockIPC(
     (cmd, args) => {
@@ -48,6 +50,7 @@ export function fakeSettingsCore(initial: { settings?: Partial<Settings>; shortc
           return core.settings;
         }
         case "get_shortcut_status":
+          if (core.statusUnreadable) throw core.statusUnreadable;
           return core.shortcut;
         default:
           return undefined;
