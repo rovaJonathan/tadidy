@@ -1,4 +1,5 @@
 import { emit } from "@tauri-apps/api/event";
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultSettings, fakeSettingsCore } from "../../test/settings";
 import { SettingsStore } from "./settings.svelte";
@@ -82,10 +83,12 @@ describe("SettingsStore", () => {
     fakeSettingsCore();
     await store.start();
     // The IPC layer itself failing (window closing, say): a plain Error, no code.
-    const { mockIPC } = await import("@tauri-apps/api/mocks");
-    mockIPC(() => {
-      throw new Error("channel closed");
-    });
+    mockIPC(
+      (cmd) => {
+        if (cmd === "set_settings") throw new Error("channel closed");
+      },
+      { shouldMockEvents: true },
+    );
 
     const saved = await store.patch({ historySize: 10 });
 
