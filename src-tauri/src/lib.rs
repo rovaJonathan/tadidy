@@ -89,6 +89,7 @@ pub fn run() {
             shortcuts::register_at_startup(
                 &shortcuts::AppShortcuts(app.handle().clone()),
                 &app.state::<AppState>().shortcut,
+                shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT,
             );
             Ok(())
         })
