@@ -246,6 +246,36 @@ describe("ShortcutsTab", () => {
     expect(recorder.classList.contains("has-error")).toBe(true);
   });
 
+  it("leaves Enter and Space on the reset button to the button", async () => {
+    const { container, keys, recorder } = await open(
+      fakeSettingsCore({ settings: { quickPanelShortcut: "Ctrl+Alt+V" } }),
+    );
+    const reset = find(container, "#btn-shortcut-reset");
+
+    for (const key of ["Enter", " "]) {
+      // `true`: nobody cancelled the key, so the browser still turns it into a click on the button.
+      const notCancelled = await fireEvent.keyDown(reset, { code: key === " " ? "Space" : "Enter", key });
+      await settle();
+
+      expect(notCancelled, JSON.stringify(key)).toBe(true);
+      expect(keys()).toBe("⌃⌥V");
+      expect(recorder.classList.contains("is-recording")).toBe(false);
+    }
+  });
+
+  it("tells why the core refused a change that is not a conflict", async () => {
+    const core = fakeSettingsCore();
+    core.refuse = { code: "storage_unavailable", message: "The history database is not available." };
+    const { error, recorder, record, press } = await open(core);
+    await record();
+
+    await press("KeyV", { ctrlKey: true, altKey: true });
+
+    expect(error().hasAttribute("hidden")).toBe(false);
+    expect(error().textContent).toBe("The history database is not available.");
+    expect(recorder.classList.contains("has-error")).toBe(true);
+  });
+
   it("shows no error when the shortcut status cannot be read", async () => {
     const core = fakeSettingsCore();
     core.statusUnreadable = { code: "window", message: "The window could not be reached." };

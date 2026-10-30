@@ -107,6 +107,20 @@ test("a shortcut the core refuses shows the conflict error", async ({ page }) =>
   expect(await settingsPatches(page)).toEqual([{ quickPanelShortcut: "Ctrl+Alt+V" }]);
 });
 
+test("Restore default works from the keyboard", async ({ page }) => {
+  await open(page, {
+    settings: { historySize: 500, confirmBeforeDelete: true, launchAtLogin: false, quickPanelShortcut: "Ctrl+Alt+V" },
+    shortcut: { accelerator: "Ctrl+Alt+V", error: null },
+  });
+  await page.locator("#prefs-tab-shortcuts").click();
+
+  await page.locator("#btn-shortcut-reset").focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page.locator("#shortcut-keys")).toHaveText("⌘⇧V");
+  expect(await settingsPatches(page)).toEqual([{ quickPanelShortcut: "Cmd+Shift+V" }]);
+});
+
 test("a shortcut that failed at startup shows the conflict error when the tab opens", async ({ page }) => {
   await open(page, { shortcut: { accelerator: "Cmd+Shift+V", error: "unavailable" } });
 
