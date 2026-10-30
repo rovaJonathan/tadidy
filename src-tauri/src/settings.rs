@@ -559,6 +559,33 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_shortcut_does_not_block_a_change_that_is_not_about_it() {
+        let h = harness();
+        h.shortcuts
+            .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+            .unwrap();
+        h.shortcuts.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        *h.shortcut_status.lock().unwrap() = ShortcutStatus {
+            accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+            error: Some("shortcut_unavailable".to_owned()),
+        };
+
+        let result = h.update(SettingsPatch {
+            confirm_before_delete: Some(false),
+            launch_at_login: Some(true),
+            ..SettingsPatch::default()
+        });
+
+        assert!(result.is_ok(), "{result:?}");
+        assert!(!h.live().confirm_before_delete);
+        assert!(h.login_item.enabled());
+        assert_eq!(
+            h.shortcut_status.lock().unwrap().error.as_deref(),
+            Some("shortcut_unavailable")
+        );
+    }
+
+    #[test]
     fn a_retry_that_is_refused_again_reports_it() {
         let h = harness();
         h.shortcuts
