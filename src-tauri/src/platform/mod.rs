@@ -24,6 +24,8 @@ pub enum PlatformError {
     PasteboardWrite,
     #[error("the paste keystroke could not be sent")]
     KeyEvent,
+    #[error("the app could not be brought to the front")]
+    Activation,
     #[error("the Accessibility settings could not be opened")]
     AccessibilitySettings,
 }

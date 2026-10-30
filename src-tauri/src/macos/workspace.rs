@@ -5,7 +5,7 @@ use objc2::rc::autoreleasepool;
 use objc2_app_kit::{NSRunningApplication, NSWorkspace};
 
 use super::app_icon;
-use crate::platform::{SourceApp, Workspace};
+use crate::platform::{PlatformError, SourceApp, Workspace};
 
 /// The shared workspace. Stateless: every call asks AppKit again.
 #[derive(Debug, Default, Clone, Copy)]
@@ -36,5 +36,9 @@ impl Workspace for NsWorkspace {
             }
             app_icon::png(&running)
         })
+    }
+
+    fn activate(&self, _app: &SourceApp) -> Result<(), PlatformError> {
+        Err(PlatformError::Activation)
     }
 }
