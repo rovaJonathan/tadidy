@@ -209,14 +209,21 @@ pub fn open_preferences_with<R: Runtime>(
     shown
 }
 
-/// The standard window of the Preferences: fixed size, no zoom (DESIGN.md §3).
+/// The standard window of the Preferences: fixed size, no zoom, and the traffic lights over the
+/// sidebar (DESIGN.md §3). The mock runtime keeps none of these attributes: manual QA checks them.
 fn create_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
-    WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
-        .title("Tadidy Preferences")
-        .inner_size(SETTINGS_WIDTH, SETTINGS_HEIGHT)
-        .resizable(false)
-        .center()
-        .build()
+    let builder =
+        WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
+            .title("Tadidy Preferences")
+            .inner_size(SETTINGS_WIDTH, SETTINGS_HEIGHT)
+            .resizable(false)
+            .maximizable(false)
+            .center();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    builder.build()
 }
 
 fn lock_policy(state: &PolicyState) -> MutexGuard<'_, PolicySwitch> {

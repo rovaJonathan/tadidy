@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "The Preferences window can be dragged by its sidebar and header: its title bar is transparent.",
+  "windows": ["settings"],
+  "permissions": ["core:window:allow-start-dragging"]
+}
