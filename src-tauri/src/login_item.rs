@@ -5,8 +5,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{PoisonError, RwLock};
 
+use crate::error::AppError;
 use crate::settings::Settings;
-use crate::storage::Db;
+use crate::storage::{self, Db};
 
 /// Why the login item could not be read or changed. No detail: the cause is logged by code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -88,8 +89,23 @@ impl LoginItem for FakeLoginItem {
 /// Makes the stored `launchAtLogin` match the system, which wins. Called once at startup, before
 /// anything shows the setting. A system that cannot be read leaves the stored value alone.
 pub fn reconcile(item: &dyn LoginItem, current: &RwLock<Settings>, db: &Db) {
-    let _ = (item, current, db, PoisonError::<()>::into_inner);
-    todo!("TAD-017: reconcile the stored launchAtLogin with the system")
+    let Ok(system) = item.is_enabled() else {
+        tracing::warn!("the login item state could not be read, keeping the stored value");
+        return;
+    };
+    let mut guard = current.write().unwrap_or_else(PoisonError::into_inner);
+    if guard.launch_at_login == system {
+        return;
+    }
+    let next = Settings {
+        launch_at_login: system,
+        ..guard.clone()
+    };
+    // The system wins even when the write fails: the next start reconciles again.
+    if let Err(error) = db.with_conn(|conn| storage::settings::save(conn, &next)) {
+        tracing::warn!(code = %AppError::from(error).code, "the reconciled setting was not stored");
+    }
+    *guard = next;
 }
 
 #[cfg(test)]
