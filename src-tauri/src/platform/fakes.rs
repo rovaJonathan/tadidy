@@ -111,7 +111,7 @@ impl FakeWorkspace {
 
     /// The apps brought to the front, oldest first.
     pub fn activations(&self) -> Vec<SourceApp> {
-        Vec::new()
+        lock(&self.state).activations.clone()
     }
 }
 
@@ -124,7 +124,12 @@ impl Workspace for FakeWorkspace {
         lock(&self.state).icons.get(&app.bundle_id).cloned()
     }
 
-    fn activate(&self, _app: &SourceApp) -> Result<(), PlatformError> {
+    fn activate(&self, app: &SourceApp) -> Result<(), PlatformError> {
+        let mut state = lock(&self.state);
+        if state.failing {
+            return Err(PlatformError::Activation);
+        }
+        state.activations.push(app.clone());
         Ok(())
     }
 }
