@@ -40,6 +40,13 @@ for (const { label, page: url, section } of WINDOWS) {
       await expect(page.locator("#clip-count")).toHaveText("30 clips");
     });
 
+    test("fills its window: the list scrolls and the footer stays in view", async ({ page }) => {
+      await open(page, url);
+
+      await expect(page.locator("#btn-preferences")).toBeInViewport({ ratio: 1 });
+      await expect(page.locator("#clip-count")).toBeInViewport({ ratio: 1 });
+    });
+
     test("search, ↓ and Return paste the second match in the default mode", async ({ page }) => {
       await open(page, url);
 
