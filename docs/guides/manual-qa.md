@@ -251,7 +251,7 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 | Quick Panel opening, 10 openings | < 100 ms | not run | | median: |
 | Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | ✅ (automated part) | `search_perf`, debug profile: median 8.8 ms, worst 10.5 ms | The check on a seeded database in the real app is not run yet. |
 | RAM with both windows used | < 120 MB | not run | | recorded only |
-| `.app` binary size | < 15 MB | ❌ | universal `.app` 36.6 MiB, binary 38.4 MB (arm64 + x86_64); `.dmg` 12.5 MiB | recorded only; the target presumably means one architecture: measure an arm64-only build before opening a ticket. |
+| `.app` binary size | < 15 MB | ❌ accepted | universal `.app` 36.6 MiB, executable 38.4 MB; arm64-only `.app` 17.8 MiB, executable 18.7 MB; `.dmg` 12.5 MiB | recorded only. The owner said the size does not matter: no follow-up ticket. The spec line still says 15 MB. |
 
 Signed-build manual QA of the earlier tickets, re-run on this build:
 
