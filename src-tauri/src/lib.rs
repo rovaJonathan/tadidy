@@ -7,6 +7,7 @@ pub mod error;
 pub mod events;
 pub mod history;
 pub mod macos;
+pub mod paster;
 pub mod platform;
 pub mod settings;
 pub mod shortcuts;
@@ -26,6 +27,8 @@ fn real_state(db: Option<storage::Db>) -> AppState {
     AppState::new(
         std::sync::Arc::new(macos::accessibility::AxProbe),
         std::sync::Arc::new(macos::keys::CgKeySender),
+        std::sync::Arc::new(macos::pasteboard::NsPasteboard),
+        std::sync::Arc::new(macos::workspace::NsWorkspace),
     )
     .with_db(db)
 }
@@ -99,7 +102,9 @@ pub fn run() {
             commands::list_clips,
             commands::delete_clips,
             commands::clear_history,
-            commands::get_app_icon
+            commands::get_app_icon,
+            commands::paste_clip,
+            commands::copy_clip
         ])
         .run(tauri::generate_context!())
     {

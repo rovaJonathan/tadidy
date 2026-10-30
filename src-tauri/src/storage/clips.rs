@@ -183,6 +183,14 @@ pub fn move_to_top(
         .optional()?)
 }
 
+/// Records that a clip was pasted or copied back by Tadidy. `false` when no clip has this id.
+pub fn mark_used(conn: &Connection, id: &str, now: i64) -> Result<bool, StorageError> {
+    let updated = conn
+        .prepare_cached("UPDATE clips SET last_used_at = ?2 WHERE id = ?1")?
+        .execute(params![id, now])?;
+    Ok(updated > 0)
+}
+
 /// Up to `limit` clips, newest first, after `cursor` (from the start when `None`).
 pub fn list_recent(
     conn: &Connection,

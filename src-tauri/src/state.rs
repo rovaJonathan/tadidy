@@ -1,21 +1,32 @@
-//! State managed by Tauri and shared by the commands. Later tickets add fields
-//! (settings, last active app).
+//! State managed by Tauri and shared by the commands. Later tickets add fields.
 
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::clip::HistoryLimit;
+use crate::clock::SystemClock;
 use crate::error::AppError;
-use crate::platform::{AccessibilityProbe, KeySender};
+use crate::events::EventSink;
+use crate::paster::{AccessibilityMonitor, PASTE_DELAY, Paster, PasterServices, WindowHider};
+use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
 use crate::settings::Settings;
 use crate::shortcuts::ShortcutStatus;
 use crate::storage::{self, Db};
 use crate::watcher::WatcherHandle;
 
+/// Tadidy's own bundle identifier (AGENTS.md §3).
+pub const OWN_BUNDLE_ID: &str = "app.tadidy";
+
 /// The platform services as trait objects: the real ones in `setup`, fakes in the tests.
 pub struct AppState {
     pub accessibility: Arc<dyn AccessibilityProbe>,
-    /// Used by the paster (TAD-015).
+    /// Remembers the permission's last known state and announces its changes.
+    pub accessibility_monitor: Arc<AccessibilityMonitor>,
     pub key_sender: Arc<dyn KeySender>,
+    pub pasteboard: Arc<dyn Pasteboard>,
+    pub workspace: Arc<dyn Workspace>,
+    /// The app that was in front just before the popover opened: the paster gives it the focus
+    /// back before sending `⌘V`.
+    pub last_active_app: Arc<Mutex<Option<SourceApp>>>,
     /// Result of the Quick Panel shortcut registration, read by the preferences (TAD-017).
     pub shortcut: Mutex<ShortcutStatus>,
     /// `None` when the database could not be opened (e.g. its key is missing from the Keychain).
@@ -29,10 +40,19 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(accessibility: Arc<dyn AccessibilityProbe>, key_sender: Arc<dyn KeySender>) -> Self {
+    pub fn new(
+        accessibility: Arc<dyn AccessibilityProbe>,
+        key_sender: Arc<dyn KeySender>,
+        pasteboard: Arc<dyn Pasteboard>,
+        workspace: Arc<dyn Workspace>,
+    ) -> Self {
         Self {
+            accessibility_monitor: Arc::new(AccessibilityMonitor::new(accessibility.clone())),
             accessibility,
             key_sender,
+            pasteboard,
+            workspace,
+            last_active_app: Arc::default(),
             shortcut: Mutex::default(),
             db: None,
             history_limit: HistoryLimit::default(),
@@ -62,6 +82,47 @@ impl AppState {
         }
     }
 
+    /// Remembers which app is in front. Called just before the popover is shown, while that app
+    /// still has the focus. When Tadidy itself is in front (a Preferences window, say) the
+    /// previous app is kept: re-activating Tadidy would send `⌘V` to its own webview.
+    pub fn remember_frontmost_app(&self) {
+        let frontmost = self.workspace.frontmost_app();
+        if frontmost
+            .as_ref()
+            .is_some_and(|app| app.bundle_id == OWN_BUNDLE_ID)
+        {
+            return;
+        }
+        *self
+            .last_active_app
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = frontmost;
+    }
+
+    /// The paster over this state's services, writing to `db` and reaching the windows through
+    /// `hider`.
+    pub fn paster(
+        &self,
+        db: Db,
+        events: Arc<dyn EventSink>,
+        hider: Arc<dyn WindowHider>,
+    ) -> Paster {
+        Paster::new(
+            PasterServices {
+                pasteboard: self.pasteboard.clone(),
+                keys: self.key_sender.clone(),
+                workspace: self.workspace.clone(),
+                monitor: self.accessibility_monitor.clone(),
+                events,
+                hider,
+                clock: Arc::new(SystemClock),
+                last_active_app: self.last_active_app.clone(),
+                db,
+            },
+            PASTE_DELAY,
+        )
+    }
+
     /// A copy of the shortcut's registration state.
     pub fn shortcut_status(&self) -> ShortcutStatus {
         self.shortcut
@@ -75,7 +136,7 @@ impl AppState {
 mod tests {
     use super::*;
     use crate::crypto::FakeKeyStore;
-    use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
+    use crate::platform::fakes::{FakeAccessibility, FakeKeySender, FakePasteboard, FakeWorkspace};
     use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
     use crate::storage::open_in_dir;
     use std::sync::PoisonError;
@@ -84,7 +145,80 @@ mod tests {
         AppState::new(
             Arc::new(FakeAccessibility::new()),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         )
+    }
+
+    fn textedit() -> SourceApp {
+        SourceApp::new("com.apple.TextEdit", "TextEdit", 4242)
+    }
+
+    fn remembered(state: &AppState) -> Option<SourceApp> {
+        state
+            .last_active_app
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    #[test]
+    fn no_app_is_remembered_at_first() {
+        assert_eq!(remembered(&state()), None);
+    }
+
+    #[test]
+    fn the_frontmost_app_is_remembered_for_the_paster() {
+        let workspace = Arc::new(FakeWorkspace::new());
+        workspace.set_frontmost(Some(textedit()));
+        let state = AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            workspace,
+        );
+
+        state.remember_frontmost_app();
+
+        assert_eq!(remembered(&state), Some(textedit()));
+    }
+
+    #[test]
+    fn tadidy_in_front_does_not_replace_the_remembered_app() {
+        // A Tadidy window in front (Preferences, say) when the popover opens: pasting would
+        // re-activate Tadidy itself and send `⌘V` to its webview.
+        let workspace = Arc::new(FakeWorkspace::new());
+        workspace.set_frontmost(Some(textedit()));
+        let state = AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            workspace.clone(),
+        );
+        state.remember_frontmost_app();
+
+        workspace.set_frontmost(Some(SourceApp::new(OWN_BUNDLE_ID, "Tadidy", 99)));
+        state.remember_frontmost_app();
+
+        assert_eq!(remembered(&state), Some(textedit()));
+    }
+
+    #[test]
+    fn an_empty_desktop_makes_the_state_forget_the_previous_app() {
+        let workspace = Arc::new(FakeWorkspace::new());
+        workspace.set_frontmost(Some(textedit()));
+        let state = AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            workspace.clone(),
+        );
+        state.remember_frontmost_app();
+
+        workspace.set_frontmost(None);
+        state.remember_frontmost_app();
+
+        assert_eq!(remembered(&state), None);
     }
 
     #[test]

@@ -11,6 +11,8 @@ use tauri::{
 use tauri_plugin_positioner::{Position as TrayPosition, WindowExt};
 
 use crate::events::{TauriEventSink, emit_panel_shown};
+use crate::paster::{PasteOrigin, WindowHider};
+use crate::state::AppState;
 
 pub const POPOVER_LABEL: &str = "popover";
 pub const PANEL_LABEL: &str = "panel";
@@ -96,6 +98,8 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
     }
 
     fn reveal(&self) {
+        // Before the window takes the focus: afterwards it is the front app itself.
+        prepare_to_show(self.app_handle(), PasteOrigin::Popover);
         // Without a tray position yet (no tray event seen) the window keeps its place.
         if let Err(error) = self.move_window(TrayPosition::TrayBottomCenter) {
             tracing::warn!(%error, "could not place the popover under the tray icon");
@@ -113,6 +117,63 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
     fn conceal(&self) {
         if let Err(error) = self.hide() {
             tracing::error!(%error, "could not hide the popover");
+        }
+    }
+}
+
+/// What happens just before the popover or the Quick Panel is shown. Remembers the app in front
+/// (only for the popover: it takes the focus, so it is the one that has to give it back), and
+/// checks the Accessibility permission so the banner follows a change made in System Settings.
+pub fn prepare_to_show<R: Runtime>(app: &AppHandle<R>, origin: PasteOrigin) {
+    let Some(state) = app.try_state::<AppState>() else {
+        tracing::error!("the app state is missing");
+        return;
+    };
+    if origin == PasteOrigin::Popover {
+        state.remember_frontmost_app();
+    }
+    state
+        .accessibility_monitor
+        .check(&TauriEventSink::new(app.clone()));
+}
+
+/// How long a worker thread waits for the main thread before giving up on a job.
+const MAIN_THREAD_WAIT: Duration = Duration::from_secs(2);
+
+/// Runs `job` on the main thread and returns once it has run, so the steps that follow still come
+/// after it (AGENTS.md §13). Gives up after [`MAIN_THREAD_WAIT`]: never call it from the main
+/// thread itself, which cannot run the job while it waits.
+pub fn run_on_main_thread_and_wait<R: Runtime>(
+    app: &AppHandle<R>,
+    job: impl FnOnce() + Send + 'static,
+) {
+    let (done, finished) = std::sync::mpsc::channel();
+    let sent = app.run_on_main_thread(move || {
+        job();
+        // The waiter may have given up already: nobody is left to tell.
+        let _ = done.send(());
+    });
+    if sent.is_err() || finished.recv_timeout(MAIN_THREAD_WAIT).is_err() {
+        tracing::error!("the main thread did not run the window job");
+    }
+}
+
+impl<R: Runtime> WindowHider for AppHandle<R> {
+    fn hide(&self, origin: PasteOrigin) {
+        match origin {
+            PasteOrigin::Popover => match self.get_webview_window(POPOVER_LABEL) {
+                Some(popover) => popover.conceal(),
+                None => tracing::error!("the popover window is missing"),
+            },
+            // `Panel::hide` is a bare AppKit call: it must run on the main thread, and the paster
+            // runs on a command's worker thread.
+            #[cfg(target_os = "macos")]
+            PasteOrigin::Panel => {
+                let panel = crate::macos::panel::NsQuickPanel::new(self.clone());
+                run_on_main_thread_and_wait(self, move || panel.conceal());
+            }
+            #[cfg(not(target_os = "macos"))]
+            PasteOrigin::Panel => tracing::warn!("the Quick Panel needs macOS"),
         }
     }
 }
@@ -589,6 +650,112 @@ mod tests {
 
         let payload = receiver.recv_timeout(Duration::from_secs(1)).unwrap();
         assert_eq!(payload, r#"{"window":"popover"}"#);
+    }
+
+    use crate::events::ACCESSIBILITY_CHANGED;
+    use crate::platform::SourceApp;
+    use crate::platform::fakes::{FakeAccessibility, FakeKeySender, FakePasteboard, FakeWorkspace};
+    use std::sync::Arc;
+
+    fn textedit() -> SourceApp {
+        SourceApp::new("com.apple.TextEdit", "TextEdit", 4242)
+    }
+
+    /// A mock app whose state sees TextEdit in front and a trusted (or not) process.
+    fn app_with_state(trusted: bool) -> tauri::App<MockRuntime> {
+        let app = tauri::test::mock_app();
+        let workspace = Arc::new(FakeWorkspace::new());
+        workspace.set_frontmost(Some(textedit()));
+        let accessibility = Arc::new(FakeAccessibility::new());
+        accessibility.set_trusted(trusted);
+        app.manage(AppState::new(
+            accessibility,
+            Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            workspace,
+        ));
+        app
+    }
+
+    fn remembered(app: &tauri::App<MockRuntime>) -> Option<SourceApp> {
+        app.state::<AppState>()
+            .last_active_app
+            .lock()
+            .unwrap()
+            .clone()
+    }
+
+    #[test]
+    fn showing_the_popover_remembers_the_app_that_was_in_front() {
+        let app = app_with_state(true);
+        app.manage(PopoverState::default());
+        app.handle()
+            .plugin(tauri_plugin_positioner::init())
+            .unwrap();
+        let popover = create_popover(&app).unwrap();
+
+        popover.reveal();
+
+        assert_eq!(remembered(&app), Some(textedit()));
+    }
+
+    #[test]
+    fn preparing_the_popover_remembers_the_app_and_the_quick_panel_does_not() {
+        let app = app_with_state(true);
+
+        prepare_to_show(app.handle(), PasteOrigin::Panel);
+        assert_eq!(remembered(&app), None);
+
+        prepare_to_show(app.handle(), PasteOrigin::Popover);
+        assert_eq!(remembered(&app), Some(textedit()));
+    }
+
+    #[test]
+    fn every_show_checks_the_permission_and_announces_only_a_change() {
+        use tauri::Listener;
+        let app = app_with_state(false);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        app.listen_any(ACCESSIBILITY_CHANGED, move |event| {
+            sender.send(event.payload().to_owned()).unwrap();
+        });
+
+        prepare_to_show(app.handle(), PasteOrigin::Popover);
+        prepare_to_show(app.handle(), PasteOrigin::Panel);
+
+        let payload = receiver.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(payload, r#"{"trusted":false}"#);
+        assert!(receiver.recv_timeout(Duration::from_millis(100)).is_err());
+    }
+
+    #[test]
+    fn preparing_a_show_without_the_app_state_does_not_panic() {
+        let app = tauri::test::mock_app();
+
+        prepare_to_show(app.handle(), PasteOrigin::Popover);
+    }
+
+    #[test]
+    fn a_job_sent_to_the_main_thread_has_run_when_the_helper_returns() {
+        let app = tauri::test::mock_app();
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = ran.clone();
+
+        run_on_main_thread_and_wait(app.handle(), move || {
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn hiding_the_popover_works_with_or_without_its_window() {
+        // `AppHandle` has its own `hide()` (the whole app): the trait method is called by path.
+        // The Quick Panel is an `NSPanel`: hiding it is the manual QA of TAD-015.
+        let (app, _popover) = app_with_popover();
+        WindowHider::hide(app.handle(), PasteOrigin::Popover);
+
+        let empty = tauri::test::mock_app();
+        WindowHider::hide(empty.handle(), PasteOrigin::Popover);
     }
 
     /// A Retina laptop (1512 × 982 pt, scale 2) with a 1× external display on its right.

@@ -142,3 +142,25 @@ Needs the signed build of TAD-008 and the terminal, because the only trace of a 
 | 8 | Follow step 6 of [TAD-007](#tad-007--encrypted-database-foundation) (Keychain item deleted, `tadidy.db` kept) and start the app with `RUST_LOG=tadidy_lib=info`. | The terminal logs `storage_key_missing` and `the clipboard watcher is not started: no history database`; copying text prints no `clip recorded` line; the tray icon still works. |
 
 Until CAP-10 and CAP-11 land (phase 2), text copied from a password manager is recorded too (encrypted in the database): step 2 with a password from the password manager prints a `clip recorded` line.
+
+### TAD-015 — Paste and copy commands
+
+Run a developer probe; no signed build is needed. It runs the real `Paster` (pasteboard, workspace, `⌘V`, Accessibility) on a synthetic sentence, `Tadidy paste flow probe`, kept in a throwaway database with a fixed key (never the Keychain). The Accessibility grant goes to the terminal you run it from, as for [TAD-005](#tad-005--key-sender-and-accessibility-permission). The probe prints the app it recorded, which window it would hide, and the result. It never reads or prints the clipboard.
+
+```
+cargo run --manifest-path src-tauri/Cargo.toml --example paste_flow_probe [-- --panel]
+```
+
+Open TextEdit with an empty document and the insertion point in it before each run. The probe waits 3 s so you can put the target app in front, records it, then waits 3 s more before pasting. Without `--panel` the origin is the popover (it re-activates the recorded app first); with `--panel` it is the Quick Panel (it activates nothing).
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Turn the terminal **off** in *System Settings → Privacy & Security → Accessibility*. Run `-- --panel` and keep TextEdit in front. | `recorded TextEdit (com.apple.TextEdit)`, `result: CopiedOnly`, no `hide` line. Nothing is typed in TextEdit. Press `⌘V` yourself: `Tadidy paste flow probe` is pasted (the clip is on the clipboard). |
+| 2 | Turn the terminal **on**. Run `-- --panel` and keep TextEdit in front. | `hide the Panel window`, `result: Pasted`; the sentence appears in TextEdit, which stays the front app (the Quick Panel never activates anything). |
+| 3 | Same as step 2, with a text field of a Safari page (a search box, say) in front instead of TextEdit. | The sentence appears in the Safari text field. |
+| 4 | Run without `--panel` and keep TextEdit in front. | `hide the Popover window`, `result: Pasted`, no crash. The re-activation itself is **not** checked here: since macOS 14 an app can only bring another one forward while it is the active app (cooperative activation), and a command-line probe never is. If another app is in front at paste time, the sentence goes there (Finder turns it into a text clipping in its folder: delete it). Re-activation is checked from the real popover in TAD-016, where Tadidy has the focus. |
+| 5 | Run without `--panel`; during the second wait, quit TextEdit (the recorded app) and leave another app in front. | `result: Pasted` and no crash: the app to re-activate is gone, nothing is brought forward, and the keystroke goes to the app in front. |
+
+If step 2 or 3 sometimes misses the keystroke on a loaded machine, raise `PASTE_DELAY` in `src-tauri/src/paster.rs` (50 ms) and note it in `PROGRESS.md`.
+
+The same flows from the real popover and Quick Panel need the clip browser to be hosted in the windows (TAD-016): MVP criterion 3 is run there.

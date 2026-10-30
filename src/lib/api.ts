@@ -2,12 +2,15 @@
 // directly (AGENTS.md §14); argument and result types come from ./bindings (ADR 0006).
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { AccessibilityChanged } from "./bindings/AccessibilityChanged";
 import type { AppError } from "./bindings/AppError";
 import type { ClipQuery } from "./bindings/ClipQuery";
 import type { ClipsChanged } from "./bindings/ClipsChanged";
 import type { ClipSummary } from "./bindings/ClipSummary";
 import type { Page } from "./bindings/Page";
 import type { PanelShown } from "./bindings/PanelShown";
+import type { PasteMode } from "./bindings/PasteMode";
+import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
 
@@ -31,6 +34,14 @@ export function checkAccessibility(): Promise<boolean> {
  */
 export async function openAccessibilitySettings(): Promise<void> {
   await invoke("open_accessibility_settings");
+}
+
+/**
+ * Runs `callback` each time the Accessibility permission is found granted or revoked
+ * (`accessibility://changed`). The core checks it at every window show and every paste.
+ */
+export function onAccessibilityChanged(callback: (change: AccessibilityChanged) => void): Promise<UnlistenFn> {
+  return listen<AccessibilityChanged>("accessibility://changed", (event) => callback(event.payload));
 }
 
 /** Runs `callback` each time the popover or the Quick Panel is shown (`panel://shown`). */
@@ -63,6 +74,20 @@ export function onSettingsChanged(callback: (settings: Settings) => void): Promi
  */
 export function listClips(q: ClipQuery): Promise<Page<ClipSummary>> {
   return invoke<Page<ClipSummary>>("list_clips", { q });
+}
+
+/**
+ * Puts the clip back on the pasteboard and into the app that was in front, and hides the calling
+ * window. Resolves `copied_only` when the Accessibility permission is missing: the clip is on
+ * the pasteboard, the window stays open. Rejects with `not_found` for an unknown id.
+ */
+export function pasteClip(id: string, mode: PasteMode): Promise<PasteResult> {
+  return invoke<PasteResult>("paste_clip", { id, mode });
+}
+
+/** Puts the clip back on the pasteboard and hides the calling window; nothing is pasted. */
+export async function copyClip(id: string): Promise<void> {
+  await invoke("copy_clip", { id });
 }
 
 /** Removes clips; the core announces it with `clips://changed`. */

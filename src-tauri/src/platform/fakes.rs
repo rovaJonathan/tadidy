@@ -81,6 +81,8 @@ impl Pasteboard for FakePasteboard {
 struct WorkspaceState {
     frontmost: Option<SourceApp>,
     icons: HashMap<String, Vec<u8>>,
+    activations: Vec<SourceApp>,
+    failing: bool,
 }
 
 /// A workspace whose frontmost app and icons are set by the test.
@@ -101,6 +103,16 @@ impl FakeWorkspace {
     pub fn set_icon(&self, bundle_id: &str, png: Vec<u8>) {
         lock(&self.state).icons.insert(bundle_id.to_owned(), png);
     }
+
+    /// Makes every later [`Workspace::activate`] fail, as for an app that has quit.
+    pub fn fail_activations(&self) {
+        lock(&self.state).failing = true;
+    }
+
+    /// The apps brought to the front, oldest first.
+    pub fn activations(&self) -> Vec<SourceApp> {
+        lock(&self.state).activations.clone()
+    }
 }
 
 impl Workspace for FakeWorkspace {
@@ -110,6 +122,15 @@ impl Workspace for FakeWorkspace {
 
     fn app_icon_png(&self, app: &SourceApp) -> Option<Vec<u8>> {
         lock(&self.state).icons.get(&app.bundle_id).cloned()
+    }
+
+    fn activate(&self, app: &SourceApp) -> Result<(), PlatformError> {
+        let mut state = lock(&self.state);
+        if state.failing {
+            return Err(PlatformError::Activation);
+        }
+        state.activations.push(app.clone());
+        Ok(())
     }
 }
 
@@ -316,6 +337,22 @@ mod tests {
         let workspace = FakeWorkspace::new();
 
         assert_eq!(workspace.app_icon_png(&textedit()), None);
+    }
+
+    #[test]
+    fn fake_workspace_records_the_apps_it_activates_and_can_fail() {
+        let workspace = FakeWorkspace::new();
+        assert!(workspace.activations().is_empty());
+
+        workspace.activate(&textedit()).unwrap();
+        assert_eq!(workspace.activations(), vec![textedit()]);
+
+        workspace.fail_activations();
+        assert_eq!(
+            workspace.activate(&textedit()),
+            Err(PlatformError::Activation)
+        );
+        assert_eq!(workspace.activations(), vec![textedit()]);
     }
 
     #[test]

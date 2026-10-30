@@ -1,13 +1,14 @@
 //! IPC commands: thin wrappers that delegate to the services (AGENTS.md §13).
 
-use std::sync::PoisonError;
+use std::sync::{Arc, PoisonError};
 
-use tauri::{AppHandle, Runtime, State, WebviewWindow};
+use tauri::{AppHandle, Manager, Runtime, State, WebviewWindow};
 
 use crate::clip::{ClipQuery, ClipSummary, Page};
 use crate::error::AppError;
 use crate::events::TauriEventSink;
 use crate::history;
+use crate::paster::{PasteMode, PasteOrigin, PasteResult, Paster};
 use crate::settings::{self, Settings, SettingsPatch};
 use crate::state::AppState;
 use crate::storage::{self, Db};
@@ -112,6 +113,40 @@ pub fn clear_history<R: Runtime>(
     history::clear_history(database(&state)?, &TauriEventSink::new(app), keep_pinned)
 }
 
+/// Puts a clip back on the pasteboard and into the app that was in front (PST-01), or only on
+/// the pasteboard when Accessibility is not granted. The window that calls it is hidden.
+/// `async` keeps the wait for the target app and the SQLite work off the main thread.
+#[tauri::command(async)]
+pub fn paste_clip<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    id: String,
+    mode: PasteMode,
+) -> Result<PasteResult, AppError> {
+    let origin = PasteOrigin::from_label(window.label())?;
+    paster(window.app_handle(), &state)?.paste(&id, mode, origin)
+}
+
+/// Puts a clip back on the pasteboard and hides the window that calls it (PST-02).
+#[tauri::command(async)]
+pub fn copy_clip<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), AppError> {
+    let origin = PasteOrigin::from_label(window.label())?;
+    paster(window.app_handle(), &state)?.copy(&id, origin)
+}
+
+/// The paster over the app's real windows and event channel.
+fn paster<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Result<Paster, AppError> {
+    Ok(state.paster(
+        database(state)?.clone(),
+        Arc::new(TauriEventSink::new(app.clone())),
+        Arc::new(app.clone()),
+    ))
+}
+
 /// The cached icon of a source app as raw PNG bytes (no JSON round trip), `not_found` when the
 /// app has none.
 #[tauri::command(async)]
@@ -128,9 +163,9 @@ pub fn get_app_icon(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
+    use crate::platform::fakes::{FakeAccessibility, FakeKeySender, FakePasteboard, FakeWorkspace};
     use crate::state::AppState;
-    use std::sync::Arc;
+
     use tauri::Manager;
 
     /// A mock app whose state holds the given probe and a key sender that is never used here.
@@ -139,6 +174,8 @@ mod tests {
         app.manage(AppState::new(
             accessibility.clone(),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         ));
         app
     }
@@ -220,6 +257,8 @@ mod tests {
             AppState::new(
                 Arc::new(FakeAccessibility::new()),
                 Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
             )
             .with_db(Some(db.clone())),
         );
@@ -315,6 +354,8 @@ mod tests {
         app.manage(AppState::new(
             Arc::new(FakeAccessibility::new()),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         ));
 
         let error = set_settings(app.handle().clone(), app.state(), patch(false)).unwrap_err();
@@ -325,7 +366,7 @@ mod tests {
 
     use crate::clip::{ClipKind, NewClip, content_hash};
     use crate::events::CLIPS_CHANGED;
-    use crate::platform::{Representation, UTI_PLAIN_TEXT};
+    use crate::platform::{Representation, UTI_PLAIN_TEXT, UTI_TADIDY_MARKER};
     use crate::storage::clips::{self, InsertOutcome};
     use tauri::ipc::{InvokeResponseBody, IpcResponse};
 
@@ -355,6 +396,8 @@ mod tests {
         app.manage(AppState::new(
             Arc::new(FakeAccessibility::new()),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         ));
         app
     }
@@ -507,5 +550,180 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error.code, "not_found");
+    }
+
+    // --- paste and copy ------------------------------------------------------------------
+
+    struct PasteApp {
+        app: tauri::App<tauri::test::MockRuntime>,
+        db: Db,
+        pasteboard: Arc<FakePasteboard>,
+        keys: Arc<FakeKeySender>,
+        accessibility: Arc<FakeAccessibility>,
+        clip_id: String,
+        _dir: tempfile::TempDir,
+    }
+
+    fn paste_app() -> PasteApp {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let pasteboard = Arc::new(FakePasteboard::new());
+        let keys = Arc::new(FakeKeySender::new());
+        let accessibility = Arc::new(FakeAccessibility::new());
+        accessibility.set_trusted(true);
+        let app = tauri::test::mock_app();
+        app.manage(
+            AppState::new(
+                accessibility.clone(),
+                keys.clone(),
+                pasteboard.clone(),
+                Arc::new(FakeWorkspace::new()),
+            )
+            .with_db(Some(db.clone())),
+        );
+        let clip_id = add(&db, "pasted text", 1_000);
+        PasteApp {
+            app,
+            db,
+            pasteboard,
+            keys,
+            accessibility,
+            clip_id,
+            _dir: dir,
+        }
+    }
+
+    fn window(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        label: &str,
+    ) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        tauri::WebviewWindowBuilder::new(app, label, Default::default())
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn paste_clip_writes_the_clip_with_the_marker_and_sends_command_v() {
+        let paste = paste_app();
+
+        // The Quick Panel is an `NSPanel` the mock runtime cannot hide: its paste is manual QA.
+        let result = paste_clip(
+            window(&paste.app, "popover"),
+            paste.app.state(),
+            paste.clip_id.clone(),
+            PasteMode::Default,
+        )
+        .unwrap();
+
+        assert_eq!(result, PasteResult::Pasted);
+        assert_eq!(
+            paste.pasteboard.writes(),
+            vec![vec![
+                Representation::new(UTI_PLAIN_TEXT, b"pasted text".as_slice()),
+                Representation::new(UTI_TADIDY_MARKER, Vec::new()),
+            ]]
+        );
+        assert_eq!(paste.keys.paste_count(), 1);
+    }
+
+    #[test]
+    fn paste_clip_without_accessibility_only_copies() {
+        let paste = paste_app();
+        paste.accessibility.set_trusted(false);
+
+        let result = paste_clip(
+            window(&paste.app, "popover"),
+            paste.app.state(),
+            paste.clip_id.clone(),
+            PasteMode::Plain,
+        )
+        .unwrap();
+
+        assert_eq!(result, PasteResult::CopiedOnly);
+        assert_eq!(paste.pasteboard.writes().len(), 1);
+        assert_eq!(paste.keys.paste_count(), 0);
+    }
+
+    #[test]
+    fn copy_clip_writes_the_clip_and_sends_no_key() {
+        let paste = paste_app();
+
+        copy_clip(
+            window(&paste.app, "popover"),
+            paste.app.state(),
+            paste.clip_id.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(paste.pasteboard.writes().len(), 1);
+        assert_eq!(paste.keys.paste_count(), 0);
+        let used = paste
+            .db
+            .with_conn(|conn| clips::get(conn, &paste.clip_id))
+            .unwrap()
+            .unwrap()
+            .clip
+            .last_used_at;
+        assert!(used.is_some());
+    }
+
+    #[test]
+    fn paste_and_copy_refuse_a_window_that_is_not_the_popover_or_the_panel() {
+        let paste = paste_app();
+        let settings = window(&paste.app, "settings");
+
+        let pasted = paste_clip(
+            settings.clone(),
+            paste.app.state(),
+            paste.clip_id.clone(),
+            PasteMode::Default,
+        )
+        .unwrap_err();
+        let copied = copy_clip(settings, paste.app.state(), paste.clip_id.clone()).unwrap_err();
+
+        assert_eq!(pasted.code, "invalid_window");
+        assert_eq!(copied.code, "invalid_window");
+        assert!(paste.pasteboard.writes().is_empty());
+    }
+
+    #[test]
+    fn paste_and_copy_of_an_unknown_id_fail_with_not_found_and_touch_nothing() {
+        let paste = paste_app();
+
+        let pasted = paste_clip(
+            window(&paste.app, "panel"),
+            paste.app.state(),
+            "no-such-id".to_owned(),
+            PasteMode::Default,
+        )
+        .unwrap_err();
+        let copied = copy_clip(
+            window(&paste.app, "popover"),
+            paste.app.state(),
+            "no-such-id".to_owned(),
+        )
+        .unwrap_err();
+
+        assert_eq!(pasted.code, "not_found");
+        assert_eq!(copied.code, "not_found");
+        assert!(paste.pasteboard.writes().is_empty());
+        assert_eq!(paste.keys.paste_count(), 0);
+    }
+
+    #[test]
+    fn paste_and_copy_without_a_database_fail_with_storage_unavailable() {
+        let app = app_without_db();
+
+        let pasted = paste_clip(
+            window(&app, "panel"),
+            app.state(),
+            "a".to_owned(),
+            PasteMode::Default,
+        )
+        .unwrap_err();
+        let copied = copy_clip(window(&app, "popover"), app.state(), "a".to_owned()).unwrap_err();
+
+        assert_eq!(pasted.code, "storage_unavailable");
+        assert_eq!(copied.code, "storage_unavailable");
     }
 }

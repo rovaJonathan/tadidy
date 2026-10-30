@@ -10,7 +10,7 @@ use tadidy_lib::clip::{ClipKind, Cursor, NewClip, content_hash};
 use tadidy_lib::platform::{Representation, UTI_PLAIN_TEXT};
 use tadidy_lib::storage::clips::{
     InsertOutcome, LIST_AFTER_SQL, LIST_FIRST_PAGE_SQL, OLDEST_UNPINNED_SQL, clear, count, delete,
-    enforce_limit, get, insert_or_bump, list_recent, move_to_top,
+    enforce_limit, get, insert_or_bump, list_recent, mark_used, move_to_top,
 };
 use tadidy_lib::storage::{Db, app_icons, open};
 use tempfile::TempDir;
@@ -327,6 +327,41 @@ fn moving_an_unknown_hash_to_the_top_gives_none() {
         .unwrap();
 
     assert_eq!(moved, None);
+}
+
+// --- mark used -------------------------------------------------------------------------------
+
+#[test]
+fn marking_a_clip_used_sets_last_used_at_and_nothing_else() {
+    let (_dir, db) = open_db();
+    let id = inserted_id(insert(&db, &text_clip("pasted", 1_000)));
+    let before = db.with_conn(|conn| get(conn, &id)).unwrap().unwrap().clip;
+    assert_eq!(before.last_used_at, None);
+
+    let marked = db.with_conn(|conn| mark_used(conn, &id, 5_000)).unwrap();
+
+    assert!(marked);
+    let after = db.with_conn(|conn| get(conn, &id)).unwrap().unwrap().clip;
+    assert_eq!(after.last_used_at, Some(5_000));
+    assert_eq!(
+        tadidy_lib::clip::ClipRecord {
+            last_used_at: None,
+            ..after
+        },
+        before
+    );
+}
+
+#[test]
+fn marking_an_unknown_clip_used_changes_nothing() {
+    let (_dir, db) = open_db();
+    insert(&db, &text_clip("pasted", 1_000));
+
+    let marked = db
+        .with_conn(|conn| mark_used(conn, "no-such-id", 5_000))
+        .unwrap();
+
+    assert!(!marked);
 }
 
 // --- list ------------------------------------------------------------------------------------
