@@ -13,6 +13,7 @@ import {
   hideWindow,
   listClips,
   onAccessibilityChanged,
+  onClearHistoryRequested,
   onClipsChanged,
   onPanelShown,
   onSettingsChanged,
@@ -134,6 +135,31 @@ describe("onPanelShown", () => {
     await emit("clips://changed", { window: "panel" });
 
     expect(shown).toEqual([]);
+  });
+});
+
+describe("onClearHistoryRequested", () => {
+  it("runs the callback each time menu://clear-history arrives", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    let requests = 0;
+    await onClearHistoryRequested(() => requests++);
+
+    await emit("menu://clear-history");
+    await emit("menu://clear-history");
+
+    expect(requests).toBe(2);
+  });
+
+  it("stops calling the callback once unlistened, and ignores other events", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    let requests = 0;
+    const unlisten = await onClearHistoryRequested(() => requests++);
+
+    await emit("panel://shown", { window: "popover" });
+    unlisten();
+    await emit("menu://clear-history");
+
+    expect(requests).toBe(0);
   });
 });
 
