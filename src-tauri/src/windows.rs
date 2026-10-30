@@ -137,11 +137,25 @@ pub fn prepare_to_show<R: Runtime>(app: &AppHandle<R>, origin: PasteOrigin) {
         .check(&TauriEventSink::new(app.clone()));
 }
 
-/// Runs `job` on the main thread and returns once it has run (or after [`MAIN_THREAD_WAIT`]).
+/// How long a worker thread waits for the main thread before giving up on a job.
+const MAIN_THREAD_WAIT: Duration = Duration::from_secs(2);
+
+/// Runs `job` on the main thread and returns once it has run, so the steps that follow still come
+/// after it (AGENTS.md §13). Gives up after [`MAIN_THREAD_WAIT`]: never call it from the main
+/// thread itself, which cannot run the job while it waits.
 pub fn run_on_main_thread_and_wait<R: Runtime>(
-    _app: &AppHandle<R>,
-    _job: impl FnOnce() + Send + 'static,
+    app: &AppHandle<R>,
+    job: impl FnOnce() + Send + 'static,
 ) {
+    let (done, finished) = std::sync::mpsc::channel();
+    let sent = app.run_on_main_thread(move || {
+        job();
+        // The waiter may have given up already: nobody is left to tell.
+        let _ = done.send(());
+    });
+    if sent.is_err() || finished.recv_timeout(MAIN_THREAD_WAIT).is_err() {
+        tracing::error!("the main thread did not run the window job");
+    }
 }
 
 impl<R: Runtime> WindowHider for AppHandle<R> {
@@ -151,8 +165,13 @@ impl<R: Runtime> WindowHider for AppHandle<R> {
                 Some(popover) => popover.conceal(),
                 None => tracing::error!("the popover window is missing"),
             },
+            // `Panel::hide` is a bare AppKit call: it must run on the main thread, and the paster
+            // runs on a command's worker thread.
             #[cfg(target_os = "macos")]
-            PasteOrigin::Panel => crate::macos::panel::NsQuickPanel::new(self.clone()).conceal(),
+            PasteOrigin::Panel => {
+                let panel = crate::macos::panel::NsQuickPanel::new(self.clone());
+                run_on_main_thread_and_wait(self, move || panel.conceal());
+            }
             #[cfg(not(target_os = "macos"))]
             PasteOrigin::Panel => tracing::warn!("the Quick Panel needs macOS"),
         }
