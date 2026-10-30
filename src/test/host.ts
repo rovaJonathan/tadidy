@@ -183,6 +183,22 @@ export function describeHost(name: string, Window: Component, label: "popover" |
       expect(core.commands()).toContain("list_clips");
     });
 
+    it("closes the delete dialog when it is shown again, so no old clip can be deleted", async () => {
+      const { container, core, field } = await open();
+      await fireEvent.keyDown(field, { key: "ArrowDown" });
+      await fireEvent.keyDown(field, { key: "Backspace", metaKey: true });
+      expect(find(container, "#dialog-delete-clip")).toBeVisible();
+
+      await emit("panel://shown", { window: label });
+      await settle();
+      await fireEvent.keyDown(field, { key: "Enter" });
+      await settle();
+
+      expect(container.querySelector("#dialog-delete-clip")).toBeNull();
+      expect(core.argsOf("delete_clips")).toEqual([]);
+      expect(field).toHaveFocus();
+    });
+
     it("ignores the show of the other window", async () => {
       const { container, field } = await open();
       await fireEvent.input(field, { target: { value: "clip" } });
