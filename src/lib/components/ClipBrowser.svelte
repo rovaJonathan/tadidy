@@ -134,6 +134,10 @@
     list?.reveal(0);
   }
 
+  export function focusSearch() {
+    searchBar?.focus();
+  }
+
   function confirmDelete(dontAskAgain: boolean) {
     const id = pendingDelete;
     closeDialog();

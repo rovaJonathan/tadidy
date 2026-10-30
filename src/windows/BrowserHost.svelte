@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { copyClip, hideWindow, onPanelShown, openPreferences, pasteClip } from "../lib/api";
   import ClipBrowser from "../lib/components/ClipBrowser.svelte";
+  import { reportFailure } from "../lib/report";
   import { SettingsStore } from "../lib/stores/settings.svelte";
 
   /** The label of the window that hosts the browser: `panel://shown` names it. */
@@ -26,28 +27,26 @@
     };
   });
 
-  /** A failed command shows nothing in the MVP; in development its code reaches the console, never its message. */
-  function report(command: string, error: unknown) {
-    if (!import.meta.env.DEV) return;
-    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unknown";
-    console.error(`${command} failed: ${code}`);
+  /** Gives the focus back to the search field, e.g. when a dialog of the window closes. */
+  export function focusSearch() {
+    browser?.focusSearch();
   }
 
   /** On `pasted` Rust has already hidden the window; on `copied_only` it stays open and the banner shows. */
   function paste(id: string) {
-    pasteClip(id, "default").catch((error) => report("paste_clip", error));
+    pasteClip(id, "default").catch((error) => reportFailure("paste_clip", error));
   }
 
   function copy(id: string) {
-    copyClip(id).catch((error) => report("copy_clip", error));
+    copyClip(id).catch((error) => reportFailure("copy_clip", error));
   }
 
   function close() {
-    hideWindow().catch((error) => report("hide_window", error));
+    hideWindow().catch((error) => reportFailure("hide_window", error));
   }
 
   function preferences() {
-    openPreferences().catch((error) => report("open_preferences", error));
+    openPreferences().catch((error) => reportFailure("open_preferences", error));
   }
 </script>
 
