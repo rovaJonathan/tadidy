@@ -13,6 +13,9 @@ use crate::shortcuts::ShortcutStatus;
 use crate::storage::{self, Db};
 use crate::watcher::WatcherHandle;
 
+/// Tadidy's own bundle identifier (AGENTS.md §3).
+pub const OWN_BUNDLE_ID: &str = "app.tadidy";
+
 /// The platform services as trait objects: the real ones in `setup`, fakes in the tests.
 pub struct AppState {
     pub accessibility: Arc<dyn AccessibilityProbe>,
@@ -168,6 +171,26 @@ mod tests {
             workspace,
         );
 
+        state.remember_frontmost_app();
+
+        assert_eq!(remembered(&state), Some(textedit()));
+    }
+
+    #[test]
+    fn tadidy_in_front_does_not_replace_the_remembered_app() {
+        // A Tadidy window in front (Preferences, say) when the popover opens: pasting would
+        // re-activate Tadidy itself and send `⌘V` to its webview.
+        let workspace = Arc::new(FakeWorkspace::new());
+        workspace.set_frontmost(Some(textedit()));
+        let state = AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            workspace.clone(),
+        );
+        state.remember_frontmost_app();
+
+        workspace.set_frontmost(Some(SourceApp::new(OWN_BUNDLE_ID, "Tadidy", 99)));
         state.remember_frontmost_app();
 
         assert_eq!(remembered(&state), Some(textedit()));
