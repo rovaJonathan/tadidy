@@ -11,7 +11,7 @@
     box-sizing: border-box;
   }
 
-  :global(html, body) {
+  :global(html, body, #app) {
     margin: 0;
     height: 100%;
     overflow: hidden;
