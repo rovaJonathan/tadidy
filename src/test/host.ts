@@ -18,12 +18,14 @@ interface Call {
 }
 
 /** A fake core that answers what a hosted browser asks: the clips, the settings and the paste commands. */
-function hostCore(options: { settings?: Partial<Settings>; paste?: PasteResult; trusted?: boolean } = {}) {
+export function hostCore(options: { settings?: Partial<Settings>; paste?: PasteResult; trusted?: boolean } = {}) {
   const core = {
     calls: [] as Call[],
     settings: { ...defaultSettings, ...options.settings } as Settings,
     /** When set, `paste_clip` rejects with it. */
     pasteFails: undefined as { code: string; message: string } | undefined,
+    /** When set, `list_clips` rejects with it. */
+    listFails: undefined as { code: string; message: string } | undefined,
     commands: () => core.calls.map((call) => call.cmd),
     argsOf: (cmd: string) => core.calls.filter((call) => call.cmd === cmd).map((call) => call.args),
   };
@@ -33,6 +35,7 @@ function hostCore(options: { settings?: Partial<Settings>; paste?: PasteResult; 
       core.calls.push({ cmd, args });
       switch (cmd) {
         case "list_clips": {
+          if (core.listFails) throw core.listFails;
           const { search } = (args as { q: ClipQuery }).q;
           return page(search ? everyClip.filter((c) => c.preview?.includes(search)) : everyClip);
         }
@@ -61,12 +64,12 @@ function hostCore(options: { settings?: Partial<Settings>; paste?: PasteResult; 
 }
 
 /** Lets the IPC answers, the debounce, the event listeners and the DOM updates run. */
-async function settle(ms = 0) {
+export async function settle(ms = 0) {
   await new Promise((resolve) => setTimeout(resolve, ms));
   await tick();
 }
 
-function find<T extends HTMLElement>(container: HTMLElement, selector: string): T {
+export function find<T extends HTMLElement>(container: HTMLElement, selector: string): T {
   const element = container.querySelector<T>(selector);
   if (!element) throw new Error(`${selector} is missing`);
   return element;

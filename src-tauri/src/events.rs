@@ -12,6 +12,8 @@ pub const CLIPS_CHANGED: &str = "clips://changed";
 pub const SETTINGS_CHANGED: &str = "settings://changed";
 pub const ACCESSIBILITY_CHANGED: &str = "accessibility://changed";
 pub const PANEL_SHOWN: &str = "panel://shown";
+/// The tray menu's Clear history… was chosen: the popover opens its confirmation (no payload).
+pub const MENU_CLEAR_HISTORY: &str = "menu://clear-history";
 
 pub trait EventSink: Send + Sync {
     fn emit(&self, event: &'static str, payload: Value);
@@ -135,13 +137,15 @@ mod tests {
                 CLIPS_CHANGED,
                 SETTINGS_CHANGED,
                 ACCESSIBILITY_CHANGED,
-                PANEL_SHOWN
+                PANEL_SHOWN,
+                MENU_CLEAR_HISTORY
             ],
             [
                 "clips://changed",
                 "settings://changed",
                 "accessibility://changed",
-                "panel://shown"
+                "panel://shown",
+                "menu://clear-history"
             ]
         );
     }

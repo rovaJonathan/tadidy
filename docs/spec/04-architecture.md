@@ -131,7 +131,7 @@ check_accessibility() -> boolean ; open_accessibility_settings()
 export_history(path) -> number ; import_history(path) -> number
 ```
 
-**Events emitted by Rust**: `clips://changed` (`{ added?: id, updated?: id, removed?: id[] }`), `settings://changed`, `accessibility://changed`, `panel://shown` (to reset the search and the selection).
+**Events emitted by Rust**: `clips://changed` (`{ added?: id, updated?: id, removed?: id[] }`), `settings://changed`, `accessibility://changed`, `panel://shown` (to reset the search and the selection), `menu://clear-history` (no payload: the tray menu's Clear history… asks the popover, already shown, to open its confirmation).
 
 <a id="data-model"></a>
 

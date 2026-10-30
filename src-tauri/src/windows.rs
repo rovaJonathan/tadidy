@@ -437,6 +437,14 @@ pub fn toggle(popover: &impl PopoverWindow, state: &PopoverState, now: Instant) 
     }
 }
 
+/// Shows the popover when it is hidden and leaves a visible one as it is: a tray menu item acts
+/// on the popover, it does not toggle it.
+pub fn show(popover: &impl PopoverWindow) {
+    if !popover.is_shown() {
+        popover.reveal();
+    }
+}
+
 /// The popover lost focus (MNU-04): hide it and remember when, so the tray click that caused
 /// the focus loss does not reopen it.
 pub fn focus_lost(popover: &impl PopoverWindow, state: &PopoverState, now: Instant) {

@@ -50,6 +50,14 @@ export function onPanelShown(callback: (shown: PanelShown) => void): Promise<Unl
   return listen<PanelShown>("panel://shown", (event) => callback(event.payload));
 }
 
+/**
+ * Runs `callback` each time the tray menu's Clear history… is chosen (`menu://clear-history`, no
+ * payload). The core has already shown the popover.
+ */
+export function onClearHistoryRequested(callback: () => void): Promise<UnlistenFn> {
+  return listen("menu://clear-history", () => callback());
+}
+
 /** The user's preferences. */
 export function getSettings(): Promise<Settings> {
   return invoke<Settings>("get_settings");

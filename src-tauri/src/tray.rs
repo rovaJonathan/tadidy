@@ -2,7 +2,11 @@
 //! the order, the enabled state and the clicks are tested without AppKit; `macos::tray` builds
 //! the native menu and the status item from them.
 
+use serde_json::Value;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+
+use crate::events::{EventSink, MENU_CLEAR_HISTORY};
+use crate::windows::{self, PopoverWindow};
 
 pub const TRAY_ID: &str = "tadidy";
 
@@ -33,28 +37,46 @@ const fn entry(
     }
 }
 
-/// The tray menu. Preferences…, Clear history… and About are wired by TAD-018 and Check for
-/// updates… by the P2 updater ticket (SYS-04): until then they are shown but disabled.
+/// Id of the About entry: the native about panel shows itself, so it has no [`TrayAction`].
+pub const ABOUT_ID: &str = "about";
+
+/// The tray menu. Check for updates… is wired by the P2 updater ticket (SYS-04): until then it
+/// is shown but disabled.
 pub fn menu_items() -> Vec<TrayItem> {
     vec![
-        entry("preferences", "Preferences…", false, Some("CmdOrCtrl+,")),
-        entry("clear-history", "Clear history…", false, None),
+        entry("preferences", "Preferences…", true, Some("CmdOrCtrl+,")),
+        entry("clear-history", "Clear history…", true, None),
         TrayItem::Separator,
-        entry("about", "About Tadidy", false, None),
+        entry(ABOUT_ID, "About Tadidy", true, None),
         entry("check-updates", "Check for updates…", false, None),
         TrayItem::Separator,
         entry("quit", "Quit Tadidy", true, Some("CmdOrCtrl+Q")),
     ]
 }
 
-/// What choosing a menu item does. Only Quit is wired in this ticket.
+/// What choosing a menu item does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MenuAction {
+pub enum TrayAction {
+    Preferences,
+    ClearHistory,
     Quit,
 }
 
-pub fn menu_action(id: &str) -> Option<MenuAction> {
-    (id == "quit").then_some(MenuAction::Quit)
+pub fn action_for(id: &str) -> Option<TrayAction> {
+    match id {
+        "preferences" => Some(TrayAction::Preferences),
+        "clear-history" => Some(TrayAction::ClearHistory),
+        "quit" => Some(TrayAction::Quit),
+        _ => None,
+    }
+}
+
+/// Clear history… (HIS-06): shows the popover, without toggling it, and asks its webview to open
+/// the confirmation. The history is cleared by the webview's `clear_history` call, only once the
+/// user confirmed.
+pub fn request_clear_history(popover: &impl PopoverWindow, sink: &impl EventSink) {
+    windows::show(popover);
+    sink.emit(MENU_CLEAR_HISTORY, Value::Null);
 }
 
 /// A left click acts when the button is released (MNU-02). The right click opens the native
@@ -73,6 +95,9 @@ pub fn toggles_the_popover(event: &TrayIconEvent) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::RecordingEventSink;
+    use serde_json::json;
+    use std::sync::{Arc, Mutex};
 
     fn labels(items: &[TrayItem]) -> Vec<String> {
         items
@@ -133,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn only_quit_is_enabled() {
+    fn all_mvp_items_enabled_except_updates() {
         let enabled: Vec<_> = menu_items()
             .into_iter()
             .filter_map(|item| match item {
@@ -144,20 +169,92 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(enabled, ["quit"]);
+        assert_eq!(enabled, ["preferences", "clear-history", "about", "quit"]);
     }
 
     #[test]
-    fn only_quit_has_an_action() {
-        assert_eq!(menu_action("quit"), Some(MenuAction::Quit));
-        for id in [
-            "preferences",
-            "clear-history",
-            "about",
-            "check-updates",
-            "?",
-        ] {
-            assert_eq!(menu_action(id), None, "{id}");
+    fn menu_ids_map_to_actions() {
+        assert_eq!(action_for("preferences"), Some(TrayAction::Preferences));
+        assert_eq!(action_for("clear-history"), Some(TrayAction::ClearHistory));
+        assert_eq!(action_for("quit"), Some(TrayAction::Quit));
+        // The about panel is native and Check for updates… waits for the P2 updater: no action.
+        for id in ["about", "check-updates", "?"] {
+            assert_eq!(action_for(id), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn clear_history_shows_the_popover_then_asks_for_the_dialog() {
+        let popover = FakePopover::hidden();
+        let sink = LoggingSink(Arc::clone(&popover.log));
+
+        request_clear_history(&popover, &sink);
+
+        // The order matters: `reveal` emits `panel://shown`, which closes a dialog that is open,
+        // so the request has to come after it.
+        assert_eq!(*popover.log.lock().unwrap(), ["reveal", MENU_CLEAR_HISTORY]);
+    }
+
+    #[test]
+    fn clear_history_leaves_a_visible_popover_open() {
+        let popover = FakePopover::shown();
+        let sink = RecordingEventSink::default();
+
+        request_clear_history(&popover, &sink);
+
+        assert_eq!(popover.reveals.get(), 0);
+        assert_eq!(popover.conceals.get(), 0);
+        assert_eq!(sink.events(), vec![(MENU_CLEAR_HISTORY, json!(null))]);
+    }
+
+    /// What the fakes were asked to do, in order, across both of them.
+    type CallLog = Arc<Mutex<Vec<&'static str>>>;
+
+    struct LoggingSink(CallLog);
+
+    impl EventSink for LoggingSink {
+        fn emit(&self, event: &'static str, _payload: Value) {
+            self.0.lock().unwrap().push(event);
+        }
+    }
+
+    struct FakePopover {
+        shown: bool,
+        log: CallLog,
+        reveals: std::cell::Cell<u32>,
+        conceals: std::cell::Cell<u32>,
+    }
+
+    impl FakePopover {
+        fn hidden() -> Self {
+            Self {
+                shown: false,
+                log: CallLog::default(),
+                reveals: std::cell::Cell::default(),
+                conceals: std::cell::Cell::default(),
+            }
+        }
+
+        fn shown() -> Self {
+            Self {
+                shown: true,
+                ..Self::hidden()
+            }
+        }
+    }
+
+    impl PopoverWindow for FakePopover {
+        fn is_shown(&self) -> bool {
+            self.shown
+        }
+
+        fn reveal(&self) {
+            self.log.lock().unwrap().push("reveal");
+            self.reveals.set(self.reveals.get() + 1);
+        }
+
+        fn conceal(&self) {
+            self.conceals.set(self.conceals.get() + 1);
         }
     }
 
