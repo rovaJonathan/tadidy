@@ -870,3 +870,56 @@ describe("ClipBrowser deleting", () => {
     expect(core.deleted).toEqual([]);
   });
 });
+
+describe("ClipBrowser hosting", () => {
+  it("reset() empties the search, selects the first row, reloads and focuses the search", async () => {
+    const core = fakeCore((q) => (q.search === "sel" ? page([clip(7), clip(8)]) : THREE()));
+    const { container, component } = mountBrowser();
+    await settle();
+    await fireEvent.input(input(container), { target: { value: "sel" } });
+    await settle(100);
+    await key(input(container), "ArrowDown");
+    input(container).blur();
+    expect(input(container)).not.toHaveFocus();
+    core.queries.length = 0;
+
+    component.reset();
+    await settle();
+
+    expect(input(container).value).toBe("");
+    expect(core.queries.map((q) => q.search)).toEqual([undefined]);
+    expect(previews(container)).toEqual(["Synthetic clip 1", "Synthetic clip 2", "Synthetic clip 3"]);
+    expect(selectedIds(container)).toEqual(["clip-1"]);
+    expect(input(container)).toHaveFocus();
+  });
+
+  it("is the popover layout unless the host says otherwise", async () => {
+    fakeCore(THREE);
+    const popover = render(ClipBrowser);
+    expect(popover.container.querySelector("#clip-browser")).toHaveAttribute("data-layout", "popover");
+    popover.unmount();
+
+    const panel = render(ClipBrowser, { layout: "panel" });
+    expect(panel.container.querySelector("#clip-browser")).toHaveAttribute("data-layout", "panel");
+  });
+
+  it("holds the accessibility banner, in the row between the list and the footer", async () => {
+    fakeCore(THREE);
+    const { container } = mountBrowser();
+    await settle();
+
+    const banner = find(container, "#banner-accessibility");
+    expect(banner.previousElementSibling).toBe(find(container, ".list-wrap"));
+    expect(banner.nextElementSibling).toBe(find(container, ".browser-footer"));
+  });
+
+  it("opens the preferences from the footer button", async () => {
+    fakeCore(THREE);
+    const { container, onopenpreferences } = mountBrowser();
+    await settle();
+
+    await fireEvent.click(find(container, "#btn-preferences"));
+
+    expect(onopenpreferences).toHaveBeenCalledOnce();
+  });
+});
