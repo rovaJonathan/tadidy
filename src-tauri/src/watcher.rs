@@ -947,6 +947,8 @@ mod tests {
         AppState::new(
             Arc::new(FakeAccessibility::new()),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         )
         .with_db(db)
     }

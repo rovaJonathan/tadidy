@@ -27,6 +27,8 @@ fn real_state(db: Option<storage::Db>) -> AppState {
     AppState::new(
         std::sync::Arc::new(macos::accessibility::AxProbe),
         std::sync::Arc::new(macos::keys::CgKeySender),
+        std::sync::Arc::new(macos::pasteboard::NsPasteboard),
+        std::sync::Arc::new(macos::workspace::NsWorkspace),
     )
     .with_db(db)
 }

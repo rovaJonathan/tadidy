@@ -128,7 +128,7 @@ pub fn get_app_icon(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::fakes::{FakeAccessibility, FakeKeySender};
+    use crate::platform::fakes::{FakeAccessibility, FakeKeySender, FakePasteboard, FakeWorkspace};
     use crate::state::AppState;
     use std::sync::Arc;
     use tauri::Manager;
@@ -139,6 +139,8 @@ mod tests {
         app.manage(AppState::new(
             accessibility.clone(),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         ));
         app
     }
@@ -220,6 +222,8 @@ mod tests {
             AppState::new(
                 Arc::new(FakeAccessibility::new()),
                 Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
             )
             .with_db(Some(db.clone())),
         );
@@ -315,6 +319,8 @@ mod tests {
         app.manage(AppState::new(
             Arc::new(FakeAccessibility::new()),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         ));
 
         let error = set_settings(app.handle().clone(), app.state(), patch(false)).unwrap_err();
@@ -355,6 +361,8 @@ mod tests {
         app.manage(AppState::new(
             Arc::new(FakeAccessibility::new()),
             Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
         ));
         app
     }
