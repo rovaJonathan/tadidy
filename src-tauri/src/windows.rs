@@ -137,6 +137,13 @@ pub fn prepare_to_show<R: Runtime>(app: &AppHandle<R>, origin: PasteOrigin) {
         .check(&TauriEventSink::new(app.clone()));
 }
 
+/// Runs `job` on the main thread and returns once it has run (or after [`MAIN_THREAD_WAIT`]).
+pub fn run_on_main_thread_and_wait<R: Runtime>(
+    _app: &AppHandle<R>,
+    _job: impl FnOnce() + Send + 'static,
+) {
+}
+
 impl<R: Runtime> WindowHider for AppHandle<R> {
     fn hide(&self, origin: PasteOrigin) {
         match origin {
@@ -706,6 +713,19 @@ mod tests {
         let app = tauri::test::mock_app();
 
         prepare_to_show(app.handle(), PasteOrigin::Popover);
+    }
+
+    #[test]
+    fn a_job_sent_to_the_main_thread_has_run_when_the_helper_returns() {
+        let app = tauri::test::mock_app();
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = ran.clone();
+
+        run_on_main_thread_and_wait(app.handle(), move || {
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[test]
