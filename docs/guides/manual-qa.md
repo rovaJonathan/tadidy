@@ -249,9 +249,9 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 | Idle CPU, 10 min (Activity Monitor and `top -l` samples) | < 0.5 % | not run | | |
 | Popover opening, 10 openings | < 100 ms | not run | | median: |
 | Quick Panel opening, 10 openings | < 100 ms | not run | | median: |
-| Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | not run | | |
+| Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | ✅ (automated part) | `search_perf`, debug profile: median 8.8 ms, worst 10.5 ms | The check on a seeded database in the real app is not run yet. |
 | RAM with both windows used | < 120 MB | not run | | recorded only |
-| `.app` binary size | < 15 MB | not run | | recorded only |
+| `.app` binary size | < 15 MB | ❌ | universal `.app` 36.6 MiB, binary 38.4 MB (arm64 + x86_64); `.dmg` 12.5 MiB | recorded only; the target presumably means one architecture: measure an arm64-only build before opening a ticket. |
 
 Signed-build manual QA of the earlier tickets, re-run on this build:
 
@@ -262,7 +262,7 @@ Signed-build manual QA of the earlier tickets, re-run on this build:
 | TAD-005 — key sender and Accessibility | not run | |
 | TAD-006 — Quick Panel and global shortcut | not run | |
 | TAD-007 — encrypted database | not run | |
-| TAD-008 — signing and universal build (incl. steps 7 and 8) | not run | |
+| TAD-008 — signing and universal build (incl. steps 7 and 8) | partial | Steps 1 to 4 ✅ on this build: `Authority=Tadidy Dev`, `codesign --verify --deep --strict` exits 0, `lipo` gives `x86_64 arm64`. Steps 5 to 8 not run. |
 | TAD-010 — clipboard watcher | not run | |
 | TAD-015 — paste and copy commands | not run | |
 | TAD-016 — clip browser in both windows | not run | |
