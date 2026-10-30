@@ -65,12 +65,12 @@ export function setSettings(patch: SettingsPatch): Promise<Settings> {
 
 /** Shows the Preferences window, creating it when it does not exist yet. */
 export async function openPreferences(): Promise<void> {
-  throw new Error("not implemented");
+  await invoke("open_preferences");
 }
 
 /** How the Quick Panel shortcut was registered: the accelerator, and the error code if it failed. */
 export function getShortcutStatus(): Promise<ShortcutStatus> {
-  return Promise.reject(new Error("not implemented"));
+  return invoke<ShortcutStatus>("get_shortcut_status");
 }
 
 /** Runs `callback` with the full settings each time they change (`settings://changed`). */
