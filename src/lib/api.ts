@@ -13,6 +13,7 @@ import type { PasteMode } from "./bindings/PasteMode";
 import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
+import type { ShortcutStatus } from "./bindings/ShortcutStatus";
 
 export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
@@ -60,6 +61,16 @@ export function getSettings(): Promise<Settings> {
  */
 export function setSettings(patch: SettingsPatch): Promise<Settings> {
   return invoke<Settings>("set_settings", { patch });
+}
+
+/** Shows the Preferences window, creating it when it does not exist yet. */
+export async function openPreferences(): Promise<void> {
+  throw new Error("not implemented");
+}
+
+/** How the Quick Panel shortcut was registered: the accelerator, and the error code if it failed. */
+export function getShortcutStatus(): Promise<ShortcutStatus> {
+  return Promise.reject(new Error("not implemented"));
 }
 
 /** Runs `callback` with the full settings each time they change (`settings://changed`). */
