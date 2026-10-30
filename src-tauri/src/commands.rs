@@ -10,6 +10,7 @@ use crate::events::TauriEventSink;
 use crate::history;
 use crate::paster::{PasteMode, PasteOrigin, PasteResult, Paster};
 use crate::settings::{self, Settings, SettingsPatch};
+use crate::shortcuts::ShortcutStatus;
 use crate::state::AppState;
 use crate::storage::{self, Db};
 
@@ -80,6 +81,22 @@ pub fn set_settings<R: Runtime>(
         },
         patch,
     )
+}
+
+/// How the Quick Panel shortcut was registered, for the Shortcuts tab: the accelerator and the
+/// code of the registration error, if any.
+#[tauri::command]
+pub fn get_shortcut_status(state: State<'_, AppState>) -> ShortcutStatus {
+    let _ = state;
+    todo!("TAD-017: read the shortcut status")
+}
+
+/// Shows the Preferences window, creating it when it does not exist yet. A sync command: it runs
+/// on the main thread, where AppKit windows and the activation policy belong.
+#[tauri::command]
+pub fn open_preferences<R: Runtime>(app: AppHandle<R>) -> Result<(), AppError> {
+    let _ = app;
+    todo!("TAD-017: open the Preferences window")
 }
 
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
@@ -367,6 +384,184 @@ mod tests {
 
         assert_eq!(error.code, "storage_unavailable");
         assert_eq!(get_settings(app.state()), Settings::default());
+    }
+
+    // --- preferences -----------------------------------------------------------------------
+
+    use crate::login_item::FakeLoginItem;
+    use crate::shortcuts::{DEFAULT_QUICK_PANEL_SHORTCUT, FakeShortcutRegistrar};
+    use crate::windows::{PolicyState, SETTINGS_LABEL};
+
+    /// A mock app with a database and a login item and registrar it can inspect.
+    fn app_with_system(
+        dir: &tempfile::TempDir,
+    ) -> (
+        tauri::App<tauri::test::MockRuntime>,
+        Arc<FakeLoginItem>,
+        Arc<FakeShortcutRegistrar>,
+    ) {
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let login_item = Arc::new(FakeLoginItem::new(false));
+        let shortcuts = Arc::new(FakeShortcutRegistrar::default());
+        let state = AppState::new(
+            Arc::new(FakeAccessibility::new()),
+            Arc::new(FakeKeySender::new()),
+            Arc::new(FakePasteboard::new()),
+            Arc::new(FakeWorkspace::new()),
+        )
+        .with_db(Some(db))
+        .with_login_item(login_item.clone())
+        .with_shortcuts(shortcuts.clone());
+        crate::shortcuts::register_at_startup(
+            shortcuts.as_ref(),
+            &state.shortcut,
+            DEFAULT_QUICK_PANEL_SHORTCUT,
+        );
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        (app, login_item, shortcuts)
+    }
+
+    #[test]
+    fn get_shortcut_status_reports_the_registered_accelerator() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _login, _shortcuts) = app_with_system(&dir);
+
+        assert_eq!(
+            get_shortcut_status(app.state()),
+            ShortcutStatus {
+                accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn get_shortcut_status_reports_a_registration_that_failed_at_startup() {
+        let app = app_without_db();
+        app.state::<AppState>().shortcut.lock().unwrap().error = Some("unavailable".to_owned());
+
+        assert_eq!(
+            get_shortcut_status(app.state()).error.as_deref(),
+            Some("unavailable")
+        );
+    }
+
+    #[test]
+    fn open_preferences_creates_the_settings_window() {
+        let app = tauri::test::mock_app();
+        app.manage(PolicyState::default());
+
+        open_preferences(app.handle().clone()).unwrap();
+
+        assert!(app.get_webview_window(SETTINGS_LABEL).is_some());
+    }
+
+    #[test]
+    fn open_preferences_twice_leaves_one_window() {
+        let app = tauri::test::mock_app();
+        app.manage(PolicyState::default());
+
+        open_preferences(app.handle().clone()).unwrap();
+        open_preferences(app.handle().clone()).unwrap();
+
+        let count = app
+            .webview_windows()
+            .keys()
+            .filter(|label| label.as_str() == SETTINGS_LABEL)
+            .count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn open_preferences_without_the_policy_state_is_a_window_error() {
+        let app = tauri::test::mock_app();
+
+        let error = open_preferences(app.handle().clone()).unwrap_err();
+
+        assert_eq!(error.code, "window");
+    }
+
+    #[test]
+    fn set_settings_enables_the_login_item_of_the_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, login_item, _shortcuts) = app_with_system(&dir);
+
+        let updated = set_settings(
+            app.handle().clone(),
+            app.state(),
+            SettingsPatch {
+                launch_at_login: Some(true),
+                ..SettingsPatch::default()
+            },
+        )
+        .unwrap();
+
+        assert!(updated.launch_at_login);
+        assert!(login_item.enabled());
+    }
+
+    #[test]
+    fn set_settings_reports_a_login_item_that_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, login_item, _shortcuts) = app_with_system(&dir);
+        login_item.fail();
+
+        let error = set_settings(
+            app.handle().clone(),
+            app.state(),
+            SettingsPatch {
+                launch_at_login: Some(true),
+                ..SettingsPatch::default()
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "login_item_failed");
+        assert!(!get_settings(app.state()).launch_at_login);
+    }
+
+    #[test]
+    fn set_settings_moves_the_shortcut_and_the_status_follows() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _login, shortcuts) = app_with_system(&dir);
+
+        set_settings(
+            app.handle().clone(),
+            app.state(),
+            SettingsPatch {
+                quick_panel_shortcut: Some("Ctrl+Alt+V".to_owned()),
+                ..SettingsPatch::default()
+            },
+        )
+        .unwrap();
+
+        assert!(shortcuts.is_registered("Ctrl+Alt+V"));
+        assert_eq!(get_shortcut_status(app.state()).accelerator, "Ctrl+Alt+V");
+    }
+
+    #[test]
+    fn set_settings_reports_a_shortcut_the_system_refuses_and_keeps_the_old_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _login, shortcuts) = app_with_system(&dir);
+        shortcuts.take("Ctrl+Alt+V");
+
+        let error = set_settings(
+            app.handle().clone(),
+            app.state(),
+            SettingsPatch {
+                quick_panel_shortcut: Some("Ctrl+Alt+V".to_owned()),
+                ..SettingsPatch::default()
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "shortcut_unavailable");
+        assert!(shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(
+            get_settings(app.state()).quick_panel_shortcut,
+            DEFAULT_QUICK_PANEL_SHORTCUT
+        );
     }
 
     use crate::clip::{ClipKind, NewClip, content_hash};
