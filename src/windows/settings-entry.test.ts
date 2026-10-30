@@ -1,6 +1,5 @@
-import { mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultSettings } from "../test/settings";
+import { fakeSettingsCore } from "../test/settings";
 
 function stubSystemTheme(dark: boolean): { change: () => void; setDark: (value: boolean) => void } {
   let listener: () => void = () => undefined;
@@ -32,7 +31,7 @@ describe("settings entry", () => {
 
   it("mounts the Preferences window into #app", async () => {
     stubSystemTheme(false);
-    mockIPC((cmd) => (cmd === "get_settings" ? defaultSettings : undefined), { shouldMockEvents: true });
+    fakeSettingsCore();
 
     await import("./settings");
 
@@ -41,7 +40,7 @@ describe("settings entry", () => {
 
   it("follows the system theme, also when it changes", async () => {
     const system = stubSystemTheme(true);
-    mockIPC((cmd) => (cmd === "get_settings" ? defaultSettings : undefined), { shouldMockEvents: true });
+    fakeSettingsCore();
 
     await import("./settings");
     expect(document.documentElement.dataset.theme).toBe("dark");

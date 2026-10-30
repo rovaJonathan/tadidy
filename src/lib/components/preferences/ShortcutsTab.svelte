@@ -16,9 +16,12 @@
   const failed = $derived(rejected !== null || startupFailed);
 
   onMount(() => {
-    void getShortcutStatus().then((status) => {
-      startupFailed = status.error !== null;
-    });
+    // Without a status there is nothing to flag: the recorder still works and reports a refusal itself.
+    void getShortcutStatus()
+      .then((status) => {
+        startupFailed = status.error !== null;
+      })
+      .catch(() => undefined);
   });
 
   function clearError() {
