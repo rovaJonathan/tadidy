@@ -124,8 +124,10 @@
     }
   }
 
-  /** Back to the state of a fresh window: no search, first row selected, list reloaded, search focused. */
+  /** Back to the state of a fresh window: no dialog, no search, first row selected, list reloaded, search focused. */
   export async function reset(): Promise<void> {
+    // A dialog left open would still hold the clip of the previous session.
+    pendingDelete = undefined;
     const loaded = store.reset();
     searchBar?.focus();
     await loaded;
