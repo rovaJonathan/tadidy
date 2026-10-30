@@ -1,16 +1,9 @@
 <script lang="ts">
-  // Placeholder until the clip browser lands in TAD-016; for now it proves the window.
-  import { hideWindow } from "../lib/api";
-
-  function onkeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") void hideWindow();
-  }
+  import BrowserHost from "./BrowserHost.svelte";
 </script>
 
-<svelte:window {onkeydown} />
-
 <section id="popover" aria-label="Tadidy clipboard history">
-  <p>Tadidy</p>
+  <BrowserHost label="popover" />
 </section>
 
 <style>
@@ -18,7 +11,7 @@
     box-sizing: border-box;
   }
 
-  :global(html, body) {
+  :global(html, body, #app) {
     margin: 0;
     height: 100%;
     overflow: hidden;
@@ -39,7 +32,5 @@
     height: 100%;
     border-radius: var(--radius-window);
     overflow: hidden;
-    display: grid;
-    place-items: center;
   }
 </style>

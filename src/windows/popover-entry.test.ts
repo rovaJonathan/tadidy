@@ -1,3 +1,4 @@
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function stubSystemTheme(dark: boolean): { change: () => void; setDark: (value: boolean) => void } {
@@ -20,6 +21,8 @@ function stubSystemTheme(dark: boolean): { change: () => void; setDark: (value: 
 describe("popover entry", () => {
   beforeEach(() => {
     vi.resetModules();
+    // The mounted browser asks the core for its clips and settings.
+    mockIPC(() => undefined, { shouldMockEvents: true });
     document.body.innerHTML = '<div id="app"></div>';
     delete document.documentElement.dataset.theme;
   });
