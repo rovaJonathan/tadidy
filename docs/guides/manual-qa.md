@@ -163,7 +163,26 @@ Open TextEdit with an empty document and the insertion point in it before each r
 
 If step 2 or 3 sometimes misses the keystroke on a loaded machine, raise `PASTE_DELAY` in `src-tauri/src/paster.rs` (50 ms) and note it in `PROGRESS.md`.
 
-The same flows from the real popover and Quick Panel need the clip browser to be hosted in the windows (TAD-016): MVP criterion 3 is run there.
+The same flows from the real popover and Quick Panel are run in [TAD-016](#tad-016--popover-and-quick-panel-host-the-clip-browser): MVP criterion 3 is run there.
+
+### TAD-016 — Popover and Quick Panel host the clip browser
+
+Needs a **signed build** with Accessibility granted to it ([TAD-008](#tad-008--stable-signing-identity-and-universal-build)): `pnpm tauri build`, then run the app from `/Applications`. Copy a few synthetic sentences first (`Tadidy flow A`, `Tadidy flow B`, `Tadidy flow C`, copied in that order), so the newest clip is `Tadidy flow C` and the second is `Tadidy flow B`. Open TextEdit with an empty document.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | In TextEdit press `⌘⇧V`, `↓`, `Return`. | `Tadidy flow B` is pasted into TextEdit, the Quick Panel is gone and TextEdit keeps the focus (MVP criterion 3). |
+| 2 | Same in a text field of a Safari page. | The sentence is pasted into the Safari field. |
+| 3 | Click the tray icon, press `↓`, `Return`. | The popover hides, TextEdit comes back to the front and `Tadidy flow B` is pasted (the re-activation that [TAD-015](#tad-015--paste-and-copy-commands) step 4 could not check). |
+| 4 | Open the Quick Panel, type `flow`, press `↓` twice, press `Esc` twice (the first clears the search). Open it again. | The search is empty, the first row is selected and the search field has the focus. Same for the popover. |
+| 5 | Open the Quick Panel, `⌥Return` on the first clip, then paste with `⌘V` in TextEdit. | The panel hides; the clip is on the clipboard and pastes. Nothing was typed by Tadidy. |
+| 6 | Open the popover and the panel one after the other, copy `Tadidy flow D` in TextEdit. | Both show it first when they are shown again (they refresh on `clips://changed`). |
+| 7 | Click `⚙` in the popover, then `⌘,` in the Quick Panel. | The Preferences window opens (and is brought forward, not duplicated). |
+| 8 | In the Preferences, turn *Confirm before delete* off. Then `⌘⌫` in either window. | The selected clip is deleted at once, without a dialog. Turn it back on: `⌘⌫` asks again. |
+| 9 | With the confirmation on, `⌘⌫`, tick *Don’t ask again*, *Delete*. | The clip is deleted and the Preferences show *Confirm before delete* off. |
+| 10 | Revoke Accessibility for Tadidy (*System Settings → Privacy & Security → Accessibility*), open the Quick Panel, `Return`. | The clip is copied only (`⌘V` pastes it), the panel **stays open** and the banner "Auto-paste disabled — clips are copied only." shows above the footer. |
+| 11 | With the banner showing, click *Enable*. | System Settings opens on the Accessibility pane. |
+| 12 | Look at the footer of both windows. | Count at the left, `⚙` at the right. The Quick Panel also shows `↩ Paste` and `⌥↩ Copy` in the middle; the popover shows no hints. |
 
 ### TAD-017 — Preferences window: General and Shortcuts
 
