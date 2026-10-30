@@ -7,6 +7,7 @@ pub mod error;
 pub mod events;
 pub mod history;
 pub mod macos;
+pub mod paster;
 pub mod platform;
 pub mod settings;
 pub mod shortcuts;
