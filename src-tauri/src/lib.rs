@@ -102,7 +102,9 @@ pub fn run() {
             commands::list_clips,
             commands::delete_clips,
             commands::clear_history,
-            commands::get_app_icon
+            commands::get_app_icon,
+            commands::paste_clip,
+            commands::copy_clip
         ])
         .run(tauri::generate_context!())
     {

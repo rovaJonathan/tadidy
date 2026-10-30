@@ -1,14 +1,14 @@
 //! IPC commands: thin wrappers that delegate to the services (AGENTS.md §13).
 
-use std::sync::PoisonError;
+use std::sync::{Arc, PoisonError};
 
-use tauri::{AppHandle, Runtime, State, WebviewWindow};
+use tauri::{AppHandle, Manager, Runtime, State, WebviewWindow};
 
 use crate::clip::{ClipQuery, ClipSummary, Page};
 use crate::error::AppError;
 use crate::events::TauriEventSink;
 use crate::history;
-use crate::paster::{PasteMode, PasteOrigin, PasteResult};
+use crate::paster::{PasteMode, PasteOrigin, PasteResult, Paster};
 use crate::settings::{self, Settings, SettingsPatch};
 use crate::state::AppState;
 use crate::storage::{self, Db};
@@ -118,22 +118,33 @@ pub fn clear_history<R: Runtime>(
 /// `async` keeps the wait for the target app and the SQLite work off the main thread.
 #[tauri::command(async)]
 pub fn paste_clip<R: Runtime>(
-    _window: WebviewWindow<R>,
-    _state: State<'_, AppState>,
-    _id: String,
-    _mode: PasteMode,
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    id: String,
+    mode: PasteMode,
 ) -> Result<PasteResult, AppError> {
-    Ok(PasteResult::Pasted)
+    let origin = PasteOrigin::from_label(window.label())?;
+    paster(window.app_handle(), &state)?.paste(&id, mode, origin)
 }
 
 /// Puts a clip back on the pasteboard and hides the window that calls it (PST-02).
 #[tauri::command(async)]
 pub fn copy_clip<R: Runtime>(
-    _window: WebviewWindow<R>,
-    _state: State<'_, AppState>,
-    _id: String,
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    id: String,
 ) -> Result<(), AppError> {
-    Ok(())
+    let origin = PasteOrigin::from_label(window.label())?;
+    paster(window.app_handle(), &state)?.copy(&id, origin)
+}
+
+/// The paster over the app's real windows and event channel.
+fn paster<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Result<Paster, AppError> {
+    Ok(state.paster(
+        database(state)?.clone(),
+        Arc::new(TauriEventSink::new(app.clone())),
+        Arc::new(app.clone()),
+    ))
 }
 
 /// The cached icon of a source app as raw PNG bytes (no JSON round trip), `not_found` when the
@@ -154,7 +165,7 @@ mod tests {
     use super::*;
     use crate::platform::fakes::{FakeAccessibility, FakeKeySender, FakePasteboard, FakeWorkspace};
     use crate::state::AppState;
-    use std::sync::Arc;
+
     use tauri::Manager;
 
     /// A mock app whose state holds the given probe and a key sender that is never used here.
@@ -595,8 +606,9 @@ mod tests {
     fn paste_clip_writes_the_clip_with_the_marker_and_sends_command_v() {
         let paste = paste_app();
 
+        // The Quick Panel is an `NSPanel` the mock runtime cannot hide: its paste is manual QA.
         let result = paste_clip(
-            window(&paste.app, "panel"),
+            window(&paste.app, "popover"),
             paste.app.state(),
             paste.clip_id.clone(),
             PasteMode::Default,
