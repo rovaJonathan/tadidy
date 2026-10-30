@@ -34,7 +34,7 @@ function hostCore(options: { settings?: Partial<Settings>; paste?: PasteResult; 
       switch (cmd) {
         case "list_clips": {
           const { search } = (args as { q: ClipQuery }).q;
-          return page(search ? everyClip.filter((c) => c.preview.includes(search)) : everyClip);
+          return page(search ? everyClip.filter((c) => c.preview?.includes(search)) : everyClip);
         }
         case "get_app_icon":
           throw { code: "not_found", message: "No icon is cached for this app." };
