@@ -144,12 +144,12 @@ pub struct PolicySwitch {
 impl PolicySwitch {
     /// The Preferences window is about to be shown: the policy to apply, if it has to change.
     pub fn window_opened(&mut self) -> Option<Policy> {
-        todo!("TAD-017: Regular while the Preferences window exists")
+        (!std::mem::replace(&mut self.regular, true)).then_some(Policy::Regular)
     }
 
     /// The Preferences window is gone: the policy to apply, if it has to change.
     pub fn window_closed(&mut self) -> Option<Policy> {
-        todo!("TAD-017: back to Accessory")
+        std::mem::replace(&mut self.regular, false).then_some(Policy::Accessory)
     }
 }
 
@@ -189,14 +189,46 @@ pub fn open_preferences_with<R: Runtime>(
     app: &AppHandle<R>,
     applier: &impl PolicyApplier,
 ) -> tauri::Result<()> {
-    let _ = (app, applier);
-    todo!("TAD-017: show the settings window")
+    let Some(state) = app.try_state::<PolicyState>() else {
+        tracing::error!("the activation policy state is missing");
+        return Err(tauri::Error::WindowNotFound);
+    };
+    // The lock is not held while AppKit is called.
+    let change = lock_policy(&state).window_opened();
+    if let Some(policy) = change {
+        applier.apply(policy);
+    }
+    let shown = match app.get_webview_window(SETTINGS_LABEL) {
+        Some(window) => window.show().and_then(|()| window.set_focus()),
+        None => create_settings(app).and_then(|window| window.set_focus()),
+    };
+    if shown.is_err() {
+        // No window to hold the Dock icon: the app goes back to the menu bar.
+        settings_closed(applier, &state);
+    }
+    shown
+}
+
+/// The standard window of the Preferences: fixed size, no zoom (DESIGN.md §3).
+fn create_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
+    WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
+        .title("Tadidy Preferences")
+        .inner_size(SETTINGS_WIDTH, SETTINGS_HEIGHT)
+        .resizable(false)
+        .center()
+        .build()
+}
+
+fn lock_policy(state: &PolicyState) -> MutexGuard<'_, PolicySwitch> {
+    state.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// The Preferences window is gone: the app is a menu-bar app again.
 pub fn settings_closed(applier: &impl PolicyApplier, state: &PolicyState) {
-    let _ = (applier, state);
-    todo!("TAD-017: back to Accessory")
+    let change = lock_policy(state).window_closed();
+    if let Some(policy) = change {
+        applier.apply(policy);
+    }
 }
 
 /// What happens just before the popover or the Quick Panel is shown. Remembers the app in front
@@ -417,11 +449,20 @@ pub fn toggle_popover<R: Runtime>(app: &AppHandle<R>) {
     toggle(&popover, &state, Instant::now());
 }
 
-/// Window event hook: the popover hides when it loses focus; it is never destroyed.
+/// Window event hook: the popover hides when it loses focus and is never destroyed; the
+/// Preferences window gives the Dock icon back when it is destroyed.
 pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if window.label() != POPOVER_LABEL || !matches!(event, WindowEvent::Focused(false)) {
-        return;
+    match (window.label(), event) {
+        (POPOVER_LABEL, WindowEvent::Focused(false)) => popover_lost_focus(window),
+        (SETTINGS_LABEL, WindowEvent::Destroyed) => match window.try_state::<PolicyState>() {
+            Some(state) => settings_closed(window.app_handle(), &state),
+            None => tracing::error!("the activation policy state is missing"),
+        },
+        _ => {}
     }
+}
+
+fn popover_lost_focus<R: Runtime>(window: &Window<R>) {
     let (Some(popover), Some(state)) = (
         window.app_handle().get_webview_window(POPOVER_LABEL),
         window.try_state::<PopoverState>(),
@@ -696,9 +737,8 @@ mod tests {
 
         open_preferences_with(app.handle(), &policy).unwrap();
 
-        let window = app.get_webview_window(SETTINGS_LABEL).unwrap();
-        assert_eq!(window.title().unwrap(), "Tadidy Preferences");
-        assert!(window.is_decorated().unwrap());
+        // Tauri's mock runtime keeps no title, size or decorations: the manual QA checks them.
+        assert!(app.get_webview_window(SETTINGS_LABEL).is_some());
         assert_eq!(*policy.applied.borrow(), vec![Policy::Regular]);
     }
 
