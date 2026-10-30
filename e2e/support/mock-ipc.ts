@@ -114,6 +114,13 @@ export async function mockIpc(
               queueMicrotask(() => (window as unknown as MockWindow).__emit("clips://changed", {}));
               return undefined;
             }
+            if (clips && cmd === "clear_history") {
+              const before = history.length;
+              const kept = args.keepPinned ? history.filter((clip) => clip.pinned) : [];
+              history.splice(0, history.length, ...kept);
+              queueMicrotask(() => (window as unknown as MockWindow).__emit("clips://changed", {}));
+              return before - kept.length;
+            }
             if (clips && cmd === "get_app_icon")
               throw { code: "not_found", message: "No icon is cached for this app." };
             // A copy each time, as the JSON of a real IPC answer is: the page must not share the fake's object.
