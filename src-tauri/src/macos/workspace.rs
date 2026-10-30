@@ -2,7 +2,7 @@
 //! by the manual QA of TAD-004, not by a unit test.
 
 use objc2::rc::autoreleasepool;
-use objc2_app_kit::{NSRunningApplication, NSWorkspace};
+use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
 
 use super::app_icon;
 use crate::platform::{PlatformError, SourceApp, Workspace};
@@ -38,7 +38,26 @@ impl Workspace for NsWorkspace {
         })
     }
 
-    fn activate(&self, _app: &SourceApp) -> Result<(), PlatformError> {
-        Err(PlatformError::Activation)
+    fn activate(&self, app: &SourceApp) -> Result<(), PlatformError> {
+        autoreleasepool(|_| {
+            let running = NSRunningApplication::runningApplicationWithProcessIdentifier(app.pid)
+                .ok_or(PlatformError::Activation)?;
+            // The pid may have been reused by another app since `frontmost_app` returned.
+            if running
+                .bundleIdentifier()
+                .map(|id| id.to_string())
+                .as_deref()
+                != Some(app.bundle_id.as_str())
+            {
+                return Err(PlatformError::Activation);
+            }
+            // Tadidy is the active app (the popover had the focus), so macOS lets it hand the
+            // focus over; every window of the app comes forward, as a click on its Dock icon.
+            if running.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows) {
+                Ok(())
+            } else {
+                Err(PlatformError::Activation)
+            }
+        })
     }
 }
