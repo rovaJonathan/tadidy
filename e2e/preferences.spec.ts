@@ -25,6 +25,9 @@ test("the window has the General and Shortcuts tabs and nothing else", async ({ 
   await expect(page.locator("#prefs-general")).toBeVisible();
   await expect(page.locator("#prefs-shortcuts")).toBeHidden();
   await expect(page.locator("#prefs-title")).toHaveText("General");
+  // The sidebar runs the full height of the window.
+  const sidebar = await page.locator(".prefs-sidebar").boundingBox();
+  expect(sidebar?.height).toBe(page.viewportSize()?.height);
 });
 
 test("Launch at login, History size and Confirm before delete send their setting", async ({ page }) => {

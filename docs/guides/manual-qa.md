@@ -164,3 +164,30 @@ Open TextEdit with an empty document and the insertion point in it before each r
 If step 2 or 3 sometimes misses the keystroke on a loaded machine, raise `PASTE_DELAY` in `src-tauri/src/paster.rs` (50 ms) and note it in `PROGRESS.md`.
 
 The same flows from the real popover and Quick Panel need the clip browser to be hosted in the windows (TAD-016): MVP criterion 3 is run there.
+
+### TAD-017 — Preferences window: General and Shortcuts
+
+Steps 1 to 5 and 9 to 14 only need `pnpm tauri dev`. Steps 6 to 8 (launch at login) need a **signed build**: `SMAppService` refuses an unsigned or bare binary, which step 6 checks too. Nothing opens the window from the UI yet (the tray item is TAD-018, `⌘,` in the browser TAD-016): open it from the popover's web inspector. Left-click the tray icon, right-click in the popover → *Inspect Element* → *Console*, then run:
+
+```
+await window.__TAURI_INTERNALS__.invoke("open_preferences")
+```
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Put TextEdit in front, run the command above. | A 640 × 480 window opens in the middle of the screen **in front of TextEdit and focused** (typing goes to it). No title text; the traffic lights sit over the left sidebar, which lists **General** and **Shortcuts** only. Tadidy now shows in the Dock and in `⌘Tab`. |
+| 2 | Run the command again while the window is open (and once more after clicking another app). | The same window comes to the front; there is never a second one. |
+| 3 | Look at the green button; drag the window by the sidebar's top area and by the "General" header. | The green button is disabled and the window cannot be resized. Both areas drag the window. |
+| 4 | Close with the red button, then reopen it with the command; close it with `⌘W`. | The Dock icon and the `⌘Tab` entry disappear on each close; the tray icon stays and Tadidy keeps running. Reopening shows the window again. |
+| 5 | Switch the system to dark mode and back with the window open. | The window follows the theme (sidebar, rows, toggles). Light and dark both match the prototype. |
+| 6 | **Signed build.** Check *Launch at login*. Then run `pnpm tauri dev` (unsigned) and check it there. | Signed: the box stays checked and Tadidy is listed and enabled in *System Settings → General → Login Items & Extensions*. Unsigned: the box unchecks itself and "Launch at login could not be changed." shows under the label. |
+| 7 | **Signed build**, *Launch at login* on. Log out and back in (or restart). | Tadidy starts by itself: its tray icon is there and no window opens (MVP criterion 7). |
+| 8 | **Signed build.** In *System Settings → General → Login Items & Extensions*, switch Tadidy off (or remove it), quit and start Tadidy, open Preferences. | *Launch at login* is **unchecked**: the system's state wins. |
+| 9 | Pick *10 clips*, then *Unlimited*, then *500 clips* in *History size*. Quit and start Tadidy. | Each choice is kept after the restart. With more than 10 clips stored, choosing *10 clips* trims the history at once. |
+| 10 | Shortcuts tab → click the recorder → press `⌃⌥V`. Switch to TextEdit and press `⌃⌥V`; then press `⌘⇧V`. | The recorder shows `⌃⌥V`. `⌃⌥V` opens the Quick Panel and `⌘⇧V` no longer does. |
+| 11 | Quit and start Tadidy. | `⌃⌥V` still opens the Quick Panel (the stored shortcut is registered at startup) and the tab shows `⌃⌥V`. |
+| 12 | Click the recorder and press `V` alone, `⇧` alone, then `Esc`. Click it again and press `⌘Space`, then `⌘⇧4`. | The first two are ignored; `Esc` restores `⌃⌥V`. `⌘Space` and `⌘⇧4` show the red ring and "This shortcut is already used by macOS or another app. Choose another one."; `⌃⌥V` still opens the panel. |
+| 13 | Click the ⓧ in the recorder. | `⌘⇧V` is back, the error is gone and `⌘⇧V` opens the Quick Panel. |
+| 14 | Quit Tadidy, make another app hold `⌘⇧V` (see [TAD-006](#tad-006--non-activating-quick-panel-and-global-shortcut) step 11), start Tadidy, open the Shortcuts tab. | Known limit: macOS does not refuse a combination another app holds, so no error shows and both apps receive the key. Note which one. The error text itself is checked by steps 12 and by the tests. |
+
+Run the steps on a screen where the pointer is not on the primary display too (step 1): the window opens centred on the primary display, as `.center()` does.
