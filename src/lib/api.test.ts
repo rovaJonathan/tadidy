@@ -5,22 +5,28 @@ import {
   appVersion,
   checkAccessibility,
   clearHistory,
+  copyClip,
   deleteClips,
   getAppIcon,
   getSettings,
   hideWindow,
   listClips,
+  onAccessibilityChanged,
   onClipsChanged,
   onPanelShown,
   onSettingsChanged,
   openAccessibilitySettings,
+  pasteClip,
   setSettings,
 } from "./api";
+import type { AccessibilityChanged } from "./bindings/AccessibilityChanged";
 import type { ClipQuery } from "./bindings/ClipQuery";
 import type { ClipsChanged } from "./bindings/ClipsChanged";
 import type { ClipSummary } from "./bindings/ClipSummary";
 import type { Page } from "./bindings/Page";
 import type { PanelShown } from "./bindings/PanelShown";
+import type { PasteMode } from "./bindings/PasteMode";
+import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
 
@@ -319,5 +325,71 @@ describe("onClipsChanged", () => {
     await emit("settings://changed", defaults);
 
     expect(seen).toEqual([]);
+  });
+});
+
+describe("pasteClip", () => {
+  it.each<[PasteMode, PasteResult]>([
+    ["default", "pasted"],
+    ["plain", "copied_only"],
+  ])("invokes paste_clip with the id and the %s mode and returns %s", async (mode, result) => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+      return cmd === "paste_clip" ? result : undefined;
+    });
+
+    await expect(pasteClip("0192", mode)).resolves.toBe(result);
+
+    expect(calls).toEqual([{ cmd: "paste_clip", args: { id: "0192", mode } }]);
+  });
+
+  it("rejects with the error of the core", async () => {
+    mockIPC(() => {
+      throw { code: "not_found", message: "The clip does not exist." };
+    });
+
+    await expect(pasteClip("gone", "default")).rejects.toEqual({
+      code: "not_found",
+      message: "The clip does not exist.",
+    });
+  });
+});
+
+describe("copyClip", () => {
+  it("invokes copy_clip with the id", async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+    });
+
+    await copyClip("0192");
+
+    expect(calls).toEqual([{ cmd: "copy_clip", args: { id: "0192" } }]);
+  });
+});
+
+describe("onAccessibilityChanged", () => {
+  it("hands the payload of accessibility://changed to the callback", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const changes: AccessibilityChanged[] = [];
+    await onAccessibilityChanged((payload) => changes.push(payload));
+
+    await emit("accessibility://changed", { trusted: false });
+    await emit("accessibility://changed", { trusted: true });
+
+    expect(changes).toEqual([{ trusted: false }, { trusted: true }]);
+  });
+
+  it("stops calling the callback once unlistened and ignores other events", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const changes: AccessibilityChanged[] = [];
+    const unlisten = await onAccessibilityChanged((payload) => changes.push(payload));
+
+    await emit("panel://shown", { trusted: true });
+    unlisten();
+    await emit("accessibility://changed", { trusted: true });
+
+    expect(changes).toEqual([]);
   });
 });
