@@ -16,6 +16,7 @@ use crate::state::AppState;
 
 pub const POPOVER_LABEL: &str = "popover";
 pub const PANEL_LABEL: &str = "panel";
+pub const SETTINGS_LABEL: &str = "settings";
 
 /// Popover size in logical pixels (DESIGN.md §3).
 const POPOVER_WIDTH: f64 = 380.0;
@@ -24,6 +25,10 @@ const POPOVER_HEIGHT: f64 = 520.0;
 /// Quick Panel size in logical pixels (DESIGN.md §3).
 pub const PANEL_WIDTH: f64 = 640.0;
 pub const PANEL_HEIGHT: f64 = 460.0;
+
+/// Preferences window size in logical pixels (DESIGN.md §3).
+const SETTINGS_WIDTH: f64 = 640.0;
+const SETTINGS_HEIGHT: f64 = 480.0;
 
 /// A tray click that arrives this soon after a focus-loss hide is the click that caused the
 /// focus loss (the user clicked the icon to close the popover): it must not reopen it.
@@ -118,6 +123,118 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
         if let Err(error) = self.hide() {
             tracing::error!(%error, "could not hide the popover");
         }
+    }
+}
+
+/// How the app shows itself to macOS: `Accessory` is a menu-bar app (no Dock icon, not in `⌘Tab`),
+/// `Regular` is an ordinary app, which is what a window needs to take the focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Policy {
+    Regular,
+    Accessory,
+}
+
+/// Decides when the activation policy changes, so the rule is tested without AppKit: `Regular`
+/// while the Preferences window exists, `Accessory` the rest of the time (spec *Windows*).
+#[derive(Debug, Default)]
+pub struct PolicySwitch {
+    regular: bool,
+}
+
+impl PolicySwitch {
+    /// The Preferences window is about to be shown: the policy to apply, if it has to change.
+    pub fn window_opened(&mut self) -> Option<Policy> {
+        (!std::mem::replace(&mut self.regular, true)).then_some(Policy::Regular)
+    }
+
+    /// The Preferences window is gone: the policy to apply, if it has to change.
+    pub fn window_closed(&mut self) -> Option<Policy> {
+        std::mem::replace(&mut self.regular, false).then_some(Policy::Accessory)
+    }
+}
+
+/// Managed by Tauri: shared by `open_preferences` and the window event handler.
+pub type PolicyState = Mutex<PolicySwitch>;
+
+/// Applies a [`Policy`] to the running app; a fake records it in the tests.
+pub trait PolicyApplier {
+    fn apply(&self, policy: Policy);
+}
+
+impl<R: Runtime> PolicyApplier for AppHandle<R> {
+    fn apply(&self, policy: Policy) {
+        #[cfg(target_os = "macos")]
+        {
+            let policy = match policy {
+                Policy::Regular => tauri::ActivationPolicy::Regular,
+                Policy::Accessory => tauri::ActivationPolicy::Accessory,
+            };
+            if let Err(error) = self.set_activation_policy(policy) {
+                tracing::error!(%error, "could not change the activation policy");
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = policy;
+    }
+}
+
+/// Shows the Preferences window, created on demand, and gives it the focus. A second call finds
+/// the first window and only brings it to the front.
+pub fn open_preferences<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    open_preferences_with(app, app)
+}
+
+/// [`open_preferences`] with the policy applier passed in.
+pub fn open_preferences_with<R: Runtime>(
+    app: &AppHandle<R>,
+    applier: &impl PolicyApplier,
+) -> tauri::Result<()> {
+    let Some(state) = app.try_state::<PolicyState>() else {
+        tracing::error!("the activation policy state is missing");
+        return Err(tauri::Error::WindowNotFound);
+    };
+    // The lock is not held while AppKit is called.
+    let change = lock_policy(&state).window_opened();
+    if let Some(policy) = change {
+        applier.apply(policy);
+    }
+    let shown = match app.get_webview_window(SETTINGS_LABEL) {
+        Some(window) => window.show().and_then(|()| window.set_focus()),
+        None => create_settings(app).and_then(|window| window.set_focus()),
+    };
+    if shown.is_err() {
+        // No window to hold the Dock icon: the app goes back to the menu bar.
+        settings_closed(applier, &state);
+    }
+    shown
+}
+
+/// The standard window of the Preferences: fixed size, no zoom, and the traffic lights over the
+/// sidebar (DESIGN.md §3). The mock runtime keeps none of these attributes: manual QA checks them.
+fn create_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
+    let builder =
+        WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
+            .title("Tadidy Preferences")
+            .inner_size(SETTINGS_WIDTH, SETTINGS_HEIGHT)
+            .resizable(false)
+            .maximizable(false)
+            .center();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    builder.build()
+}
+
+fn lock_policy(state: &PolicyState) -> MutexGuard<'_, PolicySwitch> {
+    state.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The Preferences window is gone: the app is a menu-bar app again.
+pub fn settings_closed(applier: &impl PolicyApplier, state: &PolicyState) {
+    let change = lock_policy(state).window_closed();
+    if let Some(policy) = change {
+        applier.apply(policy);
     }
 }
 
@@ -339,11 +456,20 @@ pub fn toggle_popover<R: Runtime>(app: &AppHandle<R>) {
     toggle(&popover, &state, Instant::now());
 }
 
-/// Window event hook: the popover hides when it loses focus; it is never destroyed.
+/// Window event hook: the popover hides when it loses focus and is never destroyed; the
+/// Preferences window gives the Dock icon back when it is destroyed.
 pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    if window.label() != POPOVER_LABEL || !matches!(event, WindowEvent::Focused(false)) {
-        return;
+    match (window.label(), event) {
+        (POPOVER_LABEL, WindowEvent::Focused(false)) => popover_lost_focus(window),
+        (SETTINGS_LABEL, WindowEvent::Destroyed) => match window.try_state::<PolicyState>() {
+            Some(state) => settings_closed(window.app_handle(), &state),
+            None => tracing::error!("the activation policy state is missing"),
+        },
+        _ => {}
     }
+}
+
+fn popover_lost_focus<R: Runtime>(window: &Window<R>) {
     let (Some(popover), Some(state)) = (
         window.app_handle().get_webview_window(POPOVER_LABEL),
         window.try_state::<PopoverState>(),
@@ -544,6 +670,135 @@ mod tests {
         on_window_event(&other.as_ref().window(), &WindowEvent::Focused(false));
 
         assert!(!click_is_debounced(&app));
+    }
+
+    // --- Preferences window ----------------------------------------------------------------
+
+    #[test]
+    fn policy_the_first_window_asks_for_regular() {
+        let mut switch = PolicySwitch::default();
+
+        assert_eq!(switch.window_opened(), Some(Policy::Regular));
+    }
+
+    #[test]
+    fn policy_a_window_already_open_changes_nothing() {
+        let mut switch = PolicySwitch::default();
+        switch.window_opened();
+
+        assert_eq!(switch.window_opened(), None);
+    }
+
+    #[test]
+    fn policy_closing_the_window_goes_back_to_accessory() {
+        let mut switch = PolicySwitch::default();
+        switch.window_opened();
+
+        assert_eq!(switch.window_closed(), Some(Policy::Accessory));
+    }
+
+    #[test]
+    fn policy_closing_when_nothing_was_open_changes_nothing() {
+        let mut switch = PolicySwitch::default();
+
+        assert_eq!(switch.window_closed(), None);
+    }
+
+    #[test]
+    fn policy_a_window_opened_again_after_closing_asks_for_regular_again() {
+        let mut switch = PolicySwitch::default();
+        switch.window_opened();
+        switch.window_closed();
+
+        assert_eq!(switch.window_opened(), Some(Policy::Regular));
+    }
+
+    #[derive(Default)]
+    struct RecordingPolicy {
+        applied: std::cell::RefCell<Vec<Policy>>,
+    }
+
+    impl PolicyApplier for RecordingPolicy {
+        fn apply(&self, policy: Policy) {
+            self.applied.borrow_mut().push(policy);
+        }
+    }
+
+    fn app_for_preferences() -> tauri::App<MockRuntime> {
+        let app = tauri::test::mock_app();
+        app.manage(PolicyState::default());
+        app
+    }
+
+    fn settings_windows(app: &tauri::App<MockRuntime>) -> usize {
+        app.webview_windows()
+            .keys()
+            .filter(|label| label.as_str() == SETTINGS_LABEL)
+            .count()
+    }
+
+    #[test]
+    fn opening_preferences_creates_the_settings_window_as_a_regular_app() {
+        let app = app_for_preferences();
+        let policy = RecordingPolicy::default();
+
+        open_preferences_with(app.handle(), &policy).unwrap();
+
+        // Tauri's mock runtime keeps no title, size or decorations: the manual QA checks them.
+        assert!(app.get_webview_window(SETTINGS_LABEL).is_some());
+        assert_eq!(*policy.applied.borrow(), vec![Policy::Regular]);
+    }
+
+    #[test]
+    fn opening_preferences_twice_keeps_one_window_and_one_policy_change() {
+        let app = app_for_preferences();
+        let policy = RecordingPolicy::default();
+
+        open_preferences_with(app.handle(), &policy).unwrap();
+        open_preferences_with(app.handle(), &policy).unwrap();
+
+        assert_eq!(settings_windows(&app), 1);
+        assert_eq!(*policy.applied.borrow(), vec![Policy::Regular]);
+    }
+
+    #[test]
+    fn closing_the_settings_window_goes_back_to_accessory() {
+        let app = app_for_preferences();
+        let policy = RecordingPolicy::default();
+        open_preferences_with(app.handle(), &policy).unwrap();
+
+        settings_closed(&policy, &app.state::<PolicyState>());
+
+        assert_eq!(
+            *policy.applied.borrow(),
+            vec![Policy::Regular, Policy::Accessory]
+        );
+    }
+
+    #[test]
+    fn the_destroyed_settings_window_lets_the_next_open_ask_for_regular_again() {
+        let app = app_for_preferences();
+        let policy = RecordingPolicy::default();
+        open_preferences_with(app.handle(), &policy).unwrap();
+        let window = app.get_webview_window(SETTINGS_LABEL).unwrap();
+
+        on_window_event(&window.as_ref().window(), &WindowEvent::Destroyed);
+
+        let state = app.state::<PolicyState>();
+        assert_eq!(state.lock().unwrap().window_opened(), Some(Policy::Regular));
+    }
+
+    #[test]
+    fn another_window_being_destroyed_leaves_the_policy_alone() {
+        let app = app_for_preferences();
+        let policy = RecordingPolicy::default();
+        open_preferences_with(app.handle(), &policy).unwrap();
+        let (_app2, popover) = app_with_popover();
+
+        on_window_event(&popover.as_ref().window(), &WindowEvent::Destroyed);
+
+        let state = app.state::<PolicyState>();
+        assert_eq!(state.lock().unwrap().window_opened(), None);
     }
 
     const SCREEN: Rect = Rect {

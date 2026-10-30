@@ -9,6 +9,7 @@ import {
   deleteClips,
   getAppIcon,
   getSettings,
+  getShortcutStatus,
   hideWindow,
   listClips,
   onAccessibilityChanged,
@@ -16,6 +17,7 @@ import {
   onPanelShown,
   onSettingsChanged,
   openAccessibilitySettings,
+  openPreferences,
   pasteClip,
   setSettings,
 } from "./api";
@@ -29,6 +31,7 @@ import type { PasteMode } from "./bindings/PasteMode";
 import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
+import type { ShortcutStatus } from "./bindings/ShortcutStatus";
 
 const defaults: Settings = {
   historySize: 500,
@@ -391,5 +394,39 @@ describe("onAccessibilityChanged", () => {
     await emit("accessibility://changed", { trusted: true });
 
     expect(changes).toEqual([]);
+  });
+});
+
+describe("openPreferences", () => {
+  it("invokes open_preferences without arguments", async () => {
+    const calls: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      calls.push({ cmd, args });
+    });
+
+    await expect(openPreferences()).resolves.toBeUndefined();
+    expect(calls).toEqual([{ cmd: "open_preferences", args: {} }]);
+  });
+
+  it("rejects with the core's window error", async () => {
+    mockIPC(() => {
+      throw { code: "window", message: "The Preferences window could not be opened." };
+    });
+
+    await expect(openPreferences()).rejects.toMatchObject({ code: "window" });
+  });
+});
+
+describe("getShortcutStatus", () => {
+  it("invokes get_shortcut_status and returns the accelerator with its error code", async () => {
+    const calls: string[] = [];
+    const status: ShortcutStatus = { accelerator: "Cmd+Shift+V", error: "unavailable" };
+    mockIPC((cmd) => {
+      calls.push(cmd);
+      return status;
+    });
+
+    await expect(getShortcutStatus()).resolves.toEqual(status);
+    expect(calls).toEqual(["get_shortcut_status"]);
   });
 });

@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
 import type { ClipQuery } from "../../src/lib/bindings/ClipQuery";
 import type { ClipSummary } from "../../src/lib/bindings/ClipSummary";
+import type { Settings } from "../../src/lib/bindings/Settings";
+import type { SettingsPatch } from "../../src/lib/bindings/SettingsPatch";
+import type { ShortcutStatus } from "../../src/lib/bindings/ShortcutStatus";
 
 /** What each mocked command returns, by command name. */
 export type IpcResponses = Record<string, unknown>;
@@ -10,7 +13,16 @@ interface MockWindow {
   __ipcQueries: ClipQuery[];
   __clips: ClipSummary[];
   __browserCalls?: string[];
+  __settingsPatches: SettingsPatch[];
   __emit: (event: string, payload: unknown) => void;
+}
+
+/** A fake preferences core: the settings it holds, how the shortcut registered, and an optional refusal. */
+export interface FakePreferences {
+  settings: Settings;
+  shortcut: ShortcutStatus;
+  /** When set, `set_settings` rejects with it and changes nothing. */
+  refuse?: { code: string; message: string };
 }
 
 /**
@@ -25,10 +37,18 @@ interface MockWindow {
 export async function mockIpc(
   page: Page,
   responses: IpcResponses,
-  options: { clips?: ClipSummary[] } = {},
+  options: { clips?: ClipSummary[]; preferences?: FakePreferences } = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ responses, clips }: { responses: IpcResponses; clips?: ClipSummary[] }) => {
+    ({
+      responses,
+      clips,
+      preferences,
+    }: {
+      responses: IpcResponses;
+      clips?: ClipSummary[];
+      preferences?: FakePreferences;
+    }) => {
       let nextCallbackId = 0;
       let nextEventId = 0;
       const callbacks = new Map<number, (event: unknown) => void>();
@@ -39,6 +59,8 @@ export async function mockIpc(
 
       Object.defineProperty(window, "__ipcCalls", { value: calls });
       Object.defineProperty(window, "__ipcQueries", { value: queries });
+      const patches: SettingsPatch[] = [];
+      Object.defineProperty(window, "__settingsPatches", { value: patches });
       Object.defineProperty(window, "__clips", { value: history });
       Object.defineProperty(window, "__emit", {
         value: (event: string, payload: unknown) => {
@@ -90,6 +112,21 @@ export async function mockIpc(
             }
             if (clips && cmd === "get_app_icon")
               throw { code: "not_found", message: "No icon is cached for this app." };
+            // A copy each time, as the JSON of a real IPC answer is: the page must not share the fake's object.
+            if (preferences && cmd === "get_settings") return structuredClone(preferences.settings);
+            if (preferences && cmd === "get_shortcut_status") return structuredClone(preferences.shortcut);
+            if (preferences && cmd === "set_settings") {
+              const patch = args.patch as SettingsPatch;
+              patches.push(patch);
+              if (preferences.refuse) throw preferences.refuse;
+              for (const [key, value] of Object.entries(patch)) {
+                if (value !== undefined) Object.assign(preferences.settings, { [key]: value });
+              }
+              queueMicrotask(() =>
+                (window as unknown as MockWindow).__emit("settings://changed", preferences.settings),
+              );
+              return preferences.settings;
+            }
             if (cmd in responses) return responses[cmd];
             throw new Error(`IPC command not mocked: ${cmd}`);
           },
@@ -103,7 +140,7 @@ export async function mockIpc(
         },
       });
     },
-    { responses, clips: options.clips },
+    { responses, clips: options.clips, preferences: options.preferences },
   );
 }
 
@@ -129,4 +166,9 @@ export function recordClip(page: Page, clip: ClipSummary): Promise<void> {
     w.__clips.unshift(clip);
     w.__emit("clips://changed", {});
   }, clip);
+}
+
+/** The `patch` argument of every `set_settings` call so far, refused or not, in order. */
+export function settingsPatches(page: Page): Promise<SettingsPatch[]> {
+  return page.evaluate(() => [...(window as unknown as MockWindow).__settingsPatches]);
 }

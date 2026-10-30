@@ -14,6 +14,8 @@ pub mod keychain;
 #[cfg(target_os = "macos")]
 pub mod keys;
 #[cfg(target_os = "macos")]
+pub mod login_item;
+#[cfg(target_os = "macos")]
 pub mod panel;
 #[cfg(target_os = "macos")]
 pub mod pasteboard;

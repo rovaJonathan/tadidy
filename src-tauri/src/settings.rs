@@ -2,7 +2,7 @@
 //! stored settings live here; applying them (autostart, shortcut registration) is the job of
 //! the preferences window's ticket.
 
-use std::sync::{PoisonError, RwLock};
+use std::sync::{Mutex, PoisonError, RwLock};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -11,7 +11,8 @@ use ts_rs::TS;
 use crate::clip::{DEFAULT_HISTORY_SIZE, HistoryLimit};
 use crate::error::AppError;
 use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, SETTINGS_CHANGED};
-use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
+use crate::login_item::LoginItem;
+use crate::shortcuts::{self, DEFAULT_QUICK_PANEL_SHORTCUT, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::clips::enforce_limit;
 use crate::storage::{self, Db};
 
@@ -98,6 +99,55 @@ impl Settings {
     }
 }
 
+/// What a change of setting has to do outside the database: the system's login item and the
+/// global shortcut.
+pub struct Effects<'a> {
+    pub login_item: &'a dyn LoginItem,
+    pub shortcuts: &'a dyn ShortcutRegistrar,
+    pub shortcut_status: &'a Mutex<ShortcutStatus>,
+    /// Serializes the updates. The effects can wait for the main thread (the shortcut plugin
+    /// does), so they cannot run under the settings lock `get_settings` reads on that thread.
+    pub gate: &'a Mutex<()>,
+}
+
+impl Effects<'_> {
+    /// Brings the system in line with `to`, for the fields that differ from `from`. All or
+    /// nothing: when the shortcut is refused, the login item goes back to where it was.
+    /// `shortcut_asked` is whether the patch carried a shortcut: only then is a stored shortcut
+    /// that failed to register tried again.
+    fn apply(&self, from: &Settings, to: &Settings, shortcut_asked: bool) -> Result<(), AppError> {
+        let login_changed = from.launch_at_login != to.launch_at_login;
+        if login_changed {
+            self.login_item
+                .set_enabled(to.launch_at_login)
+                .map_err(|_| {
+                    AppError::new("login_item_failed", "Launch at login could not be changed.")
+                })?;
+        }
+        // Saving the stored shortcut again retries it when it failed to register.
+        let retry = shortcut_asked
+            && self
+                .shortcut_status
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .error
+                .is_some();
+        if (from.quick_panel_shortcut != to.quick_panel_shortcut || retry)
+            && let Err(error) = shortcuts::switch(
+                self.shortcuts,
+                self.shortcut_status,
+                &to.quick_panel_shortcut,
+            )
+        {
+            if login_changed && self.login_item.set_enabled(from.launch_at_login).is_err() {
+                tracing::warn!("the login item could not be put back after a refused shortcut");
+            }
+            return Err(error.into());
+        }
+        Ok(())
+    }
+}
+
 /// Validates `patch`, stores the result, then makes it live: the shared settings, the history
 /// limit, and a `settings://changed` event with the full settings. When the history size
 /// changed, the history is trimmed at once and `clips://changed` lists what went.
@@ -106,19 +156,28 @@ pub fn update(
     current: &RwLock<Settings>,
     limit: &HistoryLimit,
     events: &dyn EventSink,
+    effects: &Effects<'_>,
     patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
     // Held until `settings://changed` so two updates cannot interleave their writes and their
-    // events, then released: `get_settings` runs on the main thread and must not wait for the
-    // trim. The trim reads only `limit` and is idempotent, so interleaved trims still end right.
-    let mut guard = current.write().unwrap_or_else(PoisonError::into_inner);
-    let next = guard.apply(patch)?;
+    // events, then released: the trim reads only `limit` and is idempotent, so interleaved trims
+    // still end right. `current` is locked for writing only to swap the value: `get_settings`
+    // runs on the main thread, which the effects may be waiting for.
+    let serial = effects.gate.lock().unwrap_or_else(PoisonError::into_inner);
+    let before = current
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let shortcut_asked = patch.quick_panel_shortcut.is_some();
+    let next = before.apply(patch)?;
+    // Before the write: a refusal must leave both the system and the stored value as they were.
+    effects.apply(&before, &next, shortcut_asked)?;
     db.with_conn(|conn| storage::settings::save(conn, &next))?;
-    let history_size_changed = next.history_size != guard.history_size;
-    *guard = next.clone();
+    let history_size_changed = next.history_size != before.history_size;
+    *current.write().unwrap_or_else(PoisonError::into_inner) = next.clone();
     limit.set(next.history_limit());
     events.emit(SETTINGS_CHANGED, json!(next));
-    drop(guard);
+    drop(serial);
     if history_size_changed {
         trim_history(db, limit, events);
     }
@@ -276,6 +335,360 @@ mod tests {
         });
 
         assert_eq!(result, Err(SettingsError::HistorySize));
+    }
+
+    // --- side effects of `update` ----------------------------------------------------------
+
+    use crate::crypto::FakeKeyStore;
+    use crate::events::RecordingEventSink;
+    use crate::login_item::FakeLoginItem;
+    use crate::shortcuts::{FakeShortcutRegistrar, register_at_startup};
+    use crate::storage::open_in_dir;
+
+    struct Harness {
+        db: Db,
+        current: RwLock<Settings>,
+        limit: HistoryLimit,
+        events: RecordingEventSink,
+        login_item: FakeLoginItem,
+        shortcuts: FakeShortcutRegistrar,
+        shortcut_status: Mutex<ShortcutStatus>,
+        gate: Mutex<()>,
+        _dir: tempfile::TempDir,
+    }
+
+    /// Defaults stored, the default shortcut registered, a login item that is off.
+    fn harness() -> Harness {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let shortcuts = FakeShortcutRegistrar::default();
+        let shortcut_status = Mutex::new(ShortcutStatus::default());
+        register_at_startup(&shortcuts, &shortcut_status, DEFAULT_QUICK_PANEL_SHORTCUT);
+        Harness {
+            db,
+            current: RwLock::new(Settings::default()),
+            limit: HistoryLimit::default(),
+            events: RecordingEventSink::default(),
+            login_item: FakeLoginItem::new(false),
+            shortcuts,
+            shortcut_status,
+            gate: Mutex::new(()),
+            _dir: dir,
+        }
+    }
+
+    impl Harness {
+        fn update(&self, patch: SettingsPatch) -> Result<Settings, AppError> {
+            update(
+                &self.db,
+                &self.current,
+                &self.limit,
+                &self.events,
+                &Effects {
+                    login_item: &self.login_item,
+                    shortcuts: &self.shortcuts,
+                    shortcut_status: &self.shortcut_status,
+                    gate: &self.gate,
+                },
+                patch,
+            )
+        }
+
+        fn live(&self) -> Settings {
+            self.current.read().unwrap().clone()
+        }
+
+        fn stored(&self) -> Settings {
+            self.db.with_conn(crate::storage::settings::load).unwrap()
+        }
+
+        fn announced(&self) -> usize {
+            self.events
+                .events()
+                .iter()
+                .filter(|(name, _)| *name == SETTINGS_CHANGED)
+                .count()
+        }
+    }
+
+    fn launch(on: bool) -> SettingsPatch {
+        SettingsPatch {
+            launch_at_login: Some(on),
+            ..SettingsPatch::default()
+        }
+    }
+
+    fn shortcut(accelerator: &str) -> SettingsPatch {
+        SettingsPatch {
+            quick_panel_shortcut: Some(accelerator.to_owned()),
+            ..SettingsPatch::default()
+        }
+    }
+
+    #[test]
+    fn turning_launch_at_login_on_enables_the_login_item_and_stores_it() {
+        let h = harness();
+
+        let updated = h.update(launch(true)).unwrap();
+
+        assert!(updated.launch_at_login);
+        assert!(h.login_item.enabled());
+        assert!(h.stored().launch_at_login);
+        assert!(h.live().launch_at_login);
+    }
+
+    #[test]
+    fn turning_launch_at_login_off_disables_the_login_item() {
+        let h = harness();
+        h.update(launch(true)).unwrap();
+        assert!(h.login_item.enabled());
+
+        h.update(launch(false)).unwrap();
+
+        assert!(!h.login_item.enabled());
+        assert!(!h.stored().launch_at_login);
+    }
+
+    #[test]
+    fn a_failing_login_item_refuses_the_change_and_keeps_the_setting() {
+        let h = harness();
+        h.login_item.fail();
+
+        let error = h.update(launch(true)).unwrap_err();
+
+        assert_eq!(error.code, "login_item_failed");
+        assert!(!h.live().launch_at_login);
+        assert!(!h.stored().launch_at_login);
+        assert_eq!(h.announced(), 0);
+    }
+
+    #[test]
+    fn a_patch_that_leaves_launch_at_login_alone_does_not_touch_the_login_item() {
+        let h = harness();
+        h.login_item.fail();
+
+        let result = h.update(SettingsPatch {
+            confirm_before_delete: Some(false),
+            ..SettingsPatch::default()
+        });
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(h.login_item.changes(), 0);
+    }
+
+    #[test]
+    fn sending_the_stored_launch_at_login_again_does_not_touch_the_login_item() {
+        let h = harness();
+
+        h.update(launch(false)).unwrap();
+
+        assert_eq!(h.login_item.changes(), 0);
+    }
+
+    #[test]
+    fn a_new_shortcut_is_registered_and_the_old_one_released() {
+        let h = harness();
+
+        let updated = h.update(shortcut("Ctrl+Alt+V")).unwrap();
+
+        assert_eq!(updated.quick_panel_shortcut, "Ctrl+Alt+V");
+        assert!(h.shortcuts.is_registered("Ctrl+Alt+V"));
+        assert!(!h.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(h.stored().quick_panel_shortcut, "Ctrl+Alt+V");
+        let status = h.shortcut_status.lock().unwrap().clone();
+        assert_eq!(status.accelerator, "Ctrl+Alt+V");
+        assert_eq!(status.error, None);
+    }
+
+    #[test]
+    fn a_shortcut_the_system_refuses_keeps_the_old_one_and_the_stored_value() {
+        let h = harness();
+        h.shortcuts.take("Ctrl+Alt+V");
+
+        let error = h.update(shortcut("Ctrl+Alt+V")).unwrap_err();
+
+        assert_eq!(error.code, "shortcut_unavailable");
+        assert!(h.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(h.live().quick_panel_shortcut, DEFAULT_QUICK_PANEL_SHORTCUT);
+        assert_eq!(
+            h.stored().quick_panel_shortcut,
+            DEFAULT_QUICK_PANEL_SHORTCUT
+        );
+        assert_eq!(
+            *h.shortcut_status.lock().unwrap(),
+            ShortcutStatus::default()
+        );
+        assert_eq!(h.announced(), 0);
+    }
+
+    #[test]
+    fn a_shortcut_that_does_not_parse_is_refused_as_invalid_settings() {
+        let h = harness();
+
+        let error = h.update(shortcut("Cmd+Shift+")).unwrap_err();
+
+        assert_eq!(error.code, "invalid_settings");
+        assert!(h.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+    }
+
+    #[test]
+    fn sending_the_stored_shortcut_again_registers_nothing() {
+        let h = harness();
+        // Taken now: a second registration of the same accelerator would be refused.
+        h.shortcuts.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+
+        let result = h.update(shortcut(DEFAULT_QUICK_PANEL_SHORTCUT));
+
+        assert!(result.is_ok(), "{result:?}");
+        assert!(h.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+    }
+
+    #[test]
+    fn sending_the_stored_shortcut_again_retries_one_that_failed_at_startup() {
+        let h = harness();
+        // The stored shortcut was refused at startup; the user has freed it since.
+        h.shortcuts
+            .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+            .unwrap();
+        *h.shortcut_status.lock().unwrap() = ShortcutStatus {
+            accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+            error: Some("shortcut_unavailable".to_owned()),
+        };
+
+        let result = h.update(shortcut(DEFAULT_QUICK_PANEL_SHORTCUT));
+
+        assert!(result.is_ok(), "{result:?}");
+        assert!(h.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(h.shortcut_status.lock().unwrap().error, None);
+    }
+
+    #[test]
+    fn a_failed_shortcut_does_not_block_a_change_that_is_not_about_it() {
+        let h = harness();
+        h.shortcuts
+            .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+            .unwrap();
+        h.shortcuts.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        *h.shortcut_status.lock().unwrap() = ShortcutStatus {
+            accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+            error: Some("shortcut_unavailable".to_owned()),
+        };
+
+        let result = h.update(SettingsPatch {
+            confirm_before_delete: Some(false),
+            launch_at_login: Some(true),
+            ..SettingsPatch::default()
+        });
+
+        assert!(result.is_ok(), "{result:?}");
+        assert!(!h.live().confirm_before_delete);
+        assert!(h.login_item.enabled());
+        assert_eq!(
+            h.shortcut_status.lock().unwrap().error.as_deref(),
+            Some("shortcut_unavailable")
+        );
+    }
+
+    #[test]
+    fn a_retry_that_is_refused_again_reports_it() {
+        let h = harness();
+        h.shortcuts
+            .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+            .unwrap();
+        h.shortcuts.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        *h.shortcut_status.lock().unwrap() = ShortcutStatus {
+            accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+            error: Some("shortcut_unavailable".to_owned()),
+        };
+
+        let error = h
+            .update(shortcut(DEFAULT_QUICK_PANEL_SHORTCUT))
+            .unwrap_err();
+
+        assert_eq!(error.code, "shortcut_unavailable");
+    }
+
+    /// A registrar that records whether the settings could be read while it was called, as
+    /// `get_settings` does on the main thread while the real plugin waits for that same thread.
+    struct ReadsSettings<'a> {
+        current: &'a RwLock<Settings>,
+        readable: std::sync::atomic::AtomicBool,
+    }
+
+    impl ShortcutRegistrar for ReadsSettings<'_> {
+        fn register(&self, _accelerator: &str) -> Result<(), shortcuts::ShortcutError> {
+            self.readable.store(
+                self.current.try_read().is_ok(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            Ok(())
+        }
+
+        fn unregister(&self, _accelerator: &str) -> Result<(), shortcuts::ShortcutError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_settings_stay_readable_while_the_system_effects_run() {
+        let h = harness();
+        let registrar = ReadsSettings {
+            current: &h.current,
+            readable: std::sync::atomic::AtomicBool::new(false),
+        };
+
+        update(
+            &h.db,
+            &h.current,
+            &h.limit,
+            &h.events,
+            &Effects {
+                login_item: &h.login_item,
+                shortcuts: &registrar,
+                shortcut_status: &h.shortcut_status,
+                gate: &h.gate,
+            },
+            shortcut("Ctrl+Alt+V"),
+        )
+        .unwrap();
+
+        assert!(registrar.readable.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_refused_shortcut_undoes_the_login_item_change_of_the_same_patch() {
+        let h = harness();
+        h.shortcuts.take("Ctrl+Alt+V");
+
+        let error = h
+            .update(SettingsPatch {
+                launch_at_login: Some(true),
+                quick_panel_shortcut: Some("Ctrl+Alt+V".to_owned()),
+                ..SettingsPatch::default()
+            })
+            .unwrap_err();
+
+        assert_eq!(error.code, "shortcut_unavailable");
+        assert!(!h.login_item.enabled());
+        assert!(!h.stored().launch_at_login);
+    }
+
+    #[test]
+    fn a_refused_patch_has_no_side_effect() {
+        let h = harness();
+
+        let error = h
+            .update(SettingsPatch {
+                history_size: Some(5),
+                launch_at_login: Some(true),
+                quick_panel_shortcut: Some("Ctrl+Alt+V".to_owned()),
+                ..SettingsPatch::default()
+            })
+            .unwrap_err();
+
+        assert_eq!(error.code, "invalid_settings");
+        assert_eq!(h.login_item.changes(), 0);
+        assert!(!h.shortcuts.is_registered("Ctrl+Alt+V"));
     }
 
     #[test]

@@ -12,8 +12,10 @@ use serde_json::{Value, json};
 use tadidy_lib::clip::{ClipKind, HistoryLimit, NewClip, content_hash};
 use tadidy_lib::crypto::DbKey;
 use tadidy_lib::events::{CLIPS_CHANGED, EventSink, RecordingEventSink, SETTINGS_CHANGED};
+use tadidy_lib::login_item::FakeLoginItem;
 use tadidy_lib::platform::{Representation, UTI_PLAIN_TEXT};
-use tadidy_lib::settings::{Settings, SettingsPatch, update};
+use tadidy_lib::settings::{Effects, Settings, SettingsPatch, update};
+use tadidy_lib::shortcuts::{FakeShortcutRegistrar, ShortcutStatus};
 use tadidy_lib::storage::clips::{InsertOutcome, count, insert_or_bump};
 use tadidy_lib::storage::settings::{load, save};
 use tadidy_lib::storage::{Db, open};
@@ -74,6 +76,10 @@ struct Rig {
     current: RwLock<Settings>,
     limit: HistoryLimit,
     events: RecordingEventSink,
+    login_item: FakeLoginItem,
+    shortcuts: FakeShortcutRegistrar,
+    shortcut_status: Mutex<ShortcutStatus>,
+    gate: Mutex<()>,
 }
 
 impl Rig {
@@ -85,11 +91,31 @@ impl Rig {
             current: RwLock::default(),
             limit: HistoryLimit::default(),
             events: RecordingEventSink::default(),
+            login_item: FakeLoginItem::new(false),
+            shortcuts: FakeShortcutRegistrar::default(),
+            shortcut_status: Mutex::default(),
+            gate: Mutex::default(),
+        }
+    }
+
+    fn effects(&self) -> Effects<'_> {
+        Effects {
+            login_item: &self.login_item,
+            shortcuts: &self.shortcuts,
+            shortcut_status: &self.shortcut_status,
+            gate: &self.gate,
         }
     }
 
     fn update(&self, patch: SettingsPatch) -> Result<Settings, tadidy_lib::error::AppError> {
-        update(&self.db, &self.current, &self.limit, &self.events, patch)
+        update(
+            &self.db,
+            &self.current,
+            &self.limit,
+            &self.events,
+            &self.effects(),
+            patch,
+        )
     }
 
     fn history_size(size: u32) -> SettingsPatch {
@@ -325,6 +351,7 @@ fn the_settings_stay_readable_while_the_history_is_trimmed() {
         &rig.current,
         &rig.limit,
         &sink,
+        &rig.effects(),
         Rig::history_size(10),
     )
     .unwrap();

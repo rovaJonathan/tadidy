@@ -1,6 +1,7 @@
 //! The global shortcut that opens the Quick Panel (QPN-01). Registration goes through the
 //! Rust side of `tauri-plugin-global-shortcut` only: the webview never registers a shortcut.
 
+use std::collections::HashSet;
 use std::sync::{Mutex, PoisonError};
 
 use serde::Serialize;
@@ -8,6 +9,7 @@ use tauri::{AppHandle, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use ts_rs::TS;
 
+use crate::error::AppError;
 use crate::windows;
 
 pub const DEFAULT_QUICK_PANEL_SHORTCUT: &str = "Cmd+Shift+V";
@@ -57,15 +59,110 @@ pub fn parse(accelerator: &str) -> Result<Shortcut, ShortcutError> {
         .map_err(|error| ShortcutError::Invalid(error.to_string()))
 }
 
-/// What registering needs from the plugin, so the startup rules run against a fake.
-pub trait ShortcutRegistrar {
+/// What registering needs from the plugin, so the rules run against a fake.
+pub trait ShortcutRegistrar: Send + Sync {
     fn register(&self, accelerator: &str) -> Result<(), ShortcutError>;
+    fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError>;
 }
 
-/// Registers the default shortcut at startup. A failure does not stop the app: it is logged
+/// Stands in until the real registrar is wired: every call fails, so a state built without one
+/// reports `shortcut_unavailable` instead of pretending it worked.
+pub struct NoShortcuts;
+
+impl ShortcutRegistrar for NoShortcuts {
+    fn register(&self, accelerator: &str) -> Result<(), ShortcutError> {
+        Err(ShortcutError::Unavailable(accelerator.to_owned()))
+    }
+
+    fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
+        Err(ShortcutError::Unavailable(accelerator.to_owned()))
+    }
+}
+
+/// An in-memory registrar for the tests of everything that registers a shortcut. `take` makes an
+/// accelerator refuse to register, as one the system has reserved does.
+#[derive(Default)]
+pub struct FakeShortcutRegistrar {
+    registered: Mutex<HashSet<String>>,
+    taken: Mutex<HashSet<String>>,
+}
+
+impl FakeShortcutRegistrar {
+    pub fn take(&self, accelerator: &str) {
+        self.taken
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(accelerator.to_owned());
+    }
+
+    pub fn is_registered(&self, accelerator: &str) -> bool {
+        self.registered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(accelerator)
+    }
+
+    pub fn registered_count(&self) -> usize {
+        self.registered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+}
+
+impl ShortcutRegistrar for FakeShortcutRegistrar {
+    fn register(&self, accelerator: &str) -> Result<(), ShortcutError> {
+        parse(accelerator)?;
+        if self
+            .taken
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(accelerator)
+        {
+            return Err(ShortcutError::Unavailable(accelerator.to_owned()));
+        }
+        self.registered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(accelerator.to_owned());
+        Ok(())
+    }
+
+    fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
+        let removed = self
+            .registered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(accelerator);
+        removed
+            .then_some(())
+            .ok_or_else(|| ShortcutError::Unavailable(accelerator.to_owned()))
+    }
+}
+
+impl From<ShortcutError> for AppError {
+    /// Fixed messages: the accelerator is the user's choice, not something to echo back.
+    fn from(error: ShortcutError) -> Self {
+        match error {
+            ShortcutError::Invalid(_) => Self::new(
+                "invalid_settings",
+                "quickPanelShortcut is not a valid key combination",
+            ),
+            ShortcutError::Unavailable(_) => Self::new(
+                "shortcut_unavailable",
+                "This shortcut is already used by macOS or another app.",
+            ),
+        }
+    }
+}
+
+/// Registers the stored shortcut at startup. A failure does not stop the app: it is logged
 /// (code only) and kept in `status` for the preferences.
-pub fn register_at_startup(registrar: &impl ShortcutRegistrar, status: &Mutex<ShortcutStatus>) {
-    let accelerator = DEFAULT_QUICK_PANEL_SHORTCUT;
+pub fn register_at_startup(
+    registrar: &dyn ShortcutRegistrar,
+    status: &Mutex<ShortcutStatus>,
+    accelerator: &str,
+) {
     let error = registrar.register(accelerator).err().map(|error| {
         tracing::warn!(
             code = error.code(),
@@ -77,6 +174,31 @@ pub fn register_at_startup(registrar: &impl ShortcutRegistrar, status: &Mutex<Sh
         accelerator: accelerator.to_owned(),
         error,
     };
+}
+
+/// Moves the Quick Panel to `accelerator`. The new one is registered first: when that fails the
+/// old one stays registered and `status` is untouched. Once it succeeds the old one is released.
+pub fn switch(
+    registrar: &dyn ShortcutRegistrar,
+    status: &Mutex<ShortcutStatus>,
+    accelerator: &str,
+) -> Result<(), ShortcutError> {
+    registrar.register(accelerator)?;
+    let mut status = status.lock().unwrap_or_else(PoisonError::into_inner);
+    // A shortcut that never registered has nothing to release.
+    if status.error.is_none()
+        && let Err(error) = registrar.unregister(&status.accelerator)
+    {
+        tracing::warn!(
+            code = error.code(),
+            "the old Quick Panel shortcut was not released"
+        );
+    }
+    *status = ShortcutStatus {
+        accelerator: accelerator.to_owned(),
+        error: None,
+    };
+    Ok(())
 }
 
 /// Registers `accelerator` to toggle the Quick Panel.
@@ -101,6 +223,14 @@ impl<R: Runtime> ShortcutRegistrar for AppShortcuts<R> {
     fn register(&self, accelerator: &str) -> Result<(), ShortcutError> {
         register_quick_panel(&self.0, accelerator)
     }
+
+    fn unregister(&self, accelerator: &str) -> Result<(), ShortcutError> {
+        let shortcut = parse(accelerator)?;
+        self.0
+            .global_shortcut()
+            .unregister(shortcut)
+            .map_err(|error| ShortcutError::Unavailable(error.to_string()))
+    }
 }
 
 #[cfg(test)]
@@ -124,20 +254,39 @@ mod tests {
         );
     }
 
-    struct FakeRegistrar(Result<(), ShortcutError>);
+    fn status_of(accelerator: &str, error: Option<&str>) -> Mutex<ShortcutStatus> {
+        Mutex::new(ShortcutStatus {
+            accelerator: accelerator.to_owned(),
+            error: error.map(str::to_owned),
+        })
+    }
 
-    impl ShortcutRegistrar for FakeRegistrar {
-        fn register(&self, _accelerator: &str) -> Result<(), ShortcutError> {
-            self.0.clone()
-        }
+    fn read(status: &Mutex<ShortcutStatus>) -> ShortcutStatus {
+        status.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn startup_registers_the_stored_shortcut_not_the_default() {
+        let registrar = FakeShortcutRegistrar::default();
+        let status = Mutex::new(ShortcutStatus::default());
+
+        register_at_startup(&registrar, &status, "Ctrl+Alt+V");
+
+        assert!(registrar.is_registered("Ctrl+Alt+V"));
+        assert!(!registrar.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(
+            read(&status),
+            status_of("Ctrl+Alt+V", None).into_inner().unwrap()
+        );
     }
 
     #[test]
     fn startup_failure_is_recorded_in_status() {
+        let registrar = FakeShortcutRegistrar::default();
+        registrar.take(DEFAULT_QUICK_PANEL_SHORTCUT);
         let status = Mutex::new(ShortcutStatus::default());
-        let taken = FakeRegistrar(Err(ShortcutError::Unavailable("taken".to_owned())));
 
-        register_at_startup(&taken, &status);
+        register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
 
         let status = status.lock().unwrap();
         assert_eq!(status.accelerator, DEFAULT_QUICK_PANEL_SHORTCUT);
@@ -148,9 +297,142 @@ mod tests {
     fn startup_success_leaves_no_error() {
         let status = Mutex::new(ShortcutStatus::default());
 
-        register_at_startup(&FakeRegistrar(Ok(())), &status);
+        register_at_startup(
+            &FakeShortcutRegistrar::default(),
+            &status,
+            DEFAULT_QUICK_PANEL_SHORTCUT,
+        );
 
         assert_eq!(status.lock().unwrap().error, None);
+    }
+
+    #[test]
+    fn switching_registers_the_new_shortcut_and_releases_the_old_one() {
+        let registrar = FakeShortcutRegistrar::default();
+        let status = Mutex::new(ShortcutStatus::default());
+        register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
+
+        switch(&registrar, &status, "Ctrl+Alt+V").unwrap();
+
+        assert!(registrar.is_registered("Ctrl+Alt+V"));
+        assert!(!registrar.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(registrar.registered_count(), 1);
+        assert_eq!(
+            read(&status),
+            status_of("Ctrl+Alt+V", None).into_inner().unwrap()
+        );
+    }
+
+    #[test]
+    fn a_refused_shortcut_keeps_the_old_one_and_the_status() {
+        let registrar = FakeShortcutRegistrar::default();
+        let status = Mutex::new(ShortcutStatus::default());
+        register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
+        registrar.take("Ctrl+Alt+V");
+
+        let result = switch(&registrar, &status, "Ctrl+Alt+V");
+
+        assert!(matches!(result, Err(ShortcutError::Unavailable(_))));
+        assert!(registrar.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert!(!registrar.is_registered("Ctrl+Alt+V"));
+        assert_eq!(read(&status), ShortcutStatus::default());
+    }
+
+    #[test]
+    fn a_malformed_shortcut_is_refused_as_invalid_and_keeps_the_old_one() {
+        let registrar = FakeShortcutRegistrar::default();
+        let status = Mutex::new(ShortcutStatus::default());
+        register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
+
+        let result = switch(&registrar, &status, "Cmd+Shift+");
+
+        assert!(
+            matches!(result, Err(ShortcutError::Invalid(_))),
+            "{result:?}"
+        );
+        assert!(registrar.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+    }
+
+    #[test]
+    fn switching_away_from_a_shortcut_that_never_registered_clears_the_error() {
+        let registrar = FakeShortcutRegistrar::default();
+        registrar.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        let status = Mutex::new(ShortcutStatus::default());
+        register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
+
+        switch(&registrar, &status, "Ctrl+Alt+V").unwrap();
+
+        assert!(registrar.is_registered("Ctrl+Alt+V"));
+        assert_eq!(
+            read(&status),
+            status_of("Ctrl+Alt+V", None).into_inner().unwrap()
+        );
+    }
+
+    #[test]
+    fn a_shortcut_error_maps_to_a_code_without_the_accelerator() {
+        let unavailable = AppError::from(ShortcutError::Unavailable("Cmd+Shift+V".into()));
+        let invalid = AppError::from(ShortcutError::Invalid("Cmd+Shift+V".into()));
+
+        assert_eq!(unavailable.code, "shortcut_unavailable");
+        assert_eq!(invalid.code, "invalid_settings");
+        assert!(
+            !unavailable.message.contains("Cmd"),
+            "{}",
+            unavailable.message
+        );
+        assert!(!invalid.message.contains("Cmd"), "{}", invalid.message);
+    }
+
+    #[test]
+    fn the_stand_in_registrar_always_refuses() {
+        assert!(NoShortcuts.register(DEFAULT_QUICK_PANEL_SHORTCUT).is_err());
+        assert!(
+            NoShortcuts
+                .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn every_accelerator_the_recorder_can_write_parses() {
+        // The keys of `NAMED_KEYS` in `src/lib/shortcut.ts`, with every modifier the recorder
+        // writes: the front and the core must agree on the names.
+        let keys = [
+            "V",
+            "7",
+            "F1",
+            "F19",
+            "Space",
+            "Tab",
+            "Esc",
+            "Enter",
+            "Backspace",
+            "Delete",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Home",
+            "End",
+            "PageUp",
+            "PageDown",
+            "Comma",
+            "Period",
+            "Slash",
+            "Semicolon",
+            "Quote",
+            "Backquote",
+            "Backslash",
+            "BracketLeft",
+            "BracketRight",
+            "Minus",
+            "Equal",
+        ];
+        for key in keys {
+            let accelerator = format!("Ctrl+Alt+Cmd+Shift+{key}");
+            assert!(parse(&accelerator).is_ok(), "{accelerator}");
+        }
     }
 
     #[test]
