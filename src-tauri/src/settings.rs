@@ -522,6 +522,90 @@ mod tests {
     }
 
     #[test]
+    fn sending_the_stored_shortcut_again_retries_one_that_failed_at_startup() {
+        let h = harness();
+        // The stored shortcut was refused at startup; the user has freed it since.
+        h.shortcuts
+            .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+            .unwrap();
+        *h.shortcut_status.lock().unwrap() = ShortcutStatus {
+            accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+            error: Some("shortcut_unavailable".to_owned()),
+        };
+
+        let result = h.update(shortcut(DEFAULT_QUICK_PANEL_SHORTCUT));
+
+        assert!(result.is_ok(), "{result:?}");
+        assert!(h.shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(h.shortcut_status.lock().unwrap().error, None);
+    }
+
+    #[test]
+    fn a_retry_that_is_refused_again_reports_it() {
+        let h = harness();
+        h.shortcuts
+            .unregister(DEFAULT_QUICK_PANEL_SHORTCUT)
+            .unwrap();
+        h.shortcuts.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        *h.shortcut_status.lock().unwrap() = ShortcutStatus {
+            accelerator: DEFAULT_QUICK_PANEL_SHORTCUT.to_owned(),
+            error: Some("shortcut_unavailable".to_owned()),
+        };
+
+        let error = h
+            .update(shortcut(DEFAULT_QUICK_PANEL_SHORTCUT))
+            .unwrap_err();
+
+        assert_eq!(error.code, "shortcut_unavailable");
+    }
+
+    /// A registrar that records whether the settings could be read while it was called, as
+    /// `get_settings` does on the main thread while the real plugin waits for that same thread.
+    struct ReadsSettings<'a> {
+        current: &'a RwLock<Settings>,
+        readable: std::sync::atomic::AtomicBool,
+    }
+
+    impl ShortcutRegistrar for ReadsSettings<'_> {
+        fn register(&self, _accelerator: &str) -> Result<(), shortcuts::ShortcutError> {
+            self.readable.store(
+                self.current.try_read().is_ok(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            Ok(())
+        }
+
+        fn unregister(&self, _accelerator: &str) -> Result<(), shortcuts::ShortcutError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_settings_stay_readable_while_the_system_effects_run() {
+        let h = harness();
+        let registrar = ReadsSettings {
+            current: &h.current,
+            readable: std::sync::atomic::AtomicBool::new(false),
+        };
+
+        update(
+            &h.db,
+            &h.current,
+            &h.limit,
+            &h.events,
+            &Effects {
+                login_item: &h.login_item,
+                shortcuts: &registrar,
+                shortcut_status: &h.shortcut_status,
+            },
+            shortcut("Ctrl+Alt+V"),
+        )
+        .unwrap();
+
+        assert!(registrar.readable.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
     fn a_refused_shortcut_undoes_the_login_item_change_of_the_same_patch() {
         let h = harness();
         h.shortcuts.take("Ctrl+Alt+V");
