@@ -12,7 +12,7 @@ use crate::clip::{DEFAULT_HISTORY_SIZE, HistoryLimit};
 use crate::error::AppError;
 use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, SETTINGS_CHANGED};
 use crate::login_item::LoginItem;
-use crate::shortcuts::{DEFAULT_QUICK_PANEL_SHORTCUT, ShortcutRegistrar, ShortcutStatus};
+use crate::shortcuts::{self, DEFAULT_QUICK_PANEL_SHORTCUT, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::clips::enforce_limit;
 use crate::storage::{self, Db};
 
@@ -107,6 +107,34 @@ pub struct Effects<'a> {
     pub shortcut_status: &'a Mutex<ShortcutStatus>,
 }
 
+impl Effects<'_> {
+    /// Brings the system in line with `to`, for the fields that differ from `from`. All or
+    /// nothing: when the shortcut is refused, the login item goes back to where it was.
+    fn apply(&self, from: &Settings, to: &Settings) -> Result<(), AppError> {
+        let login_changed = from.launch_at_login != to.launch_at_login;
+        if login_changed {
+            self.login_item
+                .set_enabled(to.launch_at_login)
+                .map_err(|_| {
+                    AppError::new("login_item_failed", "Launch at login could not be changed.")
+                })?;
+        }
+        if from.quick_panel_shortcut != to.quick_panel_shortcut
+            && let Err(error) = shortcuts::switch(
+                self.shortcuts,
+                self.shortcut_status,
+                &to.quick_panel_shortcut,
+            )
+        {
+            if login_changed && self.login_item.set_enabled(from.launch_at_login).is_err() {
+                tracing::warn!("the login item could not be put back after a refused shortcut");
+            }
+            return Err(error.into());
+        }
+        Ok(())
+    }
+}
+
 /// Validates `patch`, stores the result, then makes it live: the shared settings, the history
 /// limit, and a `settings://changed` event with the full settings. When the history size
 /// changed, the history is trimmed at once and `clips://changed` lists what went.
@@ -118,12 +146,13 @@ pub fn update(
     effects: &Effects<'_>,
     patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
-    let _ = effects;
     // Held until `settings://changed` so two updates cannot interleave their writes and their
     // events, then released: `get_settings` runs on the main thread and must not wait for the
     // trim. The trim reads only `limit` and is idempotent, so interleaved trims still end right.
     let mut guard = current.write().unwrap_or_else(PoisonError::into_inner);
     let next = guard.apply(patch)?;
+    // Before the write: a refusal must leave both the system and the stored value as they were.
+    effects.apply(&guard, &next)?;
     db.with_conn(|conn| storage::settings::save(conn, &next))?;
     let history_size_changed = next.history_size != guard.history_size;
     *guard = next.clone();
