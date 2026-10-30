@@ -135,13 +135,15 @@ mod tests {
                 CLIPS_CHANGED,
                 SETTINGS_CHANGED,
                 ACCESSIBILITY_CHANGED,
-                PANEL_SHOWN
+                PANEL_SHOWN,
+                MENU_CLEAR_HISTORY
             ],
             [
                 "clips://changed",
                 "settings://changed",
                 "accessibility://changed",
-                "panel://shown"
+                "panel://shown",
+                "menu://clear-history"
             ]
         );
     }

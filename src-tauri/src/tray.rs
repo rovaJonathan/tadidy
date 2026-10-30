@@ -73,6 +73,8 @@ pub fn toggles_the_popover(event: &TrayIconEvent) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::RecordingEventSink;
+    use serde_json::json;
 
     fn labels(items: &[TrayItem]) -> Vec<String> {
         items
@@ -133,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn only_quit_is_enabled() {
+    fn all_mvp_items_enabled_except_updates() {
         let enabled: Vec<_> = menu_items()
             .into_iter()
             .filter_map(|item| match item {
@@ -144,20 +146,77 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(enabled, ["quit"]);
+        assert_eq!(enabled, ["preferences", "clear-history", "about", "quit"]);
     }
 
     #[test]
-    fn only_quit_has_an_action() {
-        assert_eq!(menu_action("quit"), Some(MenuAction::Quit));
-        for id in [
-            "preferences",
-            "clear-history",
-            "about",
-            "check-updates",
-            "?",
-        ] {
-            assert_eq!(menu_action(id), None, "{id}");
+    fn menu_ids_map_to_actions() {
+        assert_eq!(action_for("preferences"), Some(TrayAction::Preferences));
+        assert_eq!(action_for("clear-history"), Some(TrayAction::ClearHistory));
+        assert_eq!(action_for("quit"), Some(TrayAction::Quit));
+        // The about panel is native and Check for updates… waits for the P2 updater: no action.
+        for id in ["about", "check-updates", "?"] {
+            assert_eq!(action_for(id), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn clear_history_shows_the_popover_then_asks_for_the_dialog() {
+        let popover = FakePopover::hidden();
+        let sink = RecordingEventSink::default();
+
+        request_clear_history(&popover, &sink);
+
+        assert_eq!(popover.reveals.get(), 1);
+        assert_eq!(sink.events(), vec![(MENU_CLEAR_HISTORY, json!(null))]);
+    }
+
+    #[test]
+    fn clear_history_leaves_a_visible_popover_open() {
+        let popover = FakePopover::shown();
+        let sink = RecordingEventSink::default();
+
+        request_clear_history(&popover, &sink);
+
+        assert_eq!(popover.reveals.get(), 0);
+        assert_eq!(popover.conceals.get(), 0);
+        assert_eq!(sink.events(), vec![(MENU_CLEAR_HISTORY, json!(null))]);
+    }
+
+    struct FakePopover {
+        shown: bool,
+        reveals: std::cell::Cell<u32>,
+        conceals: std::cell::Cell<u32>,
+    }
+
+    impl FakePopover {
+        fn hidden() -> Self {
+            Self {
+                shown: false,
+                reveals: std::cell::Cell::default(),
+                conceals: std::cell::Cell::default(),
+            }
+        }
+
+        fn shown() -> Self {
+            Self {
+                shown: true,
+                ..Self::hidden()
+            }
+        }
+    }
+
+    impl PopoverWindow for FakePopover {
+        fn is_shown(&self) -> bool {
+            self.shown
+        }
+
+        fn reveal(&self) {
+            self.reveals.set(self.reveals.get() + 1);
+        }
+
+        fn conceal(&self) {
+            self.conceals.set(self.conceals.get() + 1);
         }
     }
 
