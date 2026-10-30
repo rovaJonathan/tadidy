@@ -9,7 +9,7 @@
 | Category | Requirement |
 |---|---|
 | **Performance** | Popover / Quick Panel opens in < 100 ms (pre-created windows). Search < 50 ms over 10,000 clips. Virtualized list (only about 30 DOM nodes rendered). |
-| **Resources** | Idle CPU < 0.5% (adaptive polling). RAM < 120 MB (WebKit included). Binary < 15 MB. |
+| **Resources** | Idle CPU < 0.5% (adaptive polling). RAM < 120 MB (WebKit included). |
 | **Reliability** | No clip is lost if the app crashes: write to the database before emitting the event, WAL journal. Versioned and tested schema migrations. |
 | **Privacy** | No network calls except the update check (P2, can be turned off). No telemetry. Clip content never appears in the logs. |
 | **Compatibility** | macOS 13+, universal arm64 + x86_64 binary. Works with multiple displays, Spaces and full-screen apps. |
