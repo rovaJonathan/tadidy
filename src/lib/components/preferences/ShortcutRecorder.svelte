@@ -30,6 +30,8 @@
 
   function onkeydown(event: KeyboardEvent) {
     if (!recording) {
+      // The reset button inside the recorder keeps its own Enter and Space.
+      if (event.target !== event.currentTarget) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         start();
