@@ -6,11 +6,11 @@ use crate::clip::HistoryLimit;
 use crate::clock::SystemClock;
 use crate::error::AppError;
 use crate::events::EventSink;
-use crate::login_item::{LoginItem, NoLoginItem};
+use crate::login_item::{self, LoginItem, NoLoginItem};
 use crate::paster::{AccessibilityMonitor, PASTE_DELAY, Paster, PasterServices, WindowHider};
 use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
 use crate::settings::Settings;
-use crate::shortcuts::{NoShortcuts, ShortcutRegistrar, ShortcutStatus};
+use crate::shortcuts::{self, NoShortcuts, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::{self, Db};
 use crate::watcher::WatcherHandle;
 
@@ -102,7 +102,16 @@ impl AppState {
     /// Brings the system in line with the stored settings at startup: the login item is read back
     /// (the system wins) and the stored Quick Panel shortcut is registered, not the default.
     pub fn apply_stored_settings(&self) {
-        todo!("TAD-017: reconcile the login item and register the stored shortcut")
+        if let Some(db) = &self.db {
+            login_item::reconcile(self.login_item.as_ref(), &self.settings, db);
+        }
+        let accelerator = self
+            .settings
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .quick_panel_shortcut
+            .clone();
+        shortcuts::register_at_startup(self.shortcuts.as_ref(), &self.shortcut, &accelerator);
     }
 
     /// Remembers which app is in front. Called just before the popover is shown, while that app

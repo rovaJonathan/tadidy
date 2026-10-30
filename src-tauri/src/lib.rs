@@ -22,9 +22,10 @@ use state::AppState;
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
-/// The platform services of the running app: the AppKit and CoreGraphics ones.
+/// The platform services of the running app: the AppKit and CoreGraphics ones, the global
+/// shortcut plugin and the system's login item.
 #[cfg(target_os = "macos")]
-fn real_state(db: Option<storage::Db>) -> AppState {
+fn real_state(db: Option<storage::Db>, app: &tauri::AppHandle) -> AppState {
     AppState::new(
         std::sync::Arc::new(macos::accessibility::AxProbe),
         std::sync::Arc::new(macos::keys::CgKeySender),
@@ -32,6 +33,8 @@ fn real_state(db: Option<storage::Db>) -> AppState {
         std::sync::Arc::new(macos::workspace::NsWorkspace),
     )
     .with_db(db)
+    .with_shortcuts(std::sync::Arc::new(shortcuts::AppShortcuts(app.clone())))
+    .with_login_item(std::sync::Arc::new(macos::login_item::SmLoginItem))
 }
 
 /// The clipboard watcher's view of the system: the real pasteboard, workspace, idle probe,
@@ -61,6 +64,7 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(windows::PopoverState::default())
+        .manage(windows::PolicyState::default())
         .setup(|app| {
             // Menu-bar app: no Dock icon and not in ⌘Tab, also in `tauri dev` where the
             // bundle's Info.plist (LSUIElement) does not apply (MNU-06).
@@ -68,10 +72,13 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             // The history database; without it (key missing) the app still runs, see `storage`.
             #[cfg(target_os = "macos")]
-            app.manage(real_state(storage::open_or_report(
-                &app.path().app_data_dir()?,
-                &macos::keychain::KeychainKeyStore::default(),
-            )));
+            app.manage(real_state(
+                storage::open_or_report(
+                    &app.path().app_data_dir()?,
+                    &macos::keychain::KeychainKeyStore::default(),
+                ),
+                app.handle(),
+            ));
             // Records what is copied; not started without the database.
             #[cfg(target_os = "macos")]
             watcher::start(
@@ -86,11 +93,8 @@ pub fn run() {
             macos::panel::create(app.handle())?;
             #[cfg(target_os = "macos")]
             macos::tray::setup(app.handle())?;
-            shortcuts::register_at_startup(
-                &shortcuts::AppShortcuts(app.handle().clone()),
-                &app.state::<AppState>().shortcut,
-                shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT,
-            );
+            // The login item is read back and the stored Quick Panel shortcut registered.
+            app.state::<AppState>().apply_stored_settings();
             Ok(())
         })
         .on_window_event(windows::on_window_event)
@@ -101,6 +105,8 @@ pub fn run() {
             commands::open_accessibility_settings,
             commands::get_settings,
             commands::set_settings,
+            commands::get_shortcut_status,
+            commands::open_preferences,
             commands::list_clips,
             commands::delete_clips,
             commands::clear_history,
