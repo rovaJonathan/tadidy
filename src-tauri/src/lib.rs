@@ -6,6 +6,7 @@ pub mod crypto;
 pub mod error;
 pub mod events;
 pub mod history;
+pub mod login_item;
 pub mod macos;
 pub mod paster;
 pub mod platform;
