@@ -81,7 +81,13 @@ impl AppState {
 
     /// Remembers which app is in front. Called just before the popover is shown, while that app
     /// still has the focus.
-    pub fn remember_frontmost_app(&self) {}
+    pub fn remember_frontmost_app(&self) {
+        let frontmost = self.workspace.frontmost_app();
+        *self
+            .last_active_app
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = frontmost;
+    }
 
     /// The paster over this state's services, writing to `db` and reaching the windows through
     /// `hider`.
