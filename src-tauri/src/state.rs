@@ -6,10 +6,11 @@ use crate::clip::HistoryLimit;
 use crate::clock::SystemClock;
 use crate::error::AppError;
 use crate::events::EventSink;
+use crate::login_item::{LoginItem, NoLoginItem};
 use crate::paster::{AccessibilityMonitor, PASTE_DELAY, Paster, PasterServices, WindowHider};
 use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
 use crate::settings::Settings;
-use crate::shortcuts::ShortcutStatus;
+use crate::shortcuts::{NoShortcuts, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::{self, Db};
 use crate::watcher::WatcherHandle;
 
@@ -29,6 +30,10 @@ pub struct AppState {
     pub last_active_app: Arc<Mutex<Option<SourceApp>>>,
     /// Result of the Quick Panel shortcut registration, read by the preferences (TAD-017).
     pub shortcut: Mutex<ShortcutStatus>,
+    /// Registers and releases the Quick Panel shortcut.
+    pub shortcuts: Arc<dyn ShortcutRegistrar>,
+    /// The system's "open at login" entry for the app (SYS-01).
+    pub login_item: Arc<dyn LoginItem>,
     /// `None` when the database could not be opened (e.g. its key is missing from the Keychain).
     pub db: Option<Db>,
     /// How many clips the history keeps (HIS-02), shared with the settings and the purger.
@@ -54,11 +59,23 @@ impl AppState {
             workspace,
             last_active_app: Arc::default(),
             shortcut: Mutex::default(),
+            shortcuts: Arc::new(NoShortcuts),
+            login_item: Arc::new(NoLoginItem),
             db: None,
             history_limit: HistoryLimit::default(),
             settings: RwLock::default(),
             watcher: Mutex::default(),
         }
+    }
+
+    /// Replaces the stand-in that refuses every shortcut with the real registrar (or a fake).
+    pub fn with_shortcuts(self, shortcuts: Arc<dyn ShortcutRegistrar>) -> Self {
+        Self { shortcuts, ..self }
+    }
+
+    /// Replaces the stand-in that fails every call with the real login item (or a fake).
+    pub fn with_login_item(self, login_item: Arc<dyn LoginItem>) -> Self {
+        Self { login_item, ..self }
     }
 
     /// Attaches the database and loads the stored settings from it, so the history limit is

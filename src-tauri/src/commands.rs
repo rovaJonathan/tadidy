@@ -73,6 +73,11 @@ pub fn set_settings<R: Runtime>(
         &state.settings,
         &state.history_limit,
         &TauriEventSink::new(app),
+        &settings::Effects {
+            login_item: state.login_item.as_ref(),
+            shortcuts: state.shortcuts.as_ref(),
+            shortcut_status: &state.shortcut,
+        },
         patch,
     )
 }
