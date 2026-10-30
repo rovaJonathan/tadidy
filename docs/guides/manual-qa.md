@@ -235,23 +235,23 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 |---|---|---|---|---|
 | 1 | Copy text in any app: it is at the top of the popover in < 500 ms | ✅ | Reported by the owner; the watcher log shows `elapsed_ms` of 3 to 6 per recorded clip. | |
 | 2 | Copy the same text twice: one clip, moved to the top, `copy_count = 2` | ✅ | Reported by the owner. | |
-| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | ✅ after the first launch · ❌ first launch | Paste and focus OK (owner). On the first launch of the fresh install the Quick Panel did not open on `⌘⇧V`; after quitting and starting Tadidy again it opens. | TAD-026 |
+| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | ✅ after the first launch · ❌ first launch | Paste and focus OK (owner). On the first launch of the fresh install the Quick Panel did not open on `⌘⇧V`; after quitting and starting Tadidy again it opens. | [TAD-026](../../tickets/TAD-026.md) |
 | 4 | Accessibility revoked: `Return` only copies and the banner shows | ✅ | Reported by the owner. | |
 | 5 | Limit 10: an 11th copy deletes the oldest unpinned clip | ✅ | Reported by the owner. | |
 | 6 | Typing "sel" filters in < 50 ms and shows only matching clips | ✅ | Reported by the owner; `search_perf` median 8.8 ms over 10 000 clips. | |
-| 7 | After a restart of the Mac, Tadidy runs and the history is intact | ❌ not runnable | *Launch at login* cannot be switched on in Preferences, and Tadidy is absent from *System Settings → General → Login Items & Extensions*; no warning in the log. | TAD-025 |
+| 7 | After a restart of the Mac, Tadidy runs and the history is intact | ❌ not runnable | *Launch at login* cannot be switched on in Preferences, and Tadidy is absent from *System Settings → General → Login Items & Extensions*; no warning in the log. | [TAD-025](../../tickets/TAD-025.md) |
 | 8 | `sqlite3` on `tadidy.db` without the key: "file is not a database" | ✅ | `sqlite3 -readonly …/tadidy.db .tables` prints `Error: file is not a database`; header bytes `62da 6a71 …`, one Keychain item, no `SecurityAgent` dialog on launch. | |
 | 9 | No icon in the Dock or in `⌘Tab` | ✅ | Checked by the owner; `LSUIElement = true` in the bundle `Info.plist`. | |
-| 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | ✅ | `top -l` on the `tadidy` process, 121 samples at 5 s (10 min), nothing touched: mean 0.03 %, median 0.0 %, max 0.9 % (one 5 s sample). Activity Monitor itself not opened; `top` is its source. | |
+| 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | ✅ | `top -l` on the `tadidy` process, 121 samples at 5 s (10 min), nothing touched: mean 0.03 %, median 0.0 %, max 0.9 % (one 5 s sample). Activity Monitor itself was not opened. | |
 
 | Measurement | Target | Result | Values | Note |
 |---|---|---|---|---|
-| Idle CPU, 10 min (Activity Monitor and `top -l` samples) | < 0.5 % | ✅ | mean 0.028 %, median 0.0 %, max 0.90 % (120 samples after the first) | `tadidy` main process only; WebKit helper processes not sampled. |
-| Popover opening, 10 openings | < 100 ms | not measured | none | Owner: opens instantly. No timing log exists on the show path, so there are no 10 values and no median (owner chose "feel only"). |
-| Quick Panel opening, 10 openings | < 100 ms | not measured | none | Owner: opens instantly (after the first-launch problem of TAD-026). No 10 values and no median (owner chose "feel only"). |
+| Idle CPU, 10 min (`top -l` samples) | < 0.5 % | ✅ | mean 0.028 %, median 0.0 %, max 0.90 % (120 samples after the first) | 10-minute run: `tadidy` main process only. Added after the review of PR 24, 2 minutes each at 5 s (`top -l`), session in use: WebKit helpers (2 WebContent, GPU, Networking, identified as the only WebKit processes running, started with Tadidy) mean 0.11 % at most per process, max 0.5 %. The main process read mean 1.06 % (max 5.8 %) in a first 2-minute window that overlapped other work on the machine (a spec rebuild; the owner's activity is unknown), then mean 0.008 % (max 0.2 %) in a second one. Not reproduced, so it is recorded and not explained. |
+| Popover opening, 10 openings | < 100 ms | dropped | none | Owner: opens instantly. No timing log exists on the show path. The owner dropped the "10 values and a median" criterion of TAD-019 (review of PR 24); the spec's < 100 ms target stays unmeasured. |
+| Quick Panel opening, 10 openings | < 100 ms | dropped | none | Owner: opens instantly (after the first-launch problem of [TAD-026](../../tickets/TAD-026.md)). Same dropped criterion as the popover row; the < 100 ms target stays unmeasured. |
 | Search over 10 000 clips (`search_perf` and one seeded database) | < 50 ms | ✅ (automated part) | `search_perf`, debug profile: median 8.8 ms, worst 10.5 ms | Not run in the real app: seeding 10 000 clips means writing into the encrypted database with its key. The automated test and the owner's check of criterion 6 (few clips) stand in for it. |
 | RAM with both windows used | < 120 MB | ✅ | `tadidy` footprint 40 MB (peak 41 MB); one WebContent process 24 MB in the system log | about 65 MB in total, recorded only. The WebKit network process was not attributed. |
-| `.app` binary size | < 15 MB | ❌ accepted | universal `.app` 36.6 MiB, executable 38.4 MB; arm64-only `.app` 17.8 MiB, executable 18.7 MB; `.dmg` 12.5 MiB | recorded only. The owner said the size does not matter: no follow-up ticket. The spec line still says 15 MB. |
+| `.app` binary size | none (target removed from the spec) | accepted | universal `.app` 36.6 MiB, executable 38.4 MB; arm64-only `.app` 17.8 MiB, executable 18.7 MB; `.dmg` 12.5 MiB | recorded only. The owner said the size does not matter, and the review of PR 24 pointed out that the spec still said 15 MB: the target was removed from `docs/spec/05-quality.md`. No ticket. |
 
 Signed-build manual QA of the earlier tickets, re-run on this build:
 
@@ -260,11 +260,11 @@ Signed-build manual QA of the earlier tickets, re-run on this build:
 | TAD-003 — tray and popover | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-004 — pasteboard and workspace | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-005 — key sender and Accessibility | covered | Paste (criterion 3) and the revoked-permission path (criterion 4) pass; the rest is not replayed. |
-| TAD-006 — Quick Panel and global shortcut | partial | The shortcut opens the panel after a restart; not on the first launch (TAD-026). The rest is not replayed. |
+| TAD-006 — Quick Panel and global shortcut | partial | The shortcut opens the panel after a restart; not on the first launch ([TAD-026](../../tickets/TAD-026.md)). The rest is not replayed. |
 | TAD-007 — encrypted database | covered | Criterion 8 and TAD-008 step 8: encrypted header, one Keychain item, no dialog. |
 | TAD-008 — signing and universal build (incl. steps 7 and 8) | ✅ | Steps 1 to 4: `Authority=Tadidy Dev`, verify exits 0, `x86_64 arm64`. Step 5: the designated requirement is identical across two builds (binaries differ). Step 6: with the identity unset the bundle is `Signature=adhoc`. Step 7 (owner): Accessibility still granted after installing build N+1 over N. Step 8: both builds use the same key (same header bytes), one Keychain item, no `SecurityAgent`, no `storage_key_missing`. The ad-hoc build's `.dmg` step failed on a leftover mounted image (`hdiutil` busy), unrelated to signing. |
 | TAD-010 — clipboard watcher | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-015 — paste and copy commands | covered | Criteria 3 and 4. |
-| TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem is TAD-026. |
-| TAD-017 — Preferences | ❌ (steps 6 to 8) | *Launch at login* cannot be switched on (TAD-025), so steps 6 to 8 cannot run. History size (criterion 5) works. The rest is not replayed. |
+| TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem is [TAD-026](../../tickets/TAD-026.md). |
+| TAD-017 — Preferences | ❌ (steps 6 to 8) | *Launch at login* cannot be switched on ([TAD-025](../../tickets/TAD-025.md)), so steps 6 to 8 cannot run. History size (criterion 5) works. The rest is not replayed. |
 | TAD-018 — tray menu actions | ✅ (step 7) | Step 7 on the bundled build (owner): About opens in front of TextEdit with the copyright line. The other steps are not replayed. |
