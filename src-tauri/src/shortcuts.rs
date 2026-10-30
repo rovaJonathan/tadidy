@@ -186,13 +186,13 @@ pub fn switch(
     registrar.register(accelerator)?;
     let mut status = status.lock().unwrap_or_else(PoisonError::into_inner);
     // A shortcut that never registered has nothing to release.
-    if status.error.is_none() {
-        if let Err(error) = registrar.unregister(&status.accelerator) {
-            tracing::warn!(
-                code = error.code(),
-                "the old Quick Panel shortcut was not released"
-            );
-        }
+    if status.error.is_none()
+        && let Err(error) = registrar.unregister(&status.accelerator)
+    {
+        tracing::warn!(
+            code = error.code(),
+            "the old Quick Panel shortcut was not released"
+        );
     }
     *status = ShortcutStatus {
         accelerator: accelerator.to_owned(),
