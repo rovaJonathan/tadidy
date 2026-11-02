@@ -1181,7 +1181,7 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
   });
 
   it("disables Reset history… while a reset runs", async () => {
-    const answer = deferred<void>();
+    const answer = deferred<undefined>();
     mockIPC(
       (cmd) => {
         if (cmd === "get_storage_status") return UNAVAILABLE;
@@ -1200,7 +1200,7 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
     await settle();
 
     expect(find<HTMLButtonElement>(container, "#btn-reset-history").disabled).toBe(true);
-    answer.resolve();
+    answer.resolve(undefined);
     await settle();
     expect(find<HTMLButtonElement>(container, "#btn-reset-history").disabled).toBe(false);
   });

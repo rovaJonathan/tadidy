@@ -634,7 +634,7 @@ describe("ClipsStore, a reset that is refused", () => {
 
 describe("ClipsStore, a reset in progress", () => {
   function slowReset(outcome: "resolve" | "reject") {
-    const answer = deferred<void>();
+    const answer = deferred<undefined>();
     let asked = 0;
     fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE });
     mockIPC(
@@ -651,7 +651,7 @@ describe("ClipsStore, a reset in progress", () => {
       },
       { shouldMockEvents: true },
     );
-    return { release: () => answer.resolve(), asked: () => asked };
+    return { release: () => answer.resolve(undefined), asked: () => asked };
   }
 
   it("is flagged until the core answers, and a second request is ignored", async () => {
