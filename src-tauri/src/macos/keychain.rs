@@ -49,6 +49,30 @@ impl KeychainKeyStore {
     }
 }
 
+impl KeychainKeyStore {
+    /// What identifies the key's item: `set` adds it, `replace` updates it, `get` reads it.
+    fn item_query(&self) -> Vec<(CFString, CFType)> {
+        // SAFETY: each key is a `kSec*` constant owned by the framework; `wrap_under_get_rule`
+        // retains it, so the pairs and the constants release independently.
+        unsafe {
+            vec![
+                (
+                    CFString::wrap_under_get_rule(kSecClass),
+                    CFString::wrap_under_get_rule(kSecClassGenericPassword).as_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecAttrService),
+                    CFString::new(&self.service).as_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecAttrAccount),
+                    CFString::new(&self.account).as_CFType(),
+                ),
+            ]
+        }
+    }
+}
+
 impl Default for KeychainKeyStore {
     fn default() -> Self {
         Self::new(SERVICE, ACCOUNT)
@@ -75,33 +99,20 @@ impl KeyStore for KeychainKeyStore {
     fn set(&self, key: &DbKey) -> Result<(), KeyStoreError> {
         // The high-level `PasswordOptions` has no `kSecAttrAccessible`, and its access-control
         // flag needs the data-protection keychain (errSecMissingEntitlement for this app).
+        let mut pairs = self.item_query();
         // SAFETY: each key is a `kSec*` constant owned by the framework; `wrap_under_get_rule`
         // retains it, so the dictionary and the constants release independently.
-        let pairs: Vec<(CFString, CFType)> = unsafe {
-            vec![
-                (
-                    CFString::wrap_under_get_rule(kSecClass),
-                    CFString::wrap_under_get_rule(kSecClassGenericPassword).as_CFType(),
-                ),
-                (
-                    CFString::wrap_under_get_rule(kSecAttrService),
-                    CFString::new(&self.service).as_CFType(),
-                ),
-                (
-                    CFString::wrap_under_get_rule(kSecAttrAccount),
-                    CFString::new(&self.account).as_CFType(),
-                ),
-                (
-                    CFString::wrap_under_get_rule(kSecValueData),
-                    CFData::from_buffer(key.as_bytes()).as_CFType(),
-                ),
-                (
-                    CFString::wrap_under_get_rule(kSecAttrAccessible),
-                    CFString::wrap_under_get_rule(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
-                        .as_CFType(),
-                ),
-            ]
-        };
+        unsafe {
+            pairs.push((
+                CFString::wrap_under_get_rule(kSecValueData),
+                CFData::from_buffer(key.as_bytes()).as_CFType(),
+            ));
+            pairs.push((
+                CFString::wrap_under_get_rule(kSecAttrAccessible),
+                CFString::wrap_under_get_rule(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+                    .as_CFType(),
+            ));
+        }
         let attributes = CFDictionary::from_CFType_pairs(&pairs);
         // SAFETY: `attributes` is a valid dictionary for the whole call; the result is not
         // requested, so the null out-pointer is allowed.
@@ -116,29 +127,15 @@ impl KeyStore for KeychainKeyStore {
     /// Overwrites the key's data in place, so a failure leaves the old key where it was; an
     /// absent item is added. Only the history reset calls it, once the new database has opened.
     fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError> {
-        // SAFETY: each key is a `kSec*` constant owned by the framework; `wrap_under_get_rule`
-        // retains it, so the dictionaries and the constants release independently.
-        let (query, changes) = unsafe {
-            let query: Vec<(CFString, CFType)> = vec![
-                (
-                    CFString::wrap_under_get_rule(kSecClass),
-                    CFString::wrap_under_get_rule(kSecClassGenericPassword).as_CFType(),
-                ),
-                (
-                    CFString::wrap_under_get_rule(kSecAttrService),
-                    CFString::new(&self.service).as_CFType(),
-                ),
-                (
-                    CFString::wrap_under_get_rule(kSecAttrAccount),
-                    CFString::new(&self.account).as_CFType(),
-                ),
-            ];
-            let changes: Vec<(CFString, CFType)> = vec![(
+        let query = self.item_query();
+        // SAFETY: `kSecValueData` is a `kSec*` constant owned by the framework; `wrap_under_get_rule`
+        // retains it, so the dictionary and the constant release independently.
+        let changes: Vec<(CFString, CFType)> = vec![unsafe {
+            (
                 CFString::wrap_under_get_rule(kSecValueData),
                 CFData::from_buffer(key.as_bytes()).as_CFType(),
-            )];
-            (query, changes)
-        };
+            )
+        }];
         let query = CFDictionary::from_CFType_pairs(&query);
         let changes = CFDictionary::from_CFType_pairs(&changes);
         // SAFETY: both dictionaries are valid for the whole call.
