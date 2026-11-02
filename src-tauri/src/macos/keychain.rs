@@ -112,6 +112,10 @@ impl KeyStore for KeychainKeyStore {
             _ => Err(KeyStoreError::Unavailable),
         }
     }
+
+    fn replace(&self, _key: &DbKey) -> Result<(), KeyStoreError> {
+        todo!("TAD-022")
+    }
 }
 
 fn is_not_found(error: &Error) -> bool {

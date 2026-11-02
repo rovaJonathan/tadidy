@@ -5,6 +5,7 @@ pub mod app_icons;
 pub mod clips;
 pub mod fts;
 mod migrations;
+pub mod reset;
 pub mod settings;
 
 use std::path::Path;
