@@ -13,7 +13,7 @@ describe("StorageUnavailable", () => {
     const { container } = render(StorageUnavailable, { onreset: vi.fn() });
 
     const state = find(container, "#storage-unavailable");
-    expect(state.getAttribute("role")).toBe("alert");
+    expect(state.getAttribute("role")).toBe("status");
     expect(find(container, ".empty-title").textContent).toBe("Your history can’t be opened.");
     expect(find(container, ".empty-body").textContent).toBe(
       "Tadidy can’t unlock its encrypted database, so nothing is being recorded.",

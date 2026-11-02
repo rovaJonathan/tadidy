@@ -7,7 +7,7 @@
   let { onreset }: Props = $props();
 </script>
 
-<div id="storage-unavailable" class="empty-state" role="alert">
+<div id="storage-unavailable" class="empty-state" role="status">
   <div class="empty-icon">
     <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"
       ><path d="M8 2.2 14 12.8H2L8 2.2Z" /><path d="M8 6.6v2.7" /><circle cx="8" cy="11.1" r="0.35" /></svg
