@@ -51,23 +51,27 @@ fn file_names() -> impl Iterator<Item = String> {
         .map(|suffix| format!("{DB_FILE_NAME}{suffix}"))
 }
 
-/// A staging file still there belongs to an earlier reset that worked but could not rename it to
-/// `.bak`: the history it moved aside exists only under that name, and staging would overwrite
-/// it. The set becomes the backup now, the main file first. A sidecar alone (no main file) is not
-/// a backup of anything and stays where it is.
+/// A staging file still there belongs to an earlier reset that stopped before it could rename it
+/// to `.bak` (it worked but could not write the backup, or it was stopped): the history it moved
+/// aside exists only under that name, and staging would overwrite it. The set is kept under a
+/// numbered name (`tadidy.db.bak.1`, …) that no other file has, so neither this reset's own backup
+/// nor an older one can replace it. A sidecar alone (no main file) is not a backup of anything and
+/// stays where it is.
 fn keep_leftovers(dir: &Path) -> Result<(), StorageError> {
     let left = |name: &str| dir.join(format!("{name}{STAGED}"));
     if !left(DB_FILE_NAME).is_file() {
         return Ok(());
     }
-    std::fs::rename(
-        left(DB_FILE_NAME),
-        dir.join(format!("{DB_FILE_NAME}{BACKUP}")),
-    )?;
-    let leftovers: Vec<String> = file_names()
-        .filter(|name| name != DB_FILE_NAME && left(name).is_file())
-        .collect();
-    promote_sidecars(dir, &leftovers);
+    let kept = |name: &str, number: u32| dir.join(format!("{name}{BACKUP}.{number}"));
+    let number = (1..)
+        .find(|&number| file_names().all(|name| !kept(&name, number).exists()))
+        .unwrap_or(u32::MAX);
+    std::fs::rename(left(DB_FILE_NAME), kept(DB_FILE_NAME, number))?;
+    for name in file_names().filter(|name| name != DB_FILE_NAME && left(name).is_file()) {
+        if std::fs::rename(left(&name), kept(&name, number)).is_err() {
+            tracing::warn!("a database backup could not be renamed");
+        }
+    }
     Ok(())
 }
 
