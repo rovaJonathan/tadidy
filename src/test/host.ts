@@ -9,7 +9,8 @@ import type { ClipQuery } from "../lib/bindings/ClipQuery";
 import type { PasteResult } from "../lib/bindings/PasteResult";
 import type { Settings } from "../lib/bindings/Settings";
 import type { SettingsPatch } from "../lib/bindings/SettingsPatch";
-import { clip, page } from "./clips";
+import { READY, clip, page } from "./clips";
+import type { StorageStatus } from "../lib/bindings/StorageStatus";
 import { defaultSettings } from "./settings";
 
 interface Call {
@@ -18,7 +19,9 @@ interface Call {
 }
 
 /** A fake core that answers what a hosted browser asks: the clips, the settings and the paste commands. */
-export function hostCore(options: { settings?: Partial<Settings>; paste?: PasteResult; trusted?: boolean } = {}) {
+export function hostCore(
+  options: { settings?: Partial<Settings>; paste?: PasteResult; trusted?: boolean; storage?: StorageStatus } = {},
+) {
   const core = {
     calls: [] as Call[],
     settings: { ...defaultSettings, ...options.settings } as Settings,
@@ -39,6 +42,8 @@ export function hostCore(options: { settings?: Partial<Settings>; paste?: PasteR
           const { search } = (args as { q: ClipQuery }).q;
           return page(search ? everyClip.filter((c) => c.preview?.includes(search)) : everyClip);
         }
+        case "get_storage_status":
+          return options.storage ?? READY;
         case "get_app_icon":
           throw { code: "not_found", message: "No icon is cached for this app." };
         case "get_settings":

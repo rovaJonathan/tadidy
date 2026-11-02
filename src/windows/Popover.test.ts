@@ -1,6 +1,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { UNAVAILABLE } from "../test/clips";
 import { describeHost, find, hostCore, settle } from "../test/host";
 import Popover from "./Popover.svelte";
 
@@ -117,6 +118,20 @@ describe("Popover, Clear history… from the tray menu", () => {
 
     expect(container.querySelector("#dialog-clear-history")).toBeNull();
     expect(core.commands()).not.toContain("clear_history");
+  });
+
+  it("does nothing, and asks the core for no list, while the history database is unavailable", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const core = hostCore({ storage: UNAVAILABLE });
+    const { container } = render(Popover);
+    await settle();
+
+    await emit("menu://clear-history");
+    await settle();
+
+    expect(container.querySelector("#dialog-clear-history")).toBeNull();
+    expect(core.commands()).not.toContain("list_clips");
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("shows no dialog, and logs only the code, when the history size cannot be read", async () => {
