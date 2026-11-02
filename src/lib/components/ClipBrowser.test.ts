@@ -2,7 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { clip, deferred, fakeCore, page } from "../../test/clips";
+import { READY, UNAVAILABLE, clip, deferred, fakeCore, page } from "../../test/clips";
 import { ROW_HEIGHT } from "../virtual-list";
 import ClipBrowser from "./ClipBrowser.svelte";
 
@@ -921,5 +921,167 @@ describe("ClipBrowser hosting", () => {
     await fireEvent.click(find(container, "#btn-preferences"));
 
     expect(onopenpreferences).toHaveBeenCalledOnce();
+  });
+});
+
+describe("ClipBrowser when the history database is unavailable", () => {
+  const history = () => page([clip(1), clip(2)], null, 2);
+
+  it("shows the error state with a Reset history… button instead of the list, and never lists", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    expect(container.querySelector("#storage-unavailable")).not.toBeNull();
+    expect(find(container, "#btn-reset-history").textContent?.trim()).toBe("Reset history…");
+    expect(container.querySelector("#empty-history")).toBeNull();
+    expect(rows(container)).toHaveLength(0);
+    expect(core.commands).not.toContain("list_clips");
+  });
+
+  it("shows no count in the footer", async () => {
+    fakeCore(history, { storage: UNAVAILABLE });
+
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    expect(find(container, "#clip-count").textContent).toBe("");
+  });
+
+  it("does not list when a clip is announced meanwhile", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    render(ClipBrowser);
+    await settle();
+
+    await emit("clips://changed", {});
+    await settle(50);
+
+    expect(core.commands).not.toContain("list_clips");
+  });
+
+  it("opens the confirmation from the button and resets nothing yet", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+
+    expect(container.querySelector("#dialog-reset-history")).not.toBeNull();
+    expect(document.activeElement).toBe(find(container, "#btn-reset-cancel"));
+    expect(core.commands).not.toContain("reset_history_database");
+  });
+
+  it("cancels from the dialog: it closes and nothing is reset", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+
+    await fireEvent.click(find(container, "#btn-reset-cancel"));
+    await settle();
+
+    expect(container.querySelector("#dialog-reset-history")).toBeNull();
+    expect(container.querySelector("#storage-unavailable")).not.toBeNull();
+    expect(core.commands).not.toContain("reset_history_database");
+  });
+
+  it("cancels on Escape without closing the window", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const onclose = vi.fn();
+    const { container } = render(ClipBrowser, { onclose });
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+
+    await fireEvent.keyDown(window, { key: "Escape" });
+    await settle();
+
+    expect(container.querySelector("#dialog-reset-history")).toBeNull();
+    expect(onclose).not.toHaveBeenCalled();
+    expect(core.commands).not.toContain("reset_history_database");
+  });
+
+  it("resets on confirmation, then shows the list when the core announces the new status", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+
+    await fireEvent.click(find(container, "#btn-reset-confirm"));
+    await settle();
+    expect(core.commands).toContain("reset_history_database");
+    expect(container.querySelector("#dialog-reset-history")).toBeNull();
+
+    core.setStorage(READY);
+    await emit("storage://changed", READY);
+    await settle();
+
+    expect(container.querySelector("#storage-unavailable")).toBeNull();
+    expect(rows(container)).toHaveLength(2);
+    expect(find(container, "#clip-count").textContent).toBe("2 clips");
+  });
+
+  it("stays on the error state, ready to retry, when the reset fails", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+    // The reset is refused by the core.
+    const { mockIPC } = await import("@tauri-apps/api/mocks");
+    mockIPC(
+      (cmd) => {
+        if (cmd === "get_storage_status") return UNAVAILABLE;
+        if (cmd === "reset_history_database") throw { code: "storage_error", message: "failed" };
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+
+    await fireEvent.click(find(container, "#btn-reset-confirm"));
+    await settle();
+
+    expect(container.querySelector("#storage-unavailable")).not.toBeNull();
+    expect(container.querySelector("#dialog-reset-history")).toBeNull();
+    expect(find(container, "#btn-reset-history")).not.toBeNull();
+    expect(core.commands).not.toContain("list_clips");
+  });
+
+  it("replaces the list by the error state when the database becomes unavailable", async () => {
+    const core = fakeCore(history);
+    const { container } = render(ClipBrowser);
+    await settle();
+    expect(rows(container)).toHaveLength(2);
+
+    core.setStorage(UNAVAILABLE);
+    await emit("storage://changed", UNAVAILABLE);
+    await settle();
+
+    expect(container.querySelector("#storage-unavailable")).not.toBeNull();
+    expect(rows(container)).toHaveLength(0);
+    expect(find(container, "#clip-count").textContent).toBe("");
+  });
+
+  it("lists as before when the status cannot be read", async () => {
+    fakeCore(history);
+    const { mockIPC } = await import("@tauri-apps/api/mocks");
+    mockIPC(
+      (cmd) => {
+        if (cmd === "get_storage_status") throw { code: "storage_error", message: "failed" };
+        if (cmd === "list_clips") return history();
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    expect(rows(container)).toHaveLength(2);
+    expect(container.querySelector("#storage-unavailable")).toBeNull();
   });
 });
