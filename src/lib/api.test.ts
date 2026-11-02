@@ -484,7 +484,7 @@ describe("resetHistoryDatabase", () => {
 
     await resetHistoryDatabase();
 
-    expect(seen).toEqual([{ cmd: "reset_history_database", args: undefined }]);
+    expect(seen).toEqual([{ cmd: "reset_history_database", args: {} }]);
   });
 
   it("rejects with the core's invalid_state when the database works", async () => {

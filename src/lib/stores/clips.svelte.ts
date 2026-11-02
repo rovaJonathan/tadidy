@@ -1,9 +1,18 @@
 // State of the clip browser: the search text, the pages of clips it shows, the selection and the
 // source-app icons. The core owns the data; this class only mirrors what `list_clips` returns.
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
-import { deleteClips, getAppIcon, listClips, onClipsChanged } from "../api";
+import {
+  deleteClips,
+  getAppIcon,
+  getStorageStatus,
+  listClips,
+  onClipsChanged,
+  onStorageChanged,
+  resetHistoryDatabase,
+} from "../api";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
+import type { StorageStatus } from "../bindings/StorageStatus";
 
 /** SRC-01: the list follows the typing, 50 ms after the last key. */
 const SEARCH_DEBOUNCE_MS = 50;
@@ -22,6 +31,8 @@ export class ClipsStore {
   loading = $state(false);
   /** The first page has arrived: before that, an empty list is not an empty history. */
   loaded = $state(false);
+  /** The core could not open the history database: nothing is listed until it is reset. */
+  storageUnavailable = $state(false);
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */
   readonly iconUrls = new SvelteMap<string, string>();
@@ -43,15 +54,23 @@ export class ClipsStore {
   #firstPage: Promise<void> = Promise.resolve();
   #frame: number | undefined;
   #unlisten: (() => void) | undefined;
+  #unlistenStorage: (() => void) | undefined;
   readonly #requestedIcons = new SvelteSet<string>();
 
-  /** Loads the first page and follows `clips://changed` until `destroy`. */
+  /** Loads the first page and follows `clips://changed` and `storage://changed` until `destroy`. */
   async start(): Promise<void> {
     const listening = onClipsChanged(() => this.#scheduleRefresh()).then((unlisten) => {
       if (this.#destroyed) void unlisten();
       else this.#unlisten = unlisten;
     });
-    await Promise.all([listening, this.#loadFirstPage(true)]);
+    const listeningStorage = onStorageChanged((status) => this.#applyStorage(status)).then((unlisten) => {
+      if (this.#destroyed) void unlisten();
+      else this.#unlistenStorage = unlisten;
+    });
+    // A status that cannot be read counts as ready: the list then fails or shows by itself.
+    const status = await getStorageStatus().catch((): undefined => undefined);
+    if (status !== undefined && !this.#destroyed) this.storageUnavailable = status.state === "unavailable";
+    await Promise.all([listening, listeningStorage, this.#loadFirstPage(true)]);
   }
 
   /** Releases the event listener, the pending timers and the icon object URLs. */
@@ -64,6 +83,8 @@ export class ClipsStore {
     this.#frame = undefined;
     this.#unlisten?.();
     this.#unlisten = undefined;
+    this.#unlistenStorage?.();
+    this.#unlistenStorage = undefined;
     for (const url of this.iconUrls.values()) URL.revokeObjectURL(url);
     this.iconUrls.clear();
   }
@@ -150,6 +171,15 @@ export class ClipsStore {
     }
   }
 
+  /** Asks the core to start over with an empty history; it announces the result with `storage://changed`. */
+  async resetHistory(): Promise<void> {
+    try {
+      await resetHistoryDatabase();
+    } catch {
+      // Still unavailable, nothing moved: the error state stays and the user can retry.
+    }
+  }
+
   /** Fetches the icon of a source app, once per bundle id. */
   requestIcon(bundleId: string): void {
     if (this.#destroyed || this.#requestedIcons.has(bundleId)) return;
@@ -173,7 +203,26 @@ export class ClipsStore {
     return this.#firstPage;
   }
 
+  /** The core announced that the database became usable or unusable. */
+  #applyStorage(status: StorageStatus): void {
+    if (this.#destroyed) return;
+    this.storageUnavailable = status.state === "unavailable";
+    if (this.storageUnavailable) {
+      // Drop any answer on its way and what is shown: it belongs to a database that is gone.
+      this.#generation++;
+      this.items = [];
+      this.total = 0;
+      this.nextCursor = null;
+      this.loaded = false;
+      this.loading = false;
+      this.selectedIndex = 0;
+    } else {
+      void this.#loadFirstPage(false);
+    }
+  }
+
   async #fetchFirstPage(keepSelection: boolean): Promise<void> {
+    if (this.storageUnavailable) return;
     const generation = ++this.#generation;
     this.loading = true;
     const asked = this.query;

@@ -9,7 +9,9 @@
   import DeleteClipDialog from "./DeleteClipDialog.svelte";
   import EmptyState from "./EmptyState.svelte";
   import PermissionBanner from "./PermissionBanner.svelte";
+  import ResetHistoryDialog from "./ResetHistoryDialog.svelte";
   import SearchBar from "./SearchBar.svelte";
+  import StorageUnavailable from "./StorageUnavailable.svelte";
 
   const MINUTE_MS = 60_000;
 
@@ -53,6 +55,10 @@
   let pendingDelete = $state<string>();
   let dialog = $state<DeleteClipDialog>();
 
+  /** The reset confirmation is open (the history database cannot be opened). */
+  let confirmingReset = $state(false);
+  let resetDialog = $state<ResetHistoryDialog>();
+
   /** Virtualization drops rows far from the viewport: only a row in the DOM can be the active one. */
   const activeId = $derived(
     store.selectedIndex >= renderedRange.start && store.selectedIndex < renderedRange.end
@@ -62,6 +68,10 @@
 
   function onkeydown(event: KeyboardEvent) {
     // Every key goes to an open modal, wherever the focus is (as in the prototype).
+    if (confirmingReset) {
+      resetDialog?.handleKey(event);
+      return;
+    }
     if (pendingDelete !== undefined) {
       dialog?.handleKey(event);
       return;
@@ -150,6 +160,16 @@
     searchBar?.focus();
   }
 
+  function confirmReset() {
+    confirmingReset = false;
+    void store.resetHistory();
+  }
+
+  function cancelReset() {
+    confirmingReset = false;
+    searchBar?.focus();
+  }
+
   function activate(index: number) {
     store.select(index);
     run("paste");
@@ -190,7 +210,9 @@
       onselect={(index) => store.select(index)}
       onactivate={activate}
     />
-    {#if store.loaded && store.items.length === 0}
+    {#if store.storageUnavailable}
+      <StorageUnavailable onreset={() => (confirmingReset = true)} />
+    {:else if store.loaded && store.items.length === 0}
       {#if store.loadedQuery}
         <EmptyState variant="search" query={store.loadedQuery} />
       {:else}
@@ -201,9 +223,16 @@
 
   <PermissionBanner />
 
-  <BrowserFooter count={clipCountLabel(store.total, store.loadedQuery !== "")} onpreferences={onopenpreferences} />
+  <BrowserFooter
+    count={store.storageUnavailable ? "" : clipCountLabel(store.total, store.loadedQuery !== "")}
+    onpreferences={onopenpreferences}
+  />
 
-  {#if pendingDelete !== undefined}
+  {#if confirmingReset}
+    <div id="modal-layer">
+      <ResetHistoryDialog bind:this={resetDialog} onconfirm={confirmReset} oncancel={cancelReset} />
+    </div>
+  {:else if pendingDelete !== undefined}
     <div id="modal-layer">
       <DeleteClipDialog bind:this={dialog} onconfirm={confirmDelete} oncancel={closeDialog} />
     </div>

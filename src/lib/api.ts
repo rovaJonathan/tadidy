@@ -14,6 +14,7 @@ import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
 import type { ShortcutStatus } from "./bindings/ShortcutStatus";
+import type { StorageStatus } from "./bindings/StorageStatus";
 
 export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
@@ -84,6 +85,25 @@ export function getShortcutStatus(): Promise<ShortcutStatus> {
 /** Runs `callback` with the full settings each time they change (`settings://changed`). */
 export function onSettingsChanged(callback: (settings: Settings) => void): Promise<UnlistenFn> {
   return listen<Settings>("settings://changed", (event) => callback(event.payload));
+}
+
+/** Whether the history database is usable, and the code of the failure when it is not. */
+export function getStorageStatus(): Promise<StorageStatus> {
+  return invoke<StorageStatus>("get_storage_status");
+}
+
+/**
+ * Moves the unusable history aside and starts a new, empty one; the core announces it with
+ * `storage://changed` and `clips://changed`. Rejects with `invalid_state` while the database
+ * works, or with `storage_error` when a file could not be moved (nothing is lost, retry).
+ */
+export async function resetHistoryDatabase(): Promise<void> {
+  await invoke("reset_history_database");
+}
+
+/** Runs `callback` each time the history database becomes usable or unusable (`storage://changed`). */
+export function onStorageChanged(callback: (status: StorageStatus) => void): Promise<UnlistenFn> {
+  return listen<StorageStatus>("storage://changed", (event) => callback(event.payload));
 }
 
 /**
