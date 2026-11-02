@@ -5,4 +5,11 @@ export type StorageStatus = { state: StorageState,
 /**
  * The `AppError` code of the failure that made the database unavailable, `null` when ready.
  */
-code: string | null, };
+code: string | null, 
+/**
+ * Whether the history may be reset: only when the key is gone or does not open the file.
+ * Any other failure can be temporary (a Keychain prompt that was denied, a locked
+ * Keychain): a reset would then throw away a history that is only out of reach for now.
+ * The front shows its button from this flag, never from its own list of codes.
+ */
+canReset: boolean, };

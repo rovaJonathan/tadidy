@@ -167,7 +167,7 @@ impl AppState {
                 "The history database works: it cannot be reset.",
             ));
         }
-        if !self.storage_status().can_reset() {
+        if !self.storage_status().can_reset {
             return Err(AppError::new(
                 "invalid_state",
                 "The history database may be only out of reach for now: it cannot be reset.",
@@ -605,6 +605,16 @@ mod tests {
     }
 
     #[test]
+    fn a_database_attached_by_itself_is_a_ready_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let state = state().with_db(Some(db));
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+    }
+
+    #[test]
     fn a_failed_open_makes_the_storage_unavailable_with_its_code() {
         let state = state().with_storage(Err(key_missing()));
 
@@ -640,31 +650,68 @@ mod tests {
     }
 
     #[test]
-    fn the_reset_is_refused_for_a_failure_that_may_be_temporary() {
-        for code in ["storage_error", "storage_unavailable"] {
-            let (dir, before) = orphaned_dir();
-            let key = DbKey::from_bytes([5; 32]);
-            let store = Arc::new(FakeKeyStore::with_key(key.clone()));
-            let events = Arc::new(RecordingEventSink::default());
-            let state = state()
-                .with_storage(Err(AppError::new(code, "locked")))
-                .with_storage_reset(
-                    dir.path().to_path_buf(),
-                    store.clone(),
-                    watcher_services(&events),
-                );
+    fn the_reset_is_refused_when_the_database_fails_to_open_for_a_reason_that_may_pass() {
+        // A Keychain that fails (locked, access denied) says nothing about the key: the
+        // history may be intact.
+        let (dir, before) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = unavailable_state(dir.path(), FakeKeyStore::failing(), &events);
 
-            let error = state.reset_history().unwrap_err();
+        let error = state.reset_history().unwrap_err();
 
-            assert_eq!(error.code, "invalid_state", "{code}");
-            assert_eq!(
-                std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
-                before
-            );
-            assert!(!dir.path().join("tadidy.db.bak").exists());
-            assert_eq!(store.get().unwrap().unwrap().as_bytes(), key.as_bytes());
-            assert!(state.db().is_none());
-        }
+        assert_eq!(error.code, "invalid_state");
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert!(state.db().is_none());
+        // The window learns it: the reset button goes away.
+        assert_eq!(
+            state.storage_status(),
+            StorageStatus::unavailable("storage_error")
+        );
+        assert_eq!(
+            events.events(),
+            vec![(
+                "storage://changed",
+                json!({ "state": "unavailable", "code": "storage_error", "canReset": false })
+            )]
+        );
+    }
+
+    #[test]
+    fn a_key_that_came_back_opens_the_history_instead_of_resetting_it() {
+        // Startup saw no key; the Keychain item was restored while the app ran.
+        let dir = tempfile::tempdir().unwrap();
+        let key = DbKey::from_bytes([7; 32]);
+        let store = FakeKeyStore::with_key(key.clone());
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        db.with_conn(|conn| {
+            conn.execute("CREATE TABLE marker (n INTEGER)", []).unwrap();
+        });
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let state = unavailable_state(dir.path(), store, &events);
+
+        state.reset_history().unwrap();
+
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert!(state.watcher.lock().unwrap().is_some());
+        let state_db = state.db().unwrap();
+        assert!(
+            state_db
+                .with_conn(|conn| conn
+                    .query_row("SELECT count(*) FROM marker", [], |r| r.get::<_, i64>(0)))
+                .is_ok()
+        );
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert!(
+            events
+                .events()
+                .iter()
+                .any(|(name, _)| *name == "storage://changed")
+        );
     }
 
     #[test]
@@ -746,13 +793,31 @@ mod tests {
             vec![
                 (
                     "storage://changed",
-                    json!({ "state": "ready", "code": null })
+                    json!({ "state": "ready", "code": null, "canReset": false })
                 ),
                 (
                     CLIPS_CHANGED,
                     json!({ "added": null, "updated": null, "removed": null })
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn a_reset_announces_the_settings_the_login_item_changed() {
+        let (dir, _) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        // The system login item is on, the new database says off: the system wins.
+        let state = unavailable_state(dir.path(), FakeKeyStore::default(), &events)
+            .with_login_item(Arc::new(FakeLoginItem::new(true)));
+
+        state.reset_history().unwrap();
+
+        let settings = state.settings.read().unwrap().clone();
+        assert!(settings.launch_at_login);
+        assert_eq!(
+            events.events().first(),
+            Some(&("settings://changed", json!(settings)))
         );
     }
 

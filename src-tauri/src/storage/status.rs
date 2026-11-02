@@ -13,11 +13,17 @@ pub enum StorageState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, rename_all = "camelCase")]
 pub struct StorageStatus {
     pub state: StorageState,
     /// The `AppError` code of the failure that made the database unavailable, `null` when ready.
     pub code: Option<String>,
+    /// Whether the history may be reset: only when the key is gone or does not open the file.
+    /// Any other failure can be temporary (a Keychain prompt that was denied, a locked
+    /// Keychain): a reset would then throw away a history that is only out of reach for now.
+    /// The front shows its button from this flag, never from its own list of codes.
+    pub can_reset: bool,
 }
 
 impl StorageStatus {
@@ -25,26 +31,17 @@ impl StorageStatus {
         Self {
             state: StorageState::Ready,
             code: None,
+            can_reset: false,
         }
     }
 
     pub fn unavailable(code: impl Into<String>) -> Self {
+        let code = code.into();
         Self {
             state: StorageState::Unavailable,
-            code: Some(code.into()),
+            can_reset: matches!(code.as_str(), "storage_key_missing" | "storage_wrong_key"),
+            code: Some(code),
         }
-    }
-}
-
-impl StorageStatus {
-    /// Whether the history may be reset: only when the key is gone or does not open the file.
-    /// Any other failure can be temporary (a Keychain prompt that was denied, a locked
-    /// Keychain): a reset would then throw away a history that is only out of reach for now.
-    pub fn can_reset(&self) -> bool {
-        matches!(
-            self.code.as_deref(),
-            Some("storage_key_missing" | "storage_wrong_key")
-        )
     }
 }
 
@@ -64,24 +61,24 @@ mod tests {
     fn a_ready_status_has_no_code() {
         assert_eq!(
             json!(StorageStatus::ready()),
-            json!({ "state": "ready", "code": null })
+            json!({ "state": "ready", "code": null, "canReset": false })
         );
     }
 
     #[test]
     fn only_a_missing_or_wrong_key_can_be_reset() {
-        assert!(StorageStatus::unavailable("storage_key_missing").can_reset());
-        assert!(StorageStatus::unavailable("storage_wrong_key").can_reset());
-        assert!(!StorageStatus::unavailable("storage_error").can_reset());
-        assert!(!StorageStatus::unavailable("storage_unavailable").can_reset());
-        assert!(!StorageStatus::ready().can_reset());
+        assert!(StorageStatus::unavailable("storage_key_missing").can_reset);
+        assert!(StorageStatus::unavailable("storage_wrong_key").can_reset);
+        assert!(!StorageStatus::unavailable("storage_error").can_reset);
+        assert!(!StorageStatus::unavailable("storage_unavailable").can_reset);
+        assert!(!StorageStatus::ready().can_reset);
     }
 
     #[test]
     fn an_unavailable_status_carries_the_failure_code() {
         assert_eq!(
             json!(StorageStatus::unavailable("storage_key_missing")),
-            json!({ "state": "unavailable", "code": "storage_key_missing" })
+            json!({ "state": "unavailable", "code": "storage_key_missing", "canReset": true })
         );
     }
 }
