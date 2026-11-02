@@ -151,6 +151,20 @@ describe("Popover, Clear history… from the tray menu", () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it("does nothing, quietly, when the core refuses the list because the storage is unavailable", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const core = hostCore();
+    const { container } = render(Popover);
+    await settle();
+    core.listFails = { code: "storage_unavailable", message: "The history database is unavailable." };
+
+    await emit("menu://clear-history");
+    await settle();
+
+    expect(container.querySelector("#dialog-clear-history")).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it("shows no dialog, and logs only the code, when the history size cannot be read", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const core = hostCore();

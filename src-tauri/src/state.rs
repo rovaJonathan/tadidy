@@ -881,6 +881,32 @@ mod tests {
     }
 
     #[test]
+    fn a_stored_shortcut_that_another_app_holds_leaves_the_status_true_to_what_is_registered() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::default();
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        let stored = Settings {
+            quick_panel_shortcut: "Ctrl+Alt+V".to_owned(),
+            ..Settings::default()
+        };
+        db.with_conn(|conn| crate::storage::settings::save(conn, &stored))
+            .unwrap();
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let shortcuts = Arc::new(FakeShortcutRegistrar::default());
+        let state = unavailable_state(dir.path(), store, &events).with_shortcuts(shortcuts.clone());
+        state.apply_stored_settings();
+        shortcuts.take("Ctrl+Alt+V");
+
+        state.reset_history().unwrap();
+
+        // Neither shortcut is registered, and the status says exactly that: the stored one, failed.
+        assert_eq!(shortcuts.registered_count(), 0);
+        assert_eq!(state.shortcut_status().accelerator, "Ctrl+Alt+V");
+        assert!(state.shortcut_status().error.is_some());
+    }
+
+    #[test]
     fn a_reset_announces_the_settings_the_login_item_changed() {
         let (dir, _) = orphaned_dir();
         let events = Arc::new(RecordingEventSink::default());

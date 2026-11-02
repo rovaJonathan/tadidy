@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
 import type { Page } from "../bindings/Page";
-import { READY, UNAVAILABLE, clip, deferred, fakeCore, page } from "../../test/clips";
+import { READY, UNAVAILABLE, UNAVAILABLE_TEMPORARY, clip, deferred, fakeCore, page } from "../../test/clips";
 import { ClipsStore } from "./clips.svelte";
 
 /** A source of clips answering `list_clips` page by page: the cursor is the index of the next clip. */
@@ -628,6 +628,41 @@ describe("ClipsStore, a reset that is refused", () => {
     refuse({ code: "invalid_state", message: "works" });
     await asking;
 
+    expect(store.resetFailed).toBe(false);
+  });
+});
+
+describe("ClipsStore, when the storage events cannot be listened to", () => {
+  it("still loads the list and settles the storage status", async () => {
+    mockIPC((cmd, args) => {
+      if (cmd === "plugin:event|listen" && (args as { event: string }).event === "storage://changed") {
+        throw new Error("the event capability is missing");
+      }
+      if (cmd === "get_storage_status") return READY;
+      if (cmd === "list_clips") return page([clip(1)]);
+      return 1;
+    });
+
+    await store.start();
+    await store.storageKnown;
+
+    expect(store.items).toHaveLength(1);
+  });
+});
+
+describe("ClipsStore, a reset that is refused", () => {
+  it("decides from the status the core has, not from the rejection alone", async () => {
+    const core = fakeCore(() => page([clip(1)]), {
+      storage: UNAVAILABLE,
+      resetError: { code: "invalid_state", message: "no" },
+    });
+    await store.start();
+    // The core went temporary while the reset ran; its announcement has not landed yet.
+    core.setStorage(UNAVAILABLE_TEMPORARY);
+
+    await store.resetHistory();
+
+    expect(store.storageCanReset).toBe(false);
     expect(store.resetFailed).toBe(false);
   });
 });
