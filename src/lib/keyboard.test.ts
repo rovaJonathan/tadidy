@@ -5,7 +5,13 @@ function press(key: string, modifiers: Partial<KeyInput> = {}): KeyInput {
   return { key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, isComposing: false, ...modifiers };
 }
 
-const IDLE: KeyContext = { searchFocused: false, searchEmpty: true, inputHasSelection: false, dialogOpen: false };
+const IDLE: KeyContext = {
+  searchFocused: false,
+  searchEmpty: true,
+  inputHasSelection: false,
+  dialogOpen: false,
+  buttonFocused: false,
+};
 const TYPING: KeyContext = { ...IDLE, searchFocused: true, searchEmpty: false };
 
 describe("resolveKey", () => {
@@ -107,5 +113,27 @@ describe("resolveKey", () => {
     expect(resolveKey(press("Enter", { isComposing: true }), TYPING)).toBeNull();
     expect(resolveKey(press("ArrowDown", { isComposing: true }), TYPING)).toBeNull();
     expect(resolveKey(press("Process"), TYPING)).toBeNull();
+  });
+
+  it.each(["Enter", " "])("%s is left to a focused button, which does its own thing", (key) => {
+    const onButton = { ...IDLE, buttonFocused: true };
+
+    expect(resolveKey(press(key), onButton)).toBeNull();
+    expect(resolveKey(press(key), { ...onButton, searchEmpty: false })).toBeNull();
+  });
+
+  it("still moves the selection and pastes from the search while a button has no focus", () => {
+    expect(resolveKey(press("Enter"), IDLE)).toBe("paste");
+    expect(resolveKey(press("ArrowDown"), { ...IDLE, buttonFocused: true })).toBe("select-next");
+  });
+
+  it("still copies with ⌥↩ and leaves the other modified Returns alone while a button has the focus", () => {
+    const onButton = { ...IDLE, buttonFocused: true };
+
+    expect(resolveKey(press("Enter", { altKey: true }), onButton)).toBe("copy");
+    // Whatever ⌘↩ means, a focused button does not change it.
+    expect(resolveKey(press("Enter", { metaKey: true }), onButton)).toBe(
+      resolveKey(press("Enter", { metaKey: true }), IDLE),
+    );
   });
 });

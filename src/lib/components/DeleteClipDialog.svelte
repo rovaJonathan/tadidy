@@ -83,8 +83,8 @@
 
 <style>
   .alert {
-    width: 260px;
-    padding: 20px var(--space-16) var(--space-16);
+    width: var(--alert-width);
+    padding: var(--space-20) var(--space-16) var(--space-16);
     border-radius: var(--radius-alert);
     background: var(--material-alert);
     -webkit-backdrop-filter: var(--blur-material);
@@ -96,13 +96,13 @@
   }
 
   .alert-icon {
-    width: 56px;
-    height: 56px;
-    margin: 0 auto 10px;
+    width: var(--alert-icon-size);
+    height: var(--alert-icon-size);
+    margin: 0 auto var(--space-10);
   }
 
   h2 {
-    margin: 0 0 6px;
+    margin: 0 0 var(--space-6);
     font-size: var(--text-body);
     line-height: var(--leading-body);
     font-weight: var(--weight-bold);
@@ -156,7 +156,7 @@
 
   .btn {
     width: 100%;
-    height: 28px;
+    height: var(--button-height);
     padding: 0 var(--space-12);
     border: 0;
     border-radius: var(--radius-md);
@@ -178,7 +178,7 @@
   .btn-destructive {
     background: var(--color-destructive);
     color: var(--color-on-accent);
-    box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-primary-button);
   }
 
   .btn-destructive:active {

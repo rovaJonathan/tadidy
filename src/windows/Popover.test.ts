@@ -1,6 +1,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { UNAVAILABLE, deferred } from "../test/clips";
 import { describeHost, find, hostCore, settle } from "../test/host";
 import Popover from "./Popover.svelte";
 
@@ -117,6 +118,51 @@ describe("Popover, Clear history… from the tray menu", () => {
 
     expect(container.querySelector("#dialog-clear-history")).toBeNull();
     expect(core.commands()).not.toContain("clear_history");
+  });
+
+  it("does nothing, and asks the core for no list, while the history database is unavailable", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const core = hostCore({ storage: UNAVAILABLE });
+    const { container } = render(Popover);
+    await settle();
+
+    await emit("menu://clear-history");
+    await settle();
+
+    expect(container.querySelector("#dialog-clear-history")).toBeNull();
+    expect(core.commands()).not.toContain("list_clips");
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("waits for the first storage status before it asks for the size, so an early menu choice asks for no list", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const answer = deferred<undefined>();
+    const core = hostCore({ storage: UNAVAILABLE, storageAnswer: answer.promise });
+    const { container } = render(Popover);
+    await settle();
+
+    await emit("menu://clear-history");
+    await settle();
+    answer.resolve(undefined);
+    await settle(50);
+
+    expect(container.querySelector("#dialog-clear-history")).toBeNull();
+    expect(core.commands()).not.toContain("list_clips");
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("does nothing, quietly, when the core refuses the list because the storage is unavailable", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const core = hostCore();
+    const { container } = render(Popover);
+    await settle();
+    core.listFails = { code: "storage_unavailable", message: "The history database is unavailable." };
+
+    await emit("menu://clear-history");
+    await settle();
+
+    expect(container.querySelector("#dialog-clear-history")).toBeNull();
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("shows no dialog, and logs only the code, when the history size cannot be read", async () => {

@@ -10,6 +10,8 @@ use ts_rs::TS;
 
 pub const CLIPS_CHANGED: &str = "clips://changed";
 pub const SETTINGS_CHANGED: &str = "settings://changed";
+/// The history database became usable or unusable (`StorageStatus` payload).
+pub const STORAGE_CHANGED: &str = "storage://changed";
 pub const ACCESSIBILITY_CHANGED: &str = "accessibility://changed";
 pub const PANEL_SHOWN: &str = "panel://shown";
 /// The tray menu's Clear history… was chosen: the popover opens its confirmation (no payload).
@@ -136,6 +138,7 @@ mod tests {
             [
                 CLIPS_CHANGED,
                 SETTINGS_CHANGED,
+                STORAGE_CHANGED,
                 ACCESSIBILITY_CHANGED,
                 PANEL_SHOWN,
                 MENU_CLEAR_HISTORY
@@ -143,6 +146,7 @@ mod tests {
             [
                 "clips://changed",
                 "settings://changed",
+                "storage://changed",
                 "accessibility://changed",
                 "panel://shown",
                 "menu://clear-history"

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
 import type { Page } from "../bindings/Page";
-import { clip, deferred, fakeCore, page } from "../../test/clips";
+import { READY, UNAVAILABLE, UNAVAILABLE_TEMPORARY, clip, deferred, fakeCore, page } from "../../test/clips";
 import { ClipsStore } from "./clips.svelte";
 
 /** A source of clips answering `list_clips` page by page: the cursor is the index of the next clip. */
@@ -603,5 +603,127 @@ describe("ClipsStore settled", () => {
     await store.settled();
 
     expect(store.stale).toBe(true);
+  });
+});
+
+describe("ClipsStore, a reset that is refused", () => {
+  it("does not remember a failure that lands after the history became ready", async () => {
+    let refuse!: (reason: unknown) => void;
+    const refused = new Promise<never>((_, reject) => (refuse = reject));
+    fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE });
+    await store.start();
+    // The core now answers the reset with a delayed refusal.
+    mockIPC(
+      (cmd) => {
+        if (cmd === "reset_history_database") return refused;
+        if (cmd === "list_clips") return page([clip(1)]);
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+    const asking = store.resetHistory();
+
+    await store.start();
+    await emit("storage://changed", READY);
+    refuse({ code: "invalid_state", message: "works" });
+    await asking;
+
+    expect(store.resetFailed).toBe(false);
+  });
+});
+
+describe("ClipsStore, a reset in progress", () => {
+  function slowReset(outcome: "resolve" | "reject") {
+    const answer = deferred<undefined>();
+    let asked = 0;
+    fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE });
+    mockIPC(
+      (cmd) => {
+        if (cmd === "reset_history_database") {
+          asked++;
+          return outcome === "resolve"
+            ? answer.promise
+            : answer.promise.then(() => Promise.reject({ code: "storage_error", message: "failed" }));
+        }
+        if (cmd === "get_storage_status") return UNAVAILABLE;
+        if (cmd === "list_clips") return page([clip(1)]);
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+    return { release: () => answer.resolve(undefined), asked: () => asked };
+  }
+
+  it("is flagged until the core answers, and a second request is ignored", async () => {
+    const reset = slowReset("resolve");
+    await store.start();
+
+    const first = store.resetHistory();
+    const second = store.resetHistory();
+
+    expect(store.resetting).toBe(true);
+    reset.release();
+    await Promise.all([first, second]);
+    expect(store.resetting).toBe(false);
+    expect(reset.asked()).toBe(1);
+  });
+
+  it("is no longer flagged once the reset failed", async () => {
+    const reset = slowReset("reject");
+    await store.start();
+
+    const asking = store.resetHistory();
+    reset.release();
+    await asking;
+
+    expect(store.resetting).toBe(false);
+    expect(store.resetFailed).toBe(true);
+  });
+
+  it("does not clear the failure of a reset still running when a second one is ignored", async () => {
+    const reset = slowReset("reject");
+    await store.start();
+    const first = store.resetHistory();
+
+    await store.resetHistory();
+    reset.release();
+    await first;
+
+    expect(store.resetFailed).toBe(true);
+  });
+});
+
+describe("ClipsStore, when the storage events cannot be listened to", () => {
+  it("still loads the list and settles the storage status", async () => {
+    mockIPC((cmd, args) => {
+      if (cmd === "plugin:event|listen" && (args as { event: string }).event === "storage://changed") {
+        throw new Error("the event capability is missing");
+      }
+      if (cmd === "get_storage_status") return READY;
+      if (cmd === "list_clips") return page([clip(1)]);
+      return 1;
+    });
+
+    await store.start();
+    await store.storageKnown;
+
+    expect(store.items).toHaveLength(1);
+  });
+});
+
+describe("ClipsStore, a reset that is refused", () => {
+  it("decides from the status the core has, not from the rejection alone", async () => {
+    const core = fakeCore(() => page([clip(1)]), {
+      storage: UNAVAILABLE,
+      resetError: { code: "invalid_state", message: "no" },
+    });
+    await store.start();
+    // The core went temporary while the reset ran; its announcement has not landed yet.
+    core.setStorage(UNAVAILABLE_TEMPORARY);
+
+    await store.resetHistory();
+
+    expect(store.storageCanReset).toBe(false);
+    expect(store.resetFailed).toBe(false);
   });
 });

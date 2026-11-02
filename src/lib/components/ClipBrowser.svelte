@@ -9,7 +9,9 @@
   import DeleteClipDialog from "./DeleteClipDialog.svelte";
   import EmptyState from "./EmptyState.svelte";
   import PermissionBanner from "./PermissionBanner.svelte";
+  import ResetHistoryDialog from "./ResetHistoryDialog.svelte";
   import SearchBar from "./SearchBar.svelte";
+  import StorageUnavailable from "./StorageUnavailable.svelte";
 
   const MINUTE_MS = 60_000;
 
@@ -47,11 +49,16 @@
   let renderedRange = $state<RowRange>({ start: 0, end: 0 });
 
   let searchBar = $state<SearchBar>();
+  let root = $state<HTMLDivElement>();
   let list = $state<ClipList>();
 
   /** The clip the delete dialog is about; no dialog while it is `undefined`. */
   let pendingDelete = $state<string>();
   let dialog = $state<DeleteClipDialog>();
+
+  /** The reset confirmation is open (the history database cannot be opened). */
+  let confirmingReset = $state(false);
+  let resetDialog = $state<ResetHistoryDialog>();
 
   /** Virtualization drops rows far from the viewport: only a row in the DOM can be the active one. */
   const activeId = $derived(
@@ -62,6 +69,10 @@
 
   function onkeydown(event: KeyboardEvent) {
     // Every key goes to an open modal, wherever the focus is (as in the prototype).
+    if (confirmingReset) {
+      resetDialog?.handleKey(event);
+      return;
+    }
     if (pendingDelete !== undefined) {
       dialog?.handleKey(event);
       return;
@@ -71,6 +82,7 @@
       searchEmpty: store.search === "",
       inputHasSelection: searchBar?.hasSelection() ?? false,
       dialogOpen: pendingDelete !== undefined,
+      buttonFocused: event.target instanceof HTMLButtonElement,
     });
     if (action === null) return;
     // A typed character is not stopped: it goes on into the field that just got the focus.
@@ -128,10 +140,17 @@
   export async function reset(): Promise<void> {
     // A dialog left open would still hold the clip of the previous session.
     pendingDelete = undefined;
+    confirmingReset = false;
     const loaded = store.reset();
     searchBar?.focus();
     await loaded;
     list?.reveal(0);
+  }
+
+  /** The history database cannot be opened: there is no list to size, and nothing to clear. Waits for the first status. */
+  export async function storageUnavailable(): Promise<boolean> {
+    await store.storageKnown;
+    return store.storageUnavailable;
   }
 
   export function focusSearch() {
@@ -147,6 +166,19 @@
 
   function closeDialog() {
     pendingDelete = undefined;
+    searchBar?.focus();
+  }
+
+  async function confirmReset() {
+    confirmingReset = false;
+    await store.resetHistory();
+    // The dialog's button is gone: the focus goes to the search field, or back to the button for a retry.
+    if (store.resetFailed) root?.querySelector<HTMLButtonElement>("#btn-reset-history")?.focus();
+    else searchBar?.focus();
+  }
+
+  function cancelReset() {
+    confirmingReset = false;
     searchBar?.focus();
   }
 
@@ -167,7 +199,7 @@
 
 <svelte:window {onkeydown} />
 
-<div id="clip-browser" class="clip-browser" data-layout={layout}>
+<div id="clip-browser" class="clip-browser" data-layout={layout} bind:this={root}>
   <SearchBar
     bind:this={searchBar}
     value={store.search}
@@ -190,7 +222,14 @@
       onselect={(index) => store.select(index)}
       onactivate={activate}
     />
-    {#if store.loaded && store.items.length === 0}
+    {#if store.storageUnavailable}
+      <StorageUnavailable
+        canReset={store.storageCanReset}
+        failed={store.resetFailed}
+        resetting={store.resetting}
+        onreset={() => (confirmingReset = true)}
+      />
+    {:else if store.loaded && store.items.length === 0}
       {#if store.loadedQuery}
         <EmptyState variant="search" query={store.loadedQuery} />
       {:else}
@@ -201,9 +240,16 @@
 
   <PermissionBanner />
 
-  <BrowserFooter count={clipCountLabel(store.total, store.loadedQuery !== "")} onpreferences={onopenpreferences} />
+  <BrowserFooter
+    count={store.storageUnavailable ? "" : clipCountLabel(store.total, store.loadedQuery !== "")}
+    onpreferences={onopenpreferences}
+  />
 
-  {#if pendingDelete !== undefined}
+  {#if confirmingReset}
+    <div id="modal-layer">
+      <ResetHistoryDialog bind:this={resetDialog} onconfirm={confirmReset} oncancel={cancelReset} />
+    </div>
+  {:else if pendingDelete !== undefined}
     <div id="modal-layer">
       <DeleteClipDialog bind:this={dialog} onconfirm={confirmDelete} oncancel={closeDialog} />
     </div>

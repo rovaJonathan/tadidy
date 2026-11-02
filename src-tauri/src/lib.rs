@@ -23,16 +23,24 @@ use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
 /// The platform services of the running app: the AppKit and CoreGraphics ones, the global
-/// shortcut plugin and the system's login item.
+/// shortcut plugin and the system's login item. `opened` is the history database, or why it is
+/// not there; the state keeps what it needs to reset it from `dir`.
 #[cfg(target_os = "macos")]
-fn real_state(db: Option<storage::Db>, app: &tauri::AppHandle) -> AppState {
+fn real_state(
+    opened: Result<storage::Db, error::AppError>,
+    dir: std::path::PathBuf,
+    store: std::sync::Arc<macos::keychain::KeychainKeyStore>,
+    services: watcher::Services,
+    app: &tauri::AppHandle,
+) -> AppState {
     AppState::new(
         std::sync::Arc::new(macos::accessibility::AxProbe),
         std::sync::Arc::new(macos::keys::CgKeySender),
         std::sync::Arc::new(macos::pasteboard::NsPasteboard),
         std::sync::Arc::new(macos::workspace::NsWorkspace),
     )
-    .with_db(db)
+    .with_storage(opened)
+    .with_storage_reset(dir, store, services)
     .with_shortcuts(std::sync::Arc::new(shortcuts::AppShortcuts(app.clone())))
     .with_login_item(std::sync::Arc::new(macos::login_item::SmLoginItem))
 }
@@ -70,21 +78,26 @@ pub fn run() {
             // bundle's Info.plist (LSUIElement) does not apply (MNU-06).
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            // The history database; without it (key missing) the app still runs, see `storage`.
+            // The history database; without it (key missing) the app still runs and offers to
+            // reset the history, see `storage`.
             #[cfg(target_os = "macos")]
-            app.manage(real_state(
-                storage::open_or_report(
-                    &app.path().app_data_dir()?,
-                    &macos::keychain::KeychainKeyStore::default(),
-                ),
-                app.handle(),
-            ));
-            // Records what is copied; not started without the database.
-            #[cfg(target_os = "macos")]
-            watcher::start(
-                &app.state::<AppState>(),
-                real_watcher_services(app.handle()),
-            );
+            {
+                let dir = app.path().app_data_dir()?;
+                // One key store and one set of services, for the startup open, the reset and
+                // the watcher.
+                let store = std::sync::Arc::new(macos::keychain::KeychainKeyStore::default());
+                let services = real_watcher_services(app.handle());
+                let opened = storage::open_for_startup(&dir, store.as_ref());
+                app.manage(real_state(
+                    opened,
+                    dir,
+                    store,
+                    services.clone(),
+                    app.handle(),
+                ));
+                // Records what is copied; not started without the database.
+                watcher::start(&app.state::<AppState>(), services);
+            }
             // Created hidden at startup so the tray click only has to show it (< 100 ms).
             let popover = windows::create_popover(app)?;
             #[cfg(target_os = "macos")]
@@ -107,6 +120,8 @@ pub fn run() {
             commands::set_settings,
             commands::get_shortcut_status,
             commands::open_preferences,
+            commands::get_storage_status,
+            commands::reset_history_database,
             commands::list_clips,
             commands::delete_clips,
             commands::clear_history,

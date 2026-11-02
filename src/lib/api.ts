@@ -14,6 +14,7 @@ import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
 import type { ShortcutStatus } from "./bindings/ShortcutStatus";
+import type { StorageStatus } from "./bindings/StorageStatus";
 
 export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
@@ -86,6 +87,25 @@ export function onSettingsChanged(callback: (settings: Settings) => void): Promi
   return listen<Settings>("settings://changed", (event) => callback(event.payload));
 }
 
+/** Whether the history database is usable, and the code of the failure when it is not. */
+export function getStorageStatus(): Promise<StorageStatus> {
+  return invoke<StorageStatus>("get_storage_status");
+}
+
+/**
+ * Moves the unusable history aside and starts a new, empty one; the core announces it with
+ * `storage://changed` and `clips://changed`. Rejects with `invalid_state` while the database
+ * works, or with `storage_error` when a file could not be moved (nothing is lost, retry).
+ */
+export async function resetHistoryDatabase(): Promise<void> {
+  await invoke("reset_history_database");
+}
+
+/** Runs `callback` each time the history database becomes usable or unusable (`storage://changed`). */
+export function onStorageChanged(callback: (status: StorageStatus) => void): Promise<UnlistenFn> {
+  return listen<StorageStatus>("storage://changed", (event) => callback(event.payload));
+}
+
 /**
  * One page of the history, newest first, filtered by `q.search` when it has one. Hand
  * `nextCursor` back as `q.cursor` for the following page. Rejects with `invalid_cursor` when the
@@ -139,6 +159,6 @@ export function onClipsChanged(callback: (changed: ClipsChanged) => void): Promi
   return listen<ClipsChanged>("clips://changed", (event) => callback(event.payload));
 }
 
-function isAppError(error: unknown): error is AppError {
+export function isAppError(error: unknown): error is AppError {
   return typeof error === "object" && error !== null && "code" in error;
 }

@@ -132,6 +132,9 @@ Spacing: `--space-2` 2px · `--space-4` 4 · `--space-6` 6 · `--space-8` 8 · `
 | `--prefs-sidebar-width` | 184 px |
 | `--onboarding-width` × `--onboarding-height` | 520 × 440 px |
 | `--tile-size` | 28 px (20 px in compact mode) |
+| `--alert-width` | 260 px (confirmation alerts) |
+| `--alert-icon-size` | 56 px (the icon at the top of an alert) |
+| `--button-height` | 28 px (push buttons of alerts and empty states) |
 | `--preview-lines` | 2 (Preferences › Preview lines, 1–4; compact mode forces 1) |
 
 ### 2.5 Shadows
@@ -142,6 +145,7 @@ Spacing: `--space-2` 2px · `--space-4` 4 · `--space-6` 6 · `--space-8` 8 · `
 | `--shadow-menu` | `0 0 0 .5px rgba(0,0,0,.15), 0 8px 24px rgba(0,0,0,.18)` | `0 0 0 .5px rgba(0,0,0,.85), inset 0 0 0 .5px rgba(255,255,255,.14), 0 8px 24px rgba(0,0,0,.45)` |
 | `--shadow-alert` | `0 0 0 .5px rgba(0,0,0,.15), 0 20px 50px rgba(0,0,0,.28)` | `0 0 0 .5px rgba(0,0,0,.85), inset 0 0 0 .5px rgba(255,255,255,.14), 0 20px 50px rgba(0,0,0,.55)` |
 | `--shadow-control` | `0 0 0 .5px rgba(0,0,0,.14), 0 .5px 1.5px rgba(0,0,0,.14)` | `0 0 0 .5px rgba(0,0,0,.35), inset 0 .5px 0 rgba(255,255,255,.10)` |
+| `--shadow-primary-button` | `0 .5px 1.5px rgba(0,0,0,.2)` | `0 .5px 1.5px rgba(0,0,0,.2)` |
 | `--shadow-segment` | `0 0 0 .5px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.14)` | `0 1px 2px rgba(0,0,0,.30)` |
 | `--shadow-toast` | `0 4px 14px rgba(0,0,0,.25)` | `0 4px 14px rgba(0,0,0,.45)` |
 

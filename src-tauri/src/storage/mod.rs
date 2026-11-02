@@ -5,7 +5,9 @@ pub mod app_icons;
 pub mod clips;
 pub mod fts;
 mod migrations;
+pub mod reset;
 pub mod settings;
+pub mod status;
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -37,6 +39,14 @@ pub enum StorageError {
     /// The cursor of a list query is not one this app handed out.
     #[error("the list cursor is not valid")]
     InvalidCursor,
+}
+
+impl StorageError {
+    /// The key is gone or does not open the file: the history can never be read again, so it may
+    /// be started over. Any other failure can pass (a denied Keychain prompt, a locked Keychain).
+    pub fn is_key_lost(&self) -> bool {
+        matches!(self, Self::KeyMissing | Self::WrongKey)
+    }
 }
 
 /// The one connection, shared between threads. Services borrow it through [`Db::with_conn`];
@@ -93,17 +103,15 @@ pub fn open_in_dir(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError>
     open(&path, &key)
 }
 
-/// What `setup` does at startup: the database, or `None` after logging why not, so the app still
-/// runs (spec *Encryption*: a missing key leaves the file untouched). Only the error code is
-/// logged, never a path or a key.
-pub fn open_or_report(dir: &Path, store: &dyn KeyStore) -> Option<Db> {
-    match open_in_dir(dir, store) {
-        Ok(db) => Some(db),
-        Err(error) => {
-            tracing::error!(code = %AppError::from(error).code, "the history database is unavailable");
-            None
-        }
-    }
+/// What `setup` does at startup: the database, or the error to report (logged by its code only).
+/// A database whose key is gone is left untouched (spec *Encryption*): the app runs without it
+/// and offers a reset. Only the error code is logged, never a path or a key.
+pub fn open_for_startup(dir: &Path, store: &dyn KeyStore) -> Result<Db, AppError> {
+    open_in_dir(dir, store).map_err(|error| {
+        let error = AppError::from(error);
+        tracing::error!(code = %error.code, "the history database is unavailable");
+        error
+    })
 }
 
 #[cfg(test)]
@@ -158,25 +166,31 @@ mod tests {
     }
 
     #[test]
-    fn open_or_report_returns_the_database() {
+    fn open_for_startup_returns_the_database() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert!(open_or_report(dir.path(), &FakeKeyStore::default()).is_some());
+        assert!(open_for_startup(dir.path(), &FakeKeyStore::default()).is_ok());
     }
 
     #[test]
-    fn open_or_report_runs_without_a_database_when_the_key_is_gone() {
+    fn open_for_startup_reports_the_code_when_the_key_is_gone() {
         let dir = tempfile::tempdir().unwrap();
         open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
-        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
 
-        let db = open_or_report(dir.path(), &FakeKeyStore::default());
+        let error = open_for_startup(dir.path(), &FakeKeyStore::default()).unwrap_err();
 
-        assert!(db.is_none());
-        assert_eq!(
-            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
-            before
-        );
+        assert_eq!(error.code, "storage_key_missing");
+    }
+
+    #[test]
+    fn open_for_startup_reports_the_code_of_a_wrong_key() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let other = FakeKeyStore::with_key(DbKey::from_bytes([9; 32]));
+
+        let error = open_for_startup(dir.path(), &other).unwrap_err();
+
+        assert_eq!(error.code, "storage_wrong_key");
     }
 
     #[test]

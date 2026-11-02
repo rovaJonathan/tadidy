@@ -65,6 +65,9 @@ pub trait KeyStore: Send + Sync {
     /// Stores `key` if none is stored, else [`KeyStoreError::AlreadyExists`]. Never overwrites:
     /// a key that a database already uses would be lost for good (two first launches can race).
     fn set(&self, key: &DbKey) -> Result<(), KeyStoreError>;
+    /// Stores `key` whether or not one is already stored. Only the history reset uses it: the
+    /// database the old key belonged to has just been moved aside.
+    fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError>;
 }
 
 /// An in-memory [`KeyStore`] for tests; the real one is the Keychain.
@@ -72,6 +75,8 @@ pub trait KeyStore: Send + Sync {
 pub struct FakeKeyStore {
     key: Mutex<Option<DbKey>>,
     failing: bool,
+    /// Only `replace` fails: a Keychain that reads but refuses to write.
+    replace_fails: bool,
     /// The next `get` answers "no key" although one is stored: a launch that lost a race.
     hide_next_get: Mutex<bool>,
 }
@@ -89,6 +94,14 @@ impl FakeKeyStore {
         Self {
             hide_next_get: Mutex::new(true),
             ..Self::with_key(key)
+        }
+    }
+
+    /// A store that reads and creates but whose `replace` fails.
+    pub fn refusing_replace() -> Self {
+        Self {
+            replace_fails: true,
+            ..Self::default()
         }
     }
 
@@ -123,6 +136,14 @@ impl KeyStore for FakeKeyStore {
             return Err(KeyStoreError::AlreadyExists);
         }
         *stored = Some(key.clone());
+        Ok(())
+    }
+
+    fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError> {
+        if self.failing || self.replace_fails {
+            return Err(KeyStoreError::Unavailable);
+        }
+        *self.key.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.clone());
         Ok(())
     }
 }

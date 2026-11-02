@@ -10,6 +10,7 @@ import {
   getAppIcon,
   getSettings,
   getShortcutStatus,
+  getStorageStatus,
   hideWindow,
   listClips,
   onAccessibilityChanged,
@@ -17,9 +18,11 @@ import {
   onClipsChanged,
   onPanelShown,
   onSettingsChanged,
+  onStorageChanged,
   openAccessibilitySettings,
   openPreferences,
   pasteClip,
+  resetHistoryDatabase,
   setSettings,
 } from "./api";
 import type { AccessibilityChanged } from "./bindings/AccessibilityChanged";
@@ -33,6 +36,7 @@ import type { PasteResult } from "./bindings/PasteResult";
 import type { Settings } from "./bindings/Settings";
 import type { SettingsPatch } from "./bindings/SettingsPatch";
 import type { ShortcutStatus } from "./bindings/ShortcutStatus";
+import type { StorageStatus } from "./bindings/StorageStatus";
 
 const defaults: Settings = {
   historySize: 500,
@@ -454,5 +458,63 @@ describe("getShortcutStatus", () => {
 
     await expect(getShortcutStatus()).resolves.toEqual(status);
     expect(calls).toEqual(["get_shortcut_status"]);
+  });
+});
+
+describe("getStorageStatus", () => {
+  it("invokes get_storage_status and returns the status", async () => {
+    const calls: string[] = [];
+    const status: StorageStatus = { state: "unavailable", code: "storage_key_missing", canReset: true };
+    mockIPC((cmd) => {
+      calls.push(cmd);
+      return cmd === "get_storage_status" ? status : undefined;
+    });
+
+    expect(await getStorageStatus()).toEqual(status);
+    expect(calls).toEqual(["get_storage_status"]);
+  });
+});
+
+describe("resetHistoryDatabase", () => {
+  it("invokes reset_history_database with no argument", async () => {
+    const seen: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      seen.push({ cmd, args });
+    });
+
+    await resetHistoryDatabase();
+
+    expect(seen).toEqual([{ cmd: "reset_history_database", args: {} }]);
+  });
+
+  it("rejects with the core's invalid_state when the database works", async () => {
+    mockIPC(() => {
+      throw { code: "invalid_state", message: "The history database works: it cannot be reset." };
+    });
+
+    await expect(resetHistoryDatabase()).rejects.toMatchObject({ code: "invalid_state" });
+  });
+});
+
+describe("onStorageChanged", () => {
+  it("hands the status of storage://changed to the callback", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const seen: StorageStatus[] = [];
+    await onStorageChanged((status) => seen.push(status));
+
+    await emit("storage://changed", { state: "ready", code: null, canReset: false });
+
+    expect(seen).toEqual([{ state: "ready", code: null, canReset: false }]);
+  });
+
+  it("stops calling the callback once unlistened", async () => {
+    mockIPC(() => undefined, { shouldMockEvents: true });
+    const seen: StorageStatus[] = [];
+    const unlisten = await onStorageChanged((status) => seen.push(status));
+
+    unlisten();
+    await emit("storage://changed", { state: "ready", code: null, canReset: false });
+
+    expect(seen).toEqual([]);
   });
 });

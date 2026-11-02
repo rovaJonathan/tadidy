@@ -1,9 +1,18 @@
 // State of the clip browser: the search text, the pages of clips it shows, the selection and the
 // source-app icons. The core owns the data; this class only mirrors what `list_clips` returns.
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
-import { deleteClips, getAppIcon, listClips, onClipsChanged } from "../api";
+import {
+  deleteClips,
+  getAppIcon,
+  getStorageStatus,
+  listClips,
+  onClipsChanged,
+  onStorageChanged,
+  resetHistoryDatabase,
+} from "../api";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
+import type { StorageStatus } from "../bindings/StorageStatus";
 
 /** SRC-01: the list follows the typing, 50 ms after the last key. */
 const SEARCH_DEBOUNCE_MS = 50;
@@ -22,6 +31,16 @@ export class ClipsStore {
   loading = $state(false);
   /** The first page has arrived: before that, an empty list is not an empty history. */
   loaded = $state(false);
+  /** What the core last said about the history database (`StorageStatus`); the flags below derive from it. */
+  storage = $state<StorageStatus>({ state: "ready", code: null, canReset: false });
+  /** The core could not open the history database: nothing is listed until it is reset. */
+  storageUnavailable = $derived(this.storage.state === "unavailable");
+  /** The last reset did not work: the history is still unavailable and nothing moved. */
+  resetFailed = $state(false);
+  /** A reset is running (it can wait on a Keychain prompt): the button stays off and a second request is ignored. */
+  resetting = $state(false);
+  /** The reset may be offered: the key is lost, not only out of reach for now. The core decides (`StorageStatus.canReset`). */
+  storageCanReset = $derived(this.storage.state === "unavailable" && this.storage.canReset);
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */
   readonly iconUrls = new SvelteMap<string, string>();
@@ -43,20 +62,44 @@ export class ClipsStore {
   #firstPage: Promise<void> = Promise.resolve();
   #frame: number | undefined;
   #unlisten: (() => void) | undefined;
+  #unlistenStorage: (() => void) | undefined;
+  /** A `storage://changed` arrived: it is newer than the status asked for at start. */
+  #storageAnnounced = false;
+  #markStorageKnown!: () => void;
+  /** Settles once the storage status is known (asked for, or announced), or the store is destroyed. */
+  readonly storageKnown = new Promise<void>((resolve) => (this.#markStorageKnown = resolve));
   readonly #requestedIcons = new SvelteSet<string>();
 
-  /** Loads the first page and follows `clips://changed` until `destroy`. */
+  /** Loads the first page and follows `clips://changed` and `storage://changed` until `destroy`. */
   async start(): Promise<void> {
     const listening = onClipsChanged(() => this.#scheduleRefresh()).then((unlisten) => {
       if (this.#destroyed) void unlisten();
       else this.#unlisten = unlisten;
     });
+    const listeningStorage = onStorageChanged((status) => this.#applyStorage(status)).then((unlisten) => {
+      if (this.#destroyed) void unlisten();
+      else this.#unlistenStorage = unlisten;
+    });
+    // Listening first: an announcement made while the status is asked for must not be missed.
+    // A status that cannot be read (or a listener that cannot be set) counts as ready: the list
+    // then fails or shows by itself.
+    let status: StorageStatus | undefined;
+    try {
+      await listeningStorage;
+      status = await getStorageStatus();
+    } catch {
+      status = undefined;
+    }
+    // An announcement made meanwhile is newer than this answer.
+    if (status !== undefined && !this.#destroyed && !this.#storageAnnounced) this.#setStorage(status);
+    this.#markStorageKnown();
     await Promise.all([listening, this.#loadFirstPage(true)]);
   }
 
   /** Releases the event listener, the pending timers and the icon object URLs. */
   destroy(): void {
     this.#destroyed = true;
+    this.#markStorageKnown();
     this.#generation++;
     clearTimeout(this.#debounce);
     this.#debounce = undefined;
@@ -64,6 +107,8 @@ export class ClipsStore {
     this.#frame = undefined;
     this.#unlisten?.();
     this.#unlisten = undefined;
+    this.#unlistenStorage?.();
+    this.#unlistenStorage = undefined;
     for (const url of this.iconUrls.values()) URL.revokeObjectURL(url);
     this.iconUrls.clear();
   }
@@ -88,6 +133,8 @@ export class ClipsStore {
     this.#debounce = undefined;
     this.search = "";
     this.selectedIndex = 0;
+    // An error from an attempt of an earlier session would show before any new attempt.
+    this.resetFailed = false;
     return this.#loadFirstPage(false);
   }
 
@@ -150,6 +197,26 @@ export class ClipsStore {
     }
   }
 
+  /** Asks the core to start over with an empty history; it announces the result with `storage://changed`. */
+  async resetHistory(): Promise<void> {
+    if (this.resetting) return;
+    this.resetting = true;
+    this.resetFailed = false;
+    try {
+      await resetHistoryDatabase();
+    } catch {
+      // Still unavailable, nothing moved: the error state says so and the user can retry.
+      // A refusal or a failure announces nothing, so read the status: the message and the button
+      // are decided from one state. A refusal that lands after the history became ready (another
+      // window won) says nothing.
+      const status = await getStorageStatus().catch((): undefined => undefined);
+      if (status !== undefined && !this.#destroyed) this.#setStorage(status);
+      if (this.storageUnavailable && this.storageCanReset) this.resetFailed = true;
+    } finally {
+      this.resetting = false;
+    }
+  }
+
   /** Fetches the icon of a source app, once per bundle id. */
   requestIcon(bundleId: string): void {
     if (this.#destroyed || this.#requestedIcons.has(bundleId)) return;
@@ -173,7 +240,34 @@ export class ClipsStore {
     return this.#firstPage;
   }
 
+  #setStorage(status: StorageStatus): void {
+    this.storage = status;
+    if (!this.storageUnavailable) this.resetFailed = false;
+  }
+
+  /** The core announced that the database became usable or unusable. */
+  #applyStorage(status: StorageStatus): void {
+    if (this.#destroyed) return;
+    this.#storageAnnounced = true;
+    this.#setStorage(status);
+    this.#markStorageKnown();
+    if (this.storageUnavailable) {
+      // Drop any answer on its way and what is shown: it belongs to a database that is gone.
+      this.#generation++;
+      this.items = [];
+      this.total = 0;
+      this.nextCursor = null;
+      this.loaded = false;
+      this.loading = false;
+      this.selectedIndex = 0;
+    } else {
+      // The reset also announces `clips://changed`: one reload per animation frame for both.
+      this.#scheduleRefresh();
+    }
+  }
+
   async #fetchFirstPage(keepSelection: boolean): Promise<void> {
+    if (this.storageUnavailable) return;
     const generation = ++this.#generation;
     this.loading = true;
     const asked = this.query;

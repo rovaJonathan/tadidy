@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { clearHistory, listClips, onClearHistoryRequested, onPanelShown } from "../lib/api";
+  import { clearHistory, isAppError, listClips, onClearHistoryRequested, onPanelShown } from "../lib/api";
   import ClearHistoryDialog from "../lib/components/ClearHistoryDialog.svelte";
   import { reportFailure } from "../lib/report";
   import BrowserHost from "./BrowserHost.svelte";
@@ -29,9 +29,13 @@
 
   /** The tray menu's Clear history… (HIS-06): the confirmation says how many clips are about to go. */
   async function askToClear() {
+    // No list to size while the history database is unavailable: the error state explains why.
+    if (await host?.storageUnavailable()) return;
     try {
       clearing = (await listClips({ limit: 1 })).total;
     } catch (error) {
+      // The core already says the database is unavailable, and the error state explains why.
+      if (isAppError(error) && error.code === "storage_unavailable") return;
       reportFailure("list_clips", error);
     }
   }

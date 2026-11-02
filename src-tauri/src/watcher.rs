@@ -65,6 +65,7 @@ impl From<StorageError> for WatcherError {
 }
 
 /// What the watcher needs from the system.
+#[derive(Clone)]
 pub struct Services {
     pub pasteboard: Arc<dyn Pasteboard>,
     pub workspace: Arc<dyn Workspace>,
@@ -254,7 +255,7 @@ impl Drop for WatcherHandle {
 /// Starts the watcher once the database is open and keeps its handle in the app state. Returns
 /// `false`, starting nothing, when the database is unavailable.
 pub fn start(state: &AppState, services: Services) -> bool {
-    let Some(db) = state.db.clone() else {
+    let Some(db) = state.db() else {
         tracing::warn!("the clipboard watcher is not started: no history database");
         return false;
     };
