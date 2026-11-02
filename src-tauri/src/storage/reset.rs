@@ -281,7 +281,54 @@ mod tests {
         let result = reset(dir.path(), &FakeKeyStore::failing());
 
         assert!(result.is_err());
-        assert_eq!(read(dir.path(), "tadidy.db.bak"), b"first history");
+        assert_eq!(read(dir.path(), "tadidy.db.bak.1"), b"first history");
+    }
+
+    #[test]
+    fn the_history_left_by_an_interrupted_reset_survives_the_next_reset() {
+        // Reset #1 moved the history aside, opened an empty database and was stopped before it
+        // stored the key: `tadidy.db` is that empty database, the history waits as `.bak.new`.
+        // The next reset must not replace the history with the empty database.
+        let (dir, empty) = orphaned_database();
+        std::fs::write(dir.path().join("tadidy.db.bak.new"), b"first history").unwrap();
+        std::fs::write(dir.path().join("tadidy.db-wal.bak.new"), b"first wal").unwrap();
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak.1"), b"first history");
+        assert_eq!(read(dir.path(), "tadidy.db-wal.bak.1"), b"first wal");
+        assert_eq!(read(dir.path(), "tadidy.db.bak"), empty);
+        assert!(!dir.path().join("tadidy.db.bak.new").exists());
+        assert!(!dir.path().join("tadidy.db-wal.bak.new").exists());
+    }
+
+    #[test]
+    fn a_kept_history_never_takes_the_name_of_another_one() {
+        let (dir, _) = orphaned_database();
+        std::fs::write(dir.path().join("tadidy.db.bak.1"), b"kept before").unwrap();
+        std::fs::write(dir.path().join("tadidy.db.bak.new"), b"first history").unwrap();
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak.1"), b"kept before");
+        assert_eq!(read(dir.path(), "tadidy.db.bak.2"), b"first history");
+    }
+
+    #[test]
+    fn a_backup_that_cannot_be_written_does_not_block_every_later_reset() {
+        // `tadidy.db.bak` is a non-empty folder, so no database file can become that backup: the
+        // reset must still go through, with the history kept under another name.
+        let (dir, before) = orphaned_database();
+        std::fs::write(dir.path().join("tadidy.db.bak.new"), b"first history").unwrap();
+        let blocker = dir.path().join("tadidy.db.bak");
+        std::fs::create_dir(&blocker).unwrap();
+        std::fs::write(blocker.join("x"), b"x").unwrap();
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak.1"), b"first history");
+        // The history this reset moved aside waits under its staging name.
+        assert_eq!(read(dir.path(), "tadidy.db.bak.new"), before);
     }
 
     #[test]
