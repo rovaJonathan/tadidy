@@ -35,8 +35,7 @@
       clearing = (await listClips({ limit: 1 })).total;
     } catch (error) {
       // The core already says the database is unavailable, and the error state explains why.
-      if (typeof error === "object" && error !== null && "code" in error && error.code === "storage_unavailable")
-        return;
+      if (isAppError(error) && error.code === "storage_unavailable") return;
       reportFailure("list_clips", error);
     }
   }
