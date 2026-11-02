@@ -1093,6 +1093,39 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
     expect(core.commands).not.toContain("list_clips");
   });
 
+  it("shows the button when the core says the history can be reset, whatever the code", async () => {
+    fakeCore(history, { storage: { state: "unavailable", code: "storage_new_cause", canReset: true } });
+
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    expect(container.querySelector("#btn-reset-history")).not.toBeNull();
+  });
+
+  it("hides the button when the core says the history cannot be reset, even for a code that could be", async () => {
+    fakeCore(history, { storage: { state: "unavailable", code: "storage_key_missing", canReset: false } });
+
+    const { container } = render(ClipBrowser);
+    await settle();
+
+    expect(container.querySelector("#storage-unavailable")).not.toBeNull();
+    expect(container.querySelector("#btn-reset-history")).toBeNull();
+  });
+
+  it("takes the button away when the core announces that the failure may be temporary", async () => {
+    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const { container } = render(ClipBrowser);
+    await settle();
+    expect(container.querySelector("#btn-reset-history")).not.toBeNull();
+
+    core.setStorage(UNAVAILABLE_TEMPORARY);
+    await emit("storage://changed", UNAVAILABLE_TEMPORARY);
+    await settle();
+
+    expect(container.querySelector("#storage-unavailable")).not.toBeNull();
+    expect(container.querySelector("#btn-reset-history")).toBeNull();
+  });
+
   it("lets Return and Space activate the Reset history… button instead of pasting or moving the focus", async () => {
     fakeCore(history, { storage: UNAVAILABLE });
     const { container } = render(ClipBrowser);

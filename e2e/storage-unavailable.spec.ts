@@ -2,8 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { syntheticClips } from "./support/fixtures";
 import { emitEvent, ipcCalls, mockIpc } from "./support/mock-ipc";
 
-const UNAVAILABLE = { state: "unavailable", code: "storage_key_missing" };
-const READY = { state: "ready", code: null };
+const UNAVAILABLE = { state: "unavailable", code: "storage_key_missing", canReset: true };
+const READY = { state: "ready", code: null, canReset: false };
 
 /** The clip browser of `url` when the core could not open the history database. */
 async function openUnavailable(page: Page, url: string) {
@@ -81,7 +81,10 @@ for (const url of ["/popover.html", "/"]) {
 test("a failure that may be temporary shows the error state without a reset button", async ({ page }) => {
   await mockIpc(
     page,
-    { get_storage_status: { state: "unavailable", code: "storage_error" }, reset_history_database: null },
+    {
+      get_storage_status: { state: "unavailable", code: "storage_error", canReset: false },
+      reset_history_database: null,
+    },
     { clips: syntheticClips(3) },
   );
 

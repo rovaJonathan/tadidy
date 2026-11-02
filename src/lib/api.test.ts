@@ -464,7 +464,7 @@ describe("getShortcutStatus", () => {
 describe("getStorageStatus", () => {
   it("invokes get_storage_status and returns the status", async () => {
     const calls: string[] = [];
-    const status: StorageStatus = { state: "unavailable", code: "storage_key_missing" };
+    const status: StorageStatus = { state: "unavailable", code: "storage_key_missing", canReset: true };
     mockIPC((cmd) => {
       calls.push(cmd);
       return cmd === "get_storage_status" ? status : undefined;
@@ -502,9 +502,9 @@ describe("onStorageChanged", () => {
     const seen: StorageStatus[] = [];
     await onStorageChanged((status) => seen.push(status));
 
-    await emit("storage://changed", { state: "ready", code: null });
+    await emit("storage://changed", { state: "ready", code: null, canReset: false });
 
-    expect(seen).toEqual([{ state: "ready", code: null }]);
+    expect(seen).toEqual([{ state: "ready", code: null, canReset: false }]);
   });
 
   it("stops calling the callback once unlistened", async () => {
@@ -513,7 +513,7 @@ describe("onStorageChanged", () => {
     const unlisten = await onStorageChanged((status) => seen.push(status));
 
     unlisten();
-    await emit("storage://changed", { state: "ready", code: null });
+    await emit("storage://changed", { state: "ready", code: null, canReset: false });
 
     expect(seen).toEqual([]);
   });

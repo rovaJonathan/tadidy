@@ -5,10 +5,10 @@ import type { ClipSummary } from "../lib/bindings/ClipSummary";
 import type { Page } from "../lib/bindings/Page";
 import type { StorageStatus } from "../lib/bindings/StorageStatus";
 
-export const READY: StorageStatus = { state: "ready", code: null };
+export const READY: StorageStatus = { state: "ready", code: null, canReset: false };
 /** A failure that may be temporary (Keychain denied or locked): the history must not be reset. */
-export const UNAVAILABLE_TEMPORARY: StorageStatus = { state: "unavailable", code: "storage_error" };
-export const UNAVAILABLE: StorageStatus = { state: "unavailable", code: "storage_key_missing" };
+export const UNAVAILABLE_TEMPORARY: StorageStatus = { state: "unavailable", code: "storage_error", canReset: false };
+export const UNAVAILABLE: StorageStatus = { state: "unavailable", code: "storage_key_missing", canReset: true };
 
 export function clip(n: number, over: Partial<ClipSummary> = {}): ClipSummary {
   return {
