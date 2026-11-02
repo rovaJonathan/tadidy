@@ -41,6 +41,14 @@ pub enum StorageError {
     InvalidCursor,
 }
 
+impl StorageError {
+    /// The key is gone or does not open the file: the history can never be read again, so it may
+    /// be started over. Any other failure can pass (a denied Keychain prompt, a locked Keychain).
+    pub fn is_key_lost(&self) -> bool {
+        matches!(self, Self::KeyMissing | Self::WrongKey)
+    }
+}
+
 /// The one connection, shared between threads. Services borrow it through [`Db::with_conn`];
 /// they never block the main thread on it (AGENTS.md §13).
 #[derive(Clone)]

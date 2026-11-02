@@ -187,9 +187,8 @@ impl AppState {
         let db = match storage::open_in_dir(&reset.dir, reset.store.as_ref()) {
             Ok(db) => db,
             Err(error) => {
-                // One rule for the button and for the core: `StorageStatus::can_reset`.
-                let failure = AppError::from(error);
-                if !StorageStatus::unavailable(failure.code.as_str()).can_reset {
+                // The same rule as the button's `StorageStatus::can_reset`, tied by a test.
+                if !error.is_key_lost() {
                     // Nothing is remembered: a prompt that was denied this time must not hide
                     // the reset for good when the key really is gone.
                     return Err(AppError::new(
