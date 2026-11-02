@@ -214,6 +214,38 @@ mod tests {
     }
 
     #[test]
+    fn a_wal_is_never_promoted_beside_a_backup_that_was_not_replaced() {
+        // The main file's backup cannot be written (a non-empty folder is in the way), but the
+        // wal's can: a wal of this database must not end up beside the older database.
+        let (dir, _) = orphaned_database();
+        std::fs::write(dir.path().join(WAL), b"wal").unwrap();
+        let blocker = dir.path().join("tadidy.db.bak");
+        std::fs::create_dir(&blocker).unwrap();
+        std::fs::write(blocker.join("x"), b"x").unwrap();
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert!(!dir.path().join("tadidy.db-wal.bak").exists());
+        // Nothing is lost: it waits under its staging name.
+        assert_eq!(read(dir.path(), "tadidy.db-wal.bak.new"), b"wal");
+    }
+
+    #[test]
+    fn a_stale_wal_without_a_database_file_does_not_replace_an_older_wal_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("tadidy.db.bak"), b"older").unwrap();
+        std::fs::write(dir.path().join("tadidy.db-wal.bak"), b"older wal").unwrap();
+        std::fs::write(dir.path().join(WAL), b"stale wal").unwrap();
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak"), b"older");
+        assert_eq!(read(dir.path(), "tadidy.db-wal.bak"), b"older wal");
+        // And it is out of the way of the new database.
+        assert!(!dir.path().join(WAL).exists());
+    }
+
+    #[test]
     fn a_staged_file_left_by_an_earlier_reset_is_never_overwritten() {
         // An earlier reset worked but could not rename `.bak.new` to `.bak`: the history it moved
         // aside exists only under that name.

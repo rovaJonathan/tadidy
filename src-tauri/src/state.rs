@@ -725,18 +725,12 @@ mod tests {
         );
         assert!(!dir.path().join("tadidy.db.bak").exists());
         assert!(state.db().is_none());
-        // The window learns it: the reset button goes away.
+        // One denied prompt does not hide the reset for good: the key is still lost.
         assert_eq!(
             state.storage_status(),
-            StorageStatus::unavailable("storage_error")
+            StorageStatus::unavailable("storage_key_missing")
         );
-        assert_eq!(
-            events.events(),
-            vec![(
-                "storage://changed",
-                json!({ "state": "unavailable", "code": "storage_error", "canReset": false })
-            )]
-        );
+        assert!(events.events().is_empty());
     }
 
     #[test]
@@ -933,6 +927,50 @@ mod tests {
         });
 
         assert!(state.db().is_some());
+    }
+
+    #[test]
+    fn the_settings_are_announced_while_the_settings_gate_is_still_held() {
+        use std::sync::mpsc;
+        // A sink that holds `settings://changed` back until the test lets it go.
+        struct Hold {
+            entered: Mutex<mpsc::Sender<()>>,
+            release: Mutex<mpsc::Receiver<()>>,
+        }
+        impl EventSink for Hold {
+            fn emit(&self, event: &'static str, _: serde_json::Value) {
+                if event == SETTINGS_CHANGED {
+                    self.entered.lock().unwrap().send(()).unwrap();
+                    self.release.lock().unwrap().recv().unwrap();
+                }
+            }
+        }
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (dir, _) = orphaned_dir();
+        let sink = Arc::new(Hold {
+            entered: Mutex::new(entered_tx),
+            release: Mutex::new(release_rx),
+        });
+        let services = watcher::Services {
+            events: sink,
+            ..watcher_services(&Arc::new(RecordingEventSink::default()))
+        };
+        let state = state().with_storage(Err(key_missing())).with_storage_reset(
+            dir.path().to_path_buf(),
+            Arc::new(FakeKeyStore::default()),
+            services,
+        );
+
+        std::thread::scope(|scope| {
+            let reset = scope.spawn(|| state.reset_history());
+            entered_rx.recv().unwrap();
+            // A `set_settings` call now would read settings the event does not carry yet.
+            let held = state.settings_gate.try_lock().is_err();
+            release_tx.send(()).unwrap();
+            assert!(reset.join().unwrap().is_ok());
+            assert!(held);
+        });
     }
 
     #[test]
