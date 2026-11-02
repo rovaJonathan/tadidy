@@ -8,6 +8,8 @@
         canReset: boolean;
         /** The last reset did not work. */
         failed: boolean;
+        /** A reset is running: the button is off. */
+        resetting: boolean;
         /** Reset history… was clicked: the host opens the confirmation. */
         onreset: () => void;
       };
@@ -42,7 +44,9 @@
       </p>
     {/if}
     {#if props.canReset}
-      <button type="button" class="btn" id="btn-reset-history" onclick={props.onreset}>Reset history…</button>
+      <button type="button" class="btn" id="btn-reset-history" disabled={props.resetting} onclick={props.onreset}
+        >Reset history…</button
+      >
     {/if}
   </div>
 {:else}
@@ -120,6 +124,10 @@
 
   .btn:active {
     background: var(--color-fill-pressed);
+  }
+
+  .btn:disabled {
+    color: var(--color-text-disabled);
   }
 
   .btn:focus-visible {

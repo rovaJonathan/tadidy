@@ -37,6 +37,8 @@ export class ClipsStore {
   storageUnavailable = $derived(this.storage.state === "unavailable");
   /** The last reset did not work: the history is still unavailable and nothing moved. */
   resetFailed = $state(false);
+  /** A reset is running (it can wait on a Keychain prompt): the button stays off and a second request is ignored. */
+  resetting = $state(false);
   /** The reset may be offered: the key is lost, not only out of reach for now. The core decides (`StorageStatus.canReset`). */
   storageCanReset = $derived(this.storage.state === "unavailable" && this.storage.canReset);
   selectedIndex = $state(0);
@@ -197,17 +199,21 @@ export class ClipsStore {
 
   /** Asks the core to start over with an empty history; it announces the result with `storage://changed`. */
   async resetHistory(): Promise<void> {
+    if (this.resetting) return;
+    this.resetting = true;
     this.resetFailed = false;
     try {
       await resetHistoryDatabase();
     } catch {
       // Still unavailable, nothing moved: the error state says so and the user can retry.
-      // The core announces its status just before it refuses, but the refusal can arrive first:
-      // read the status, so the message and the button are decided from one state. A refusal that
-      // lands after the history became ready (another window won) says nothing.
+      // A refusal or a failure announces nothing, so read the status: the message and the button
+      // are decided from one state. A refusal that lands after the history became ready (another
+      // window won) says nothing.
       const status = await getStorageStatus().catch((): undefined => undefined);
       if (status !== undefined && !this.#destroyed) this.#setStorage(status);
       if (this.storageUnavailable && this.storageCanReset) this.resetFailed = true;
+    } finally {
+      this.resetting = false;
     }
   }
 

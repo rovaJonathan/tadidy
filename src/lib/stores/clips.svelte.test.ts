@@ -632,6 +632,67 @@ describe("ClipsStore, a reset that is refused", () => {
   });
 });
 
+describe("ClipsStore, a reset in progress", () => {
+  function slowReset(outcome: "resolve" | "reject") {
+    const answer = deferred<void>();
+    let asked = 0;
+    fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE });
+    mockIPC(
+      (cmd) => {
+        if (cmd === "reset_history_database") {
+          asked++;
+          return outcome === "resolve"
+            ? answer.promise
+            : answer.promise.then(() => Promise.reject({ code: "storage_error", message: "failed" }));
+        }
+        if (cmd === "get_storage_status") return UNAVAILABLE;
+        if (cmd === "list_clips") return page([clip(1)]);
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+    return { release: () => answer.resolve(), asked: () => asked };
+  }
+
+  it("is flagged until the core answers, and a second request is ignored", async () => {
+    const reset = slowReset("resolve");
+    await store.start();
+
+    const first = store.resetHistory();
+    const second = store.resetHistory();
+
+    expect(store.resetting).toBe(true);
+    reset.release();
+    await Promise.all([first, second]);
+    expect(store.resetting).toBe(false);
+    expect(reset.asked()).toBe(1);
+  });
+
+  it("is no longer flagged once the reset failed", async () => {
+    const reset = slowReset("reject");
+    await store.start();
+
+    const asking = store.resetHistory();
+    reset.release();
+    await asking;
+
+    expect(store.resetting).toBe(false);
+    expect(store.resetFailed).toBe(true);
+  });
+
+  it("does not clear the failure of a reset still running when a second one is ignored", async () => {
+    const reset = slowReset("reject");
+    await store.start();
+    const first = store.resetHistory();
+
+    await store.resetHistory();
+    reset.release();
+    await first;
+
+    expect(store.resetFailed).toBe(true);
+  });
+});
+
 describe("ClipsStore, when the storage events cannot be listened to", () => {
   it("still loads the list and settles the storage status", async () => {
     mockIPC((cmd, args) => {

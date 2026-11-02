@@ -8,10 +8,12 @@
     canReset: boolean;
     /** The last reset did not work. */
     failed?: boolean;
+    /** A reset is running: the button is off. */
+    resetting?: boolean;
   }
 
-  let { onreset, canReset, failed = false }: Props = $props();
+  let { onreset, canReset, failed = false, resetting = false }: Props = $props();
 </script>
 
 <!-- What replaces the list when the history database cannot be opened; the look is the empty states'. -->
-<EmptyState variant="storage" {canReset} {failed} {onreset} />
+<EmptyState variant="storage" {canReset} {failed} {resetting} {onreset} />

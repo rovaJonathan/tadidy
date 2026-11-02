@@ -226,6 +226,7 @@
       <StorageUnavailable
         canReset={store.storageCanReset}
         failed={store.resetFailed}
+        resetting={store.resetting}
         onreset={() => (confirmingReset = true)}
       />
     {:else if store.loaded && store.items.length === 0}
