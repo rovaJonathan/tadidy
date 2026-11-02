@@ -16,7 +16,7 @@ const BACKUP: &str = ".bak";
 /// Moves `tadidy.db`, `tadidy.db-wal` and `tadidy.db-shm` aside as `.bak`, opens a new database
 /// with a new key, then stores that key. Nothing is lost on a failure: the files are back where
 /// they were, the stored key was not touched until the new database opened, and an older `.bak`
-/// is replaced only once everything else succeeded.
+/// set is replaced (whole) only once everything else succeeded.
 pub fn reset(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
     reset_with(dir, store, open)
 }
@@ -80,17 +80,21 @@ fn start_over(
     Ok(db)
 }
 
-/// Staging names become the backups, replacing the older ones.
+/// Staging names become the backups, replacing the older ones. A backup file of the older
+/// reset that nothing replaced goes: restored by hand beside the new main file, a `-wal` from
+/// another database could be replayed into it.
 fn promote(dir: &Path, staged: &[String]) {
-    for name in staged {
-        if std::fs::rename(
-            dir.join(format!("{name}{STAGED}")),
-            dir.join(format!("{name}{BACKUP}")),
-        )
-        .is_err()
-        {
-            // The old history is still on disk under its staging name; the reset itself worked.
-            tracing::warn!("a database backup could not be renamed");
+    // With no database file to move, the older backups are all there is: they stay.
+    let replaces_the_set = staged.iter().any(|name| name == DB_FILE_NAME);
+    for name in file_names() {
+        let backup = dir.join(format!("{name}{BACKUP}"));
+        if staged.contains(&name) {
+            if std::fs::rename(dir.join(format!("{name}{STAGED}")), &backup).is_err() {
+                // The old history is still on disk under its staging name; the reset itself worked.
+                tracing::warn!("a database backup could not be renamed");
+            }
+        } else if replaces_the_set && backup.exists() && std::fs::remove_file(&backup).is_err() {
+            tracing::warn!("an older database backup could not be removed");
         }
     }
 }
@@ -193,6 +197,18 @@ mod tests {
         assert_eq!(read(dir.path(), "tadidy.db.bak"), second);
         assert!(!dir.path().join("tadidy.db-wal.bak").exists());
         assert!(!dir.path().join("tadidy.db-shm.bak").exists());
+    }
+
+    #[test]
+    fn a_reset_with_no_database_file_keeps_the_older_backups() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("tadidy.db.bak"), b"older").unwrap();
+        std::fs::write(dir.path().join("tadidy.db-wal.bak"), b"older wal").unwrap();
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak"), b"older");
+        assert_eq!(read(dir.path(), "tadidy.db-wal.bak"), b"older wal");
     }
 
     #[test]
