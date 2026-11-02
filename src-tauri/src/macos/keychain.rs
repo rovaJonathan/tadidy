@@ -6,12 +6,12 @@ use core_foundation::data::CFData;
 use core_foundation::dictionary::CFDictionary;
 use core_foundation::string::{CFString, CFStringRef};
 use security_framework::base::Error;
-use security_framework::passwords::{PasswordOptions, delete_generic_password, generic_password};
+use security_framework::passwords::{PasswordOptions, generic_password};
 use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
 use security_framework_sys::item::{
     kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecValueData,
 };
-use security_framework_sys::keychain_item::SecItemAdd;
+use security_framework_sys::keychain_item::{SecItemAdd, SecItemUpdate};
 
 use crate::crypto::{DbKey, KeyStore, KeyStoreError};
 
@@ -113,15 +113,42 @@ impl KeyStore for KeychainKeyStore {
         }
     }
 
-    /// Deletes the item (an absent one is fine) and adds the new one. Only the history reset
-    /// calls it, after the database the old key belonged to was moved aside.
+    /// Overwrites the key's data in place, so a failure leaves the old key where it was; an
+    /// absent item is added. Only the history reset calls it, once the new database has opened.
     fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError> {
-        match delete_generic_password(&self.service, &self.account) {
-            Ok(()) => {}
-            Err(error) if is_not_found(&error) => {}
-            Err(_) => return Err(KeyStoreError::Unavailable),
+        // SAFETY: each key is a `kSec*` constant owned by the framework; `wrap_under_get_rule`
+        // retains it, so the dictionaries and the constants release independently.
+        let (query, changes) = unsafe {
+            let query: Vec<(CFString, CFType)> = vec![
+                (
+                    CFString::wrap_under_get_rule(kSecClass),
+                    CFString::wrap_under_get_rule(kSecClassGenericPassword).as_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecAttrService),
+                    CFString::new(&self.service).as_CFType(),
+                ),
+                (
+                    CFString::wrap_under_get_rule(kSecAttrAccount),
+                    CFString::new(&self.account).as_CFType(),
+                ),
+            ];
+            let changes: Vec<(CFString, CFType)> = vec![(
+                CFString::wrap_under_get_rule(kSecValueData),
+                CFData::from_buffer(key.as_bytes()).as_CFType(),
+            )];
+            (query, changes)
+        };
+        let query = CFDictionary::from_CFType_pairs(&query);
+        let changes = CFDictionary::from_CFType_pairs(&changes);
+        // SAFETY: both dictionaries are valid for the whole call.
+        let status =
+            unsafe { SecItemUpdate(query.as_concrete_TypeRef(), changes.as_concrete_TypeRef()) };
+        match status {
+            0 => Ok(()),
+            ERR_SEC_ITEM_NOT_FOUND => self.set(key),
+            _ => Err(KeyStoreError::Unavailable),
         }
-        self.set(key)
     }
 }
 
