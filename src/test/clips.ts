@@ -6,6 +6,8 @@ import type { Page } from "../lib/bindings/Page";
 import type { StorageStatus } from "../lib/bindings/StorageStatus";
 
 export const READY: StorageStatus = { state: "ready", code: null };
+/** A failure that may be temporary (Keychain denied or locked): the history must not be reset. */
+export const UNAVAILABLE_TEMPORARY: StorageStatus = { state: "unavailable", code: "storage_error" };
 export const UNAVAILABLE: StorageStatus = { state: "unavailable", code: "storage_key_missing" };
 
 export function clip(n: number, over: Partial<ClipSummary> = {}): ClipSummary {

@@ -29,4 +29,26 @@ describe("StorageUnavailable", () => {
 
     expect(onreset).toHaveBeenCalledOnce();
   });
+
+  it("offers no reset when the failure may be temporary", () => {
+    const { container } = render(StorageUnavailable, { onreset: vi.fn(), canReset: false });
+
+    expect(container.querySelector("#btn-reset-history")).toBeNull();
+    expect(find(container, ".empty-title").textContent).toBe("Your history can’t be opened.");
+  });
+
+  it("says nothing is wrong with the reset until it failed", () => {
+    const { container } = render(StorageUnavailable, { onreset: vi.fn() });
+
+    expect(container.querySelector("#storage-reset-error")).toBeNull();
+  });
+
+  it("says the reset did not work, and that nothing changed, after a failed reset", () => {
+    const { container } = render(StorageUnavailable, { onreset: vi.fn(), failed: true });
+
+    expect(find(container, "#storage-reset-error").textContent).toBe(
+      "The reset didn’t work. Nothing was changed: try again.",
+    );
+    expect(find(container, "#btn-reset-history")).not.toBeNull();
+  });
 });
