@@ -127,6 +127,24 @@ impl KeyStore for KeychainKeyStore {
     /// Overwrites the key's data in place, so a failure leaves the old key where it was; an
     /// absent item is added. Only the history reset calls it, once the new database has opened.
     fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError> {
+        match self.update(key) {
+            0 => Ok(()),
+            ERR_SEC_ITEM_NOT_FOUND => match self.set(key) {
+                // Added by a concurrent launch since the update looked: update that item once.
+                Err(KeyStoreError::AlreadyExists) => match self.update(key) {
+                    0 => Ok(()),
+                    _ => Err(KeyStoreError::Unavailable),
+                },
+                other => other,
+            },
+            _ => Err(KeyStoreError::Unavailable),
+        }
+    }
+}
+
+impl KeychainKeyStore {
+    /// `SecItemUpdate` of the key's data; the `OSStatus`.
+    fn update(&self, key: &DbKey) -> i32 {
         let query = self.item_query();
         // SAFETY: `kSecValueData` is a `kSec*` constant owned by the framework; `wrap_under_get_rule`
         // retains it, so the dictionary and the constant release independently.
@@ -139,13 +157,7 @@ impl KeyStore for KeychainKeyStore {
         let query = CFDictionary::from_CFType_pairs(&query);
         let changes = CFDictionary::from_CFType_pairs(&changes);
         // SAFETY: both dictionaries are valid for the whole call.
-        let status =
-            unsafe { SecItemUpdate(query.as_concrete_TypeRef(), changes.as_concrete_TypeRef()) };
-        match status {
-            0 => Ok(()),
-            ERR_SEC_ITEM_NOT_FOUND => self.set(key),
-            _ => Err(KeyStoreError::Unavailable),
-        }
+        unsafe { SecItemUpdate(query.as_concrete_TypeRef(), changes.as_concrete_TypeRef()) }
     }
 }
 

@@ -127,10 +127,13 @@ describe("resolveKey", () => {
     expect(resolveKey(press("ArrowDown"), { ...IDLE, buttonFocused: true })).toBe("select-next");
   });
 
-  it("still pastes and copies with a modified Return while a button has the focus", () => {
+  it("still copies with ⌥↩ and leaves the other modified Returns alone while a button has the focus", () => {
     const onButton = { ...IDLE, buttonFocused: true };
 
-    expect(resolveKey(press("Enter", { metaKey: true }), onButton)).toBe("paste");
     expect(resolveKey(press("Enter", { altKey: true }), onButton)).toBe("copy");
+    // Whatever ⌘↩ means, a focused button does not change it.
+    expect(resolveKey(press("Enter", { metaKey: true }), onButton)).toBe(
+      resolveKey(press("Enter", { metaKey: true }), IDLE),
+    );
   });
 });

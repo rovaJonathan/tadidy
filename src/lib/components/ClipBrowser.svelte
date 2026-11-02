@@ -49,6 +49,7 @@
   let renderedRange = $state<RowRange>({ start: 0, end: 0 });
 
   let searchBar = $state<SearchBar>();
+  let root = $state<HTMLDivElement>();
   let list = $state<ClipList>();
 
   /** The clip the delete dialog is about; no dialog while it is `undefined`. */
@@ -168,9 +169,12 @@
     searchBar?.focus();
   }
 
-  function confirmReset() {
+  async function confirmReset() {
     confirmingReset = false;
-    void store.resetHistory();
+    await store.resetHistory();
+    // The dialog's button is gone: the focus goes to the search field, or back to the button for a retry.
+    if (store.resetFailed) root?.querySelector<HTMLButtonElement>("#btn-reset-history")?.focus();
+    else searchBar?.focus();
   }
 
   function cancelReset() {
@@ -195,7 +199,7 @@
 
 <svelte:window {onkeydown} />
 
-<div id="clip-browser" class="clip-browser" data-layout={layout}>
+<div id="clip-browser" class="clip-browser" data-layout={layout} bind:this={root}>
   <SearchBar
     bind:this={searchBar}
     value={store.search}

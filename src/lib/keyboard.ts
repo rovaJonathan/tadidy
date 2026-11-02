@@ -31,7 +31,9 @@ export interface KeyContext {
 export function resolveKey(event: KeyInput, context: KeyContext): BrowserAction | null {
   // WebKit reports the keys of an input method as `Process`, or with `isComposing` set.
   if (context.dialogOpen || event.isComposing || event.key === "Process") return null;
-  if (context.buttonFocused && (event.key === "Enter" || event.key === " ")) return null;
+  // A modified Return is still the browser's paste or copy: only the plain key activates the button.
+  const plain = !event.metaKey && !event.altKey && !event.ctrlKey;
+  if (context.buttonFocused && plain && (event.key === "Enter" || event.key === " ")) return null;
 
   if (event.metaKey) return resolveCommandKey(event.key.toLowerCase(), context);
   if (event.ctrlKey) return null;

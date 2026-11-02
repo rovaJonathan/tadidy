@@ -203,10 +203,18 @@ impl AppState {
                 storage::reset::reset(&reset.dir, reset.store.as_ref())?
             }
         };
-        self.attach(db.clone());
+        {
+            // A `set_settings` call must not interleave with the new settings, the login item
+            // and the shortcut being brought in line.
+            let _settings = self
+                .settings_gate
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            self.attach(db.clone());
+            login_item::reconcile(self.login_item.as_ref(), &self.settings, &db);
+            self.follow_stored_shortcut();
+        }
         watcher::start(self, reset.watcher.clone());
-        login_item::reconcile(self.login_item.as_ref(), &self.settings, &db);
-        self.follow_stored_shortcut();
         let events = &reset.watcher.events;
         let settings = self
             .settings
