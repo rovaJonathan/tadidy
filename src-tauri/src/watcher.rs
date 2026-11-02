@@ -65,6 +65,7 @@ impl From<StorageError> for WatcherError {
 }
 
 /// What the watcher needs from the system.
+#[derive(Clone)]
 pub struct Services {
     pub pasteboard: Arc<dyn Pasteboard>,
     pub workspace: Arc<dyn Workspace>,

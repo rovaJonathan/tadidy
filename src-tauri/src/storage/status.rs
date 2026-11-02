@@ -1,0 +1,66 @@
+//! Whether the history database is usable, as the webview sees it (IPC `get_storage_status`
+//! and the event `storage://changed`). Only an error code travels, never a path or a key.
+
+use serde::Serialize;
+use ts_rs::TS;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum StorageState {
+    Ready,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct StorageStatus {
+    pub state: StorageState,
+    /// The `AppError` code of the failure that made the database unavailable, `null` when ready.
+    pub code: Option<String>,
+}
+
+impl StorageStatus {
+    pub fn ready() -> Self {
+        Self {
+            state: StorageState::Ready,
+            code: None,
+        }
+    }
+
+    pub fn unavailable(code: impl Into<String>) -> Self {
+        Self {
+            state: StorageState::Unavailable,
+            code: Some(code.into()),
+        }
+    }
+}
+
+impl Default for StorageStatus {
+    /// Before the first open: nothing is promised yet.
+    fn default() -> Self {
+        Self::unavailable("storage_unavailable")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_ready_status_has_no_code() {
+        assert_eq!(
+            json!(StorageStatus::ready()),
+            json!({ "state": "ready", "code": null })
+        );
+    }
+
+    #[test]
+    fn an_unavailable_status_carries_the_failure_code() {
+        assert_eq!(
+            json!(StorageStatus::unavailable("storage_key_missing")),
+            json!({ "state": "unavailable", "code": "storage_key_missing" })
+        );
+    }
+}

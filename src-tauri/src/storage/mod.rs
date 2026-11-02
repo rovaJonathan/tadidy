@@ -7,6 +7,7 @@ pub mod fts;
 mod migrations;
 pub mod reset;
 pub mod settings;
+pub mod status;
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -107,6 +108,11 @@ pub fn open_or_report(dir: &Path, store: &dyn KeyStore) -> Option<Db> {
     }
 }
 
+/// What `setup` does at startup: the database, or the error to report (logged by its code only).
+pub fn open_for_startup(_dir: &Path, _store: &dyn KeyStore) -> Result<Db, AppError> {
+    todo!("TAD-022")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +184,34 @@ mod tests {
             std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
             before
         );
+    }
+
+    #[test]
+    fn open_for_startup_returns_the_database() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert!(open_for_startup(dir.path(), &FakeKeyStore::default()).is_ok());
+    }
+
+    #[test]
+    fn open_for_startup_reports_the_code_when_the_key_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let error = open_for_startup(dir.path(), &FakeKeyStore::default()).unwrap_err();
+
+        assert_eq!(error.code, "storage_key_missing");
+    }
+
+    #[test]
+    fn open_for_startup_reports_the_code_of_a_wrong_key() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let other = FakeKeyStore::with_key(DbKey::from_bytes([9; 32]));
+
+        let error = open_for_startup(dir.path(), &other).unwrap_err();
+
+        assert_eq!(error.code, "storage_wrong_key");
     }
 
     #[test]

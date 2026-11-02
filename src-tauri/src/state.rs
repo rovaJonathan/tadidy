@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::clip::HistoryLimit;
 use crate::clock::SystemClock;
+use crate::crypto::KeyStore;
 use crate::error::AppError;
 use crate::events::EventSink;
 use crate::login_item::{self, LoginItem, NoLoginItem};
@@ -11,8 +12,10 @@ use crate::paster::{AccessibilityMonitor, PASTE_DELAY, Paster, PasterServices, W
 use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
 use crate::settings::Settings;
 use crate::shortcuts::{self, NoShortcuts, ShortcutRegistrar, ShortcutStatus};
+use crate::storage::status::StorageStatus;
 use crate::storage::{self, Db};
-use crate::watcher::WatcherHandle;
+use crate::watcher::{self, WatcherHandle};
+use std::path::PathBuf;
 
 /// Tadidy's own bundle identifier (AGENTS.md §3).
 pub const OWN_BUNDLE_ID: &str = "app.tadidy";
@@ -45,6 +48,19 @@ pub struct AppState {
     pub settings_gate: Mutex<()>,
     /// The clipboard watcher thread, `None` until it starts (and when there is no database).
     pub watcher: Mutex<Option<WatcherHandle>>,
+    /// Whether the database opened at startup, or why not (`get_storage_status`).
+    storage_status: RwLock<StorageStatus>,
+    /// What the history reset needs to start over; `None` where it cannot run.
+    storage_reset: Option<StorageReset>,
+    /// Serializes the history reset: two windows can ask at once.
+    reset_gate: Mutex<()>,
+}
+
+/// Where the database lives and what restarts around a new one.
+struct StorageReset {
+    dir: PathBuf,
+    store: Arc<dyn KeyStore>,
+    watcher: watcher::Services,
 }
 
 impl AppState {
@@ -69,6 +85,9 @@ impl AppState {
             settings: RwLock::default(),
             settings_gate: Mutex::default(),
             watcher: Mutex::default(),
+            storage_status: RwLock::default(),
+            storage_reset: None,
+            reset_gate: Mutex::default(),
         }
     }
 
@@ -101,6 +120,31 @@ impl AppState {
             settings: RwLock::new(settings),
             ..self
         }
+    }
+
+    /// The database that opened at startup, or the error that kept it from opening.
+    pub fn with_storage(self, _opened: Result<Db, AppError>) -> Self {
+        todo!("TAD-022")
+    }
+
+    /// Lets [`AppState::reset_history`] move the database in `dir` aside and start over.
+    pub fn with_storage_reset(
+        self,
+        _dir: PathBuf,
+        _store: Arc<dyn KeyStore>,
+        _watcher: watcher::Services,
+    ) -> Self {
+        todo!("TAD-022")
+    }
+
+    pub fn storage_status(&self) -> StorageStatus {
+        todo!("TAD-022")
+    }
+
+    /// Starts over with an empty history when the database is unavailable: refused with
+    /// `invalid_state` when it works.
+    pub fn reset_history(&self) -> Result<(), AppError> {
+        todo!("TAD-022")
     }
 
     /// The history database, `None` while it is unavailable. A clone: the handle is shared.
@@ -434,5 +478,162 @@ mod tests {
         state.apply_stored_settings();
 
         assert!(shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+    }
+
+    // --- history reset (TAD-022) ---
+
+    use crate::clock::FixedClock;
+    use crate::events::{CLIPS_CHANGED, RecordingEventSink};
+    use crate::platform::fakes::FakeIdle;
+    use crate::storage::{DB_FILE_NAME, status::StorageStatus};
+    use serde_json::json;
+
+    /// A data folder holding a database whose key `FakeKeyStore::default()` does not have.
+    fn orphaned_dir() -> (tempfile::TempDir, Vec<u8>) {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let bytes = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
+        (dir, bytes)
+    }
+
+    fn watcher_services(events: &Arc<RecordingEventSink>) -> watcher::Services {
+        watcher::Services {
+            pasteboard: Arc::new(FakePasteboard::new()),
+            workspace: Arc::new(FakeWorkspace::new()),
+            idle: Arc::new(FakeIdle::new()),
+            events: events.clone(),
+            clock: Arc::new(FixedClock::new(1_000)),
+        }
+    }
+
+    fn key_missing() -> AppError {
+        AppError::new("storage_key_missing", "The history key is missing.")
+    }
+
+    /// A state whose database did not open, ready to reset in `dir`.
+    fn unavailable_state(
+        dir: &std::path::Path,
+        store: FakeKeyStore,
+        events: &Arc<RecordingEventSink>,
+    ) -> AppState {
+        state().with_storage(Err(key_missing())).with_storage_reset(
+            dir.to_path_buf(),
+            Arc::new(store),
+            watcher_services(events),
+        )
+    }
+
+    #[test]
+    fn an_opened_database_makes_the_storage_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let state = state().with_storage(Ok(db));
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert!(state.db().is_some());
+    }
+
+    #[test]
+    fn a_failed_open_makes_the_storage_unavailable_with_its_code() {
+        let state = state().with_storage(Err(key_missing()));
+
+        assert_eq!(
+            state.storage_status(),
+            StorageStatus::unavailable("storage_key_missing")
+        );
+        assert!(state.db().is_none());
+    }
+
+    #[test]
+    fn the_reset_is_refused_while_the_database_works_and_moves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::default();
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = state().with_storage(Ok(db)).with_storage_reset(
+            dir.path().to_path_buf(),
+            Arc::new(store),
+            watcher_services(&events),
+        );
+
+        let error = state.reset_history().unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert!(events.events().is_empty());
+    }
+
+    #[test]
+    fn the_reset_is_refused_where_it_was_not_set_up() {
+        let state = state().with_storage(Err(key_missing()));
+
+        assert_eq!(state.reset_history().unwrap_err().code, "invalid_state");
+    }
+
+    #[test]
+    fn a_reset_gives_the_state_a_new_database_and_starts_the_watcher() {
+        let (dir, before) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = unavailable_state(dir.path(), FakeKeyStore::default(), &events);
+
+        state.reset_history().unwrap();
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert!(state.db().is_some());
+        assert!(state.watcher.lock().unwrap().is_some());
+        assert_eq!(
+            std::fs::read(dir.path().join("tadidy.db.bak")).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn a_reset_announces_the_new_status_and_a_reloaded_history() {
+        let (dir, _) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = unavailable_state(dir.path(), FakeKeyStore::default(), &events);
+
+        state.reset_history().unwrap();
+
+        assert_eq!(
+            events.events(),
+            vec![
+                (
+                    "storage://changed",
+                    json!({ "state": "ready", "code": null })
+                ),
+                (
+                    CLIPS_CHANGED,
+                    json!({ "added": null, "updated": null, "removed": null })
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_reset_leaves_the_storage_unavailable_and_the_files_in_place() {
+        let (dir, before) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = unavailable_state(dir.path(), FakeKeyStore::failing(), &events);
+
+        let error = state.reset_history().unwrap_err();
+
+        assert_eq!(error.code, "storage_error");
+        assert_eq!(
+            state.storage_status(),
+            StorageStatus::unavailable("storage_key_missing")
+        );
+        assert!(state.db().is_none());
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(events.events().is_empty());
     }
 }
