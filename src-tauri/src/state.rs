@@ -828,6 +828,33 @@ mod tests {
     }
 
     #[test]
+    fn a_reopened_history_gets_its_stored_quick_panel_shortcut_back() {
+        // Startup had no database, so the default shortcut was registered; the key came back.
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::default();
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        let stored = Settings {
+            quick_panel_shortcut: "Ctrl+Alt+V".to_owned(),
+            ..Settings::default()
+        };
+        db.with_conn(|conn| crate::storage::settings::save(conn, &stored))
+            .unwrap();
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let shortcuts = Arc::new(FakeShortcutRegistrar::default());
+        let state = unavailable_state(dir.path(), store, &events).with_shortcuts(shortcuts.clone());
+        state.apply_stored_settings();
+        assert!(shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+
+        state.reset_history().unwrap();
+
+        assert!(shortcuts.is_registered("Ctrl+Alt+V"));
+        assert!(!shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(state.shortcut_status().accelerator, "Ctrl+Alt+V");
+        assert_eq!(state.shortcut_status().error, None);
+    }
+
+    #[test]
     fn a_reset_announces_the_settings_the_login_item_changed() {
         let (dir, _) = orphaned_dir();
         let events = Arc::new(RecordingEventSink::default());

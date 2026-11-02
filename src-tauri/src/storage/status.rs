@@ -75,6 +75,21 @@ mod tests {
     }
 
     #[test]
+    fn the_codes_of_the_errors_that_lose_the_key_are_the_ones_that_can_be_reset() {
+        use crate::error::AppError;
+        use crate::storage::StorageError;
+        for (error, resettable) in [
+            (StorageError::KeyMissing, true),
+            (StorageError::WrongKey, true),
+            (StorageError::InvalidCursor, false),
+            (StorageError::Io(std::io::ErrorKind::Other.into()), false),
+        ] {
+            let code = AppError::from(error).code;
+            assert_eq!(StorageStatus::unavailable(code).can_reset, resettable);
+        }
+    }
+
+    #[test]
     fn an_unavailable_status_carries_the_failure_code() {
         assert_eq!(
             json!(StorageStatus::unavailable("storage_key_missing")),

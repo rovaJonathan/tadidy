@@ -200,6 +200,19 @@ mod tests {
     }
 
     #[test]
+    fn a_staged_file_left_by_an_earlier_reset_is_never_overwritten() {
+        // An earlier reset worked but could not rename `.bak.new` to `.bak`: the history it moved
+        // aside exists only under that name.
+        let (dir, _) = orphaned_database();
+        std::fs::write(dir.path().join("tadidy.db.bak.new"), b"first history").unwrap();
+
+        let result = reset(dir.path(), &FakeKeyStore::failing());
+
+        assert!(result.is_err());
+        assert_eq!(read(dir.path(), "tadidy.db.bak"), b"first history");
+    }
+
+    #[test]
     fn a_reset_with_no_database_file_keeps_the_older_backups() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("tadidy.db.bak"), b"older").unwrap();
