@@ -6,7 +6,7 @@ use core_foundation::data::CFData;
 use core_foundation::dictionary::CFDictionary;
 use core_foundation::string::{CFString, CFStringRef};
 use security_framework::base::Error;
-use security_framework::passwords::{PasswordOptions, generic_password};
+use security_framework::passwords::{PasswordOptions, delete_generic_password, generic_password};
 use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
 use security_framework_sys::item::{
     kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecValueData,
@@ -113,8 +113,15 @@ impl KeyStore for KeychainKeyStore {
         }
     }
 
-    fn replace(&self, _key: &DbKey) -> Result<(), KeyStoreError> {
-        todo!("TAD-022")
+    /// Deletes the item (an absent one is fine) and adds the new one. Only the history reset
+    /// calls it, after the database the old key belonged to was moved aside.
+    fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError> {
+        match delete_generic_password(&self.service, &self.account) {
+            Ok(()) => {}
+            Err(error) if is_not_found(&error) => {}
+            Err(_) => return Err(KeyStoreError::Unavailable),
+        }
+        self.set(key)
     }
 }
 

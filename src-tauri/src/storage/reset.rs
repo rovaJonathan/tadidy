@@ -4,14 +4,90 @@
 
 use std::path::Path;
 
-use crate::crypto::KeyStore;
-use crate::storage::{Db, StorageError};
+use crate::crypto::{DbKey, KeyStore};
+use crate::error::AppError;
+use crate::storage::{DB_FILE_NAME, Db, StorageError, open};
+
+/// The database file and the two files SQLite keeps beside it in WAL mode.
+const FILE_SUFFIXES: [&str; 3] = ["", "-wal", "-shm"];
+/// Where a file waits while the reset runs, then what it is kept as.
+const STAGED: &str = ".bak.new";
+const BACKUP: &str = ".bak";
 
 /// Moves `tadidy.db`, `tadidy.db-wal` and `tadidy.db-shm` aside as `.bak`, stores a new key and
 /// opens a new database. Nothing is lost on a failure: the files are back where they were and
 /// an older `.bak` is replaced only once everything else succeeded.
-pub fn reset(_dir: &Path, _store: &dyn KeyStore) -> Result<Db, StorageError> {
-    todo!("TAD-022")
+pub fn reset(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
+    let staged = stage(dir)?;
+    match start_over(dir, store) {
+        Ok(db) => {
+            promote(dir, &staged);
+            Ok(db)
+        }
+        Err(error) => {
+            // The new database's files must not end up beside the restored ones.
+            for name in file_names() {
+                let _ = std::fs::remove_file(dir.join(name));
+            }
+            unstage(dir, &staged);
+            Err(error)
+        }
+    }
+}
+
+fn file_names() -> impl Iterator<Item = String> {
+    FILE_SUFFIXES
+        .into_iter()
+        .map(|suffix| format!("{DB_FILE_NAME}{suffix}"))
+}
+
+/// Renames each existing file to its staging name; on a failure the ones already moved go back.
+fn stage(dir: &Path) -> Result<Vec<String>, StorageError> {
+    let mut staged = Vec::new();
+    for name in file_names() {
+        let from = dir.join(&name);
+        if !from.exists() {
+            continue;
+        }
+        if let Err(error) = std::fs::rename(&from, dir.join(format!("{name}{STAGED}"))) {
+            unstage(dir, &staged);
+            return Err(error.into());
+        }
+        staged.push(name);
+    }
+    Ok(staged)
+}
+
+fn start_over(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
+    let key = DbKey::generate()?;
+    store.replace(&key)?;
+    open(&dir.join(DB_FILE_NAME), &key)
+}
+
+/// Staging names become the backups, replacing the older ones.
+fn promote(dir: &Path, staged: &[String]) {
+    for name in staged {
+        if std::fs::rename(
+            dir.join(format!("{name}{STAGED}")),
+            dir.join(format!("{name}{BACKUP}")),
+        )
+        .is_err()
+        {
+            // The old history is still on disk under its staging name; the reset itself worked.
+            tracing::warn!("a database backup could not be renamed");
+        }
+    }
+}
+
+fn unstage(dir: &Path, staged: &[String]) {
+    for name in staged {
+        if std::fs::rename(dir.join(format!("{name}{STAGED}")), dir.join(name)).is_err() {
+            tracing::warn!(
+                code = %AppError::new("storage_error", "").code,
+                "a database file could not be put back"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
