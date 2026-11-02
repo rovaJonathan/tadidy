@@ -12,6 +12,7 @@ use crate::paster::{PasteMode, PasteOrigin, PasteResult, Paster};
 use crate::settings::{self, Settings, SettingsPatch};
 use crate::shortcuts::ShortcutStatus;
 use crate::state::AppState;
+use crate::storage::status::StorageStatus;
 use crate::storage::{self, Db};
 use crate::windows;
 
@@ -98,6 +99,19 @@ pub fn get_shortcut_status(state: State<'_, AppState>) -> ShortcutStatus {
 pub fn open_preferences<R: Runtime>(app: AppHandle<R>) -> Result<(), AppError> {
     windows::open_preferences(&app)
         .map_err(|_| AppError::new("window", "The Preferences window could not be opened."))
+}
+
+/// Whether the history database is usable, and the code of the failure when it is not.
+#[tauri::command]
+pub fn get_storage_status(_state: State<'_, AppState>) -> StorageStatus {
+    todo!("TAD-022")
+}
+
+/// Moves the unusable history aside and starts a new one; refused with `invalid_state` while the
+/// database works. The state announces `storage://changed` and `clips://changed`.
+#[tauri::command(async)]
+pub fn reset_history_database(_state: State<'_, AppState>) -> Result<(), AppError> {
+    todo!("TAD-022")
 }
 
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
@@ -446,6 +460,63 @@ mod tests {
             get_shortcut_status(app.state()).error.as_deref(),
             Some("unavailable")
         );
+    }
+
+    #[test]
+    fn get_storage_status_reports_the_code_of_the_failed_open() {
+        let app = tauri::test::mock_app();
+        app.manage(
+            AppState::new(
+                Arc::new(FakeAccessibility::new()),
+                Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
+            )
+            .with_storage(Err(AppError::new("storage_key_missing", "gone"))),
+        );
+
+        assert_eq!(
+            get_storage_status(app.state()),
+            StorageStatus::unavailable("storage_key_missing")
+        );
+    }
+
+    #[test]
+    fn get_storage_status_reports_ready_with_a_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let app = tauri::test::mock_app();
+        app.manage(
+            AppState::new(
+                Arc::new(FakeAccessibility::new()),
+                Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
+            )
+            .with_storage(Ok(db)),
+        );
+
+        assert_eq!(get_storage_status(app.state()), StorageStatus::ready());
+    }
+
+    #[test]
+    fn reset_history_database_is_refused_while_the_database_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let app = tauri::test::mock_app();
+        app.manage(
+            AppState::new(
+                Arc::new(FakeAccessibility::new()),
+                Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
+            )
+            .with_storage(Ok(db)),
+        );
+
+        let error = reset_history_database(app.state()).unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
     }
 
     #[test]
