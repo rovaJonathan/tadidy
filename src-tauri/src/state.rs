@@ -190,11 +190,8 @@ impl AppState {
                 // One rule for the button and for the core: `StorageStatus::can_reset`.
                 let failure = AppError::from(error);
                 if !StorageStatus::unavailable(failure.code.as_str()).can_reset {
-                    self.remember_failure(&failure.code);
-                    reset
-                        .watcher
-                        .events
-                        .emit(STORAGE_CHANGED, json!(self.storage_status()));
+                    // Nothing is remembered: a prompt that was denied this time must not hide
+                    // the reset for good when the key really is gone.
                     return Err(AppError::new(
                         "invalid_state",
                         "The history database may be only out of reach for now: it cannot be reset.",
@@ -213,15 +210,17 @@ impl AppState {
             self.attach(db.clone());
             login_item::reconcile(self.login_item.as_ref(), &self.settings, &db);
             self.follow_stored_shortcut();
+            // Read and announced inside the gate, so a later `set_settings` is not overtaken
+            // by this older snapshot.
+            let settings = self
+                .settings
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            reset.watcher.events.emit(SETTINGS_CHANGED, json!(settings));
         }
         watcher::start(self, reset.watcher.clone());
         let events = &reset.watcher.events;
-        let settings = self
-            .settings
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        events.emit(SETTINGS_CHANGED, json!(settings));
         events.emit(STORAGE_CHANGED, json!(self.storage_status()));
         events.emit(CLIPS_CHANGED, json!(ClipsChanged::default()));
         Ok(())

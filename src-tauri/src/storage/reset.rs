@@ -53,14 +53,21 @@ fn file_names() -> impl Iterator<Item = String> {
 
 /// A staging file still there belongs to an earlier reset that worked but could not rename it to
 /// `.bak`: the history it moved aside exists only under that name, and staging would overwrite
-/// it. It becomes the backup now. Nothing is overwritten that this reset has not replaced.
+/// it. The set becomes the backup now, the main file first. A sidecar alone (no main file) is not
+/// a backup of anything and stays where it is.
 fn keep_leftovers(dir: &Path) -> Result<(), StorageError> {
-    for name in file_names() {
-        let left = dir.join(format!("{name}{STAGED}"));
-        if left.is_file() {
-            std::fs::rename(&left, dir.join(format!("{name}{BACKUP}")))?;
-        }
+    let left = |name: &str| dir.join(format!("{name}{STAGED}"));
+    if !left(DB_FILE_NAME).is_file() {
+        return Ok(());
     }
+    std::fs::rename(
+        left(DB_FILE_NAME),
+        dir.join(format!("{DB_FILE_NAME}{BACKUP}")),
+    )?;
+    let leftovers: Vec<String> = file_names()
+        .filter(|name| name != DB_FILE_NAME && left(name).is_file())
+        .collect();
+    promote_sidecars(dir, &leftovers);
     Ok(())
 }
 
@@ -94,20 +101,39 @@ fn start_over(
     Ok(db)
 }
 
-/// Staging names become the backups, replacing the older ones. A backup file of the older
-/// reset that nothing replaced goes: restored by hand beside the new main file, a `-wal` from
-/// another database could be replayed into it.
+/// Staging names become the backups, replacing the older ones. A backup set never mixes two
+/// databases (restored by hand, a `-wal` from another database could be replayed into the main
+/// file): the main file goes first, and the sidecars follow only if it did. With no database file
+/// to move, or when its backup cannot be written, the staged sidecars wait under their staging
+/// names and the older backups stay as they were.
 fn promote(dir: &Path, staged: &[String]) {
-    // With no database file to move, the older backups are all there is: they stay.
-    let replaces_the_set = staged.iter().any(|name| name == DB_FILE_NAME);
-    for name in file_names() {
+    let main = staged.iter().any(|name| name == DB_FILE_NAME);
+    if !main {
+        return;
+    }
+    if std::fs::rename(
+        dir.join(format!("{DB_FILE_NAME}{STAGED}")),
+        dir.join(format!("{DB_FILE_NAME}{BACKUP}")),
+    )
+    .is_err()
+    {
+        // The old history is still on disk under its staging name; the reset itself worked.
+        tracing::warn!("a database backup could not be renamed");
+        return;
+    }
+    promote_sidecars(dir, staged);
+}
+
+/// The `-wal` / `-shm` backups of a set whose main file was just promoted: the staged ones replace
+/// the older ones, and an older one with no replacement goes.
+fn promote_sidecars(dir: &Path, staged: &[String]) {
+    for name in file_names().filter(|name| name != DB_FILE_NAME) {
         let backup = dir.join(format!("{name}{BACKUP}"));
         if staged.contains(&name) {
             if std::fs::rename(dir.join(format!("{name}{STAGED}")), &backup).is_err() {
-                // The old history is still on disk under its staging name; the reset itself worked.
                 tracing::warn!("a database backup could not be renamed");
             }
-        } else if replaces_the_set && backup.exists() && std::fs::remove_file(&backup).is_err() {
+        } else if backup.exists() && std::fs::remove_file(&backup).is_err() {
             tracing::warn!("an older database backup could not be removed");
         }
     }
