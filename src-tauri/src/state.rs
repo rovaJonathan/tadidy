@@ -288,7 +288,7 @@ fn load_settings_or_defaults(db: &Db) -> Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::FakeKeyStore;
+    use crate::crypto::{DbKey, FakeKeyStore};
     use crate::platform::fakes::{FakeAccessibility, FakeKeySender, FakePasteboard, FakeWorkspace};
     use crate::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT;
     use crate::storage::open_in_dir;
@@ -631,6 +631,76 @@ mod tests {
         );
         assert!(!dir.path().join("tadidy.db.bak").exists());
         assert!(events.events().is_empty());
+    }
+
+    #[test]
+    fn the_reset_is_refused_for_a_failure_that_may_be_temporary() {
+        for code in ["storage_error", "storage_unavailable"] {
+            let (dir, before) = orphaned_dir();
+            let key = DbKey::from_bytes([5; 32]);
+            let store = Arc::new(FakeKeyStore::with_key(key.clone()));
+            let events = Arc::new(RecordingEventSink::default());
+            let state = state()
+                .with_storage(Err(AppError::new(code, "locked")))
+                .with_storage_reset(
+                    dir.path().to_path_buf(),
+                    store.clone(),
+                    watcher_services(&events),
+                );
+
+            let error = state.reset_history().unwrap_err();
+
+            assert_eq!(error.code, "invalid_state", "{code}");
+            assert_eq!(
+                std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+                before
+            );
+            assert!(!dir.path().join("tadidy.db.bak").exists());
+            assert_eq!(store.get().unwrap().unwrap().as_bytes(), key.as_bytes());
+            assert!(state.db().is_none());
+        }
+    }
+
+    #[test]
+    fn the_reset_is_allowed_when_the_key_does_not_open_the_database() {
+        let (dir, _) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = state()
+            .with_storage(Err(AppError::new("storage_wrong_key", "no match")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                Arc::new(FakeKeyStore::default()),
+                watcher_services(&events),
+            );
+
+        assert!(state.reset_history().is_ok());
+    }
+
+    #[test]
+    fn the_reset_never_moves_a_database_that_is_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::default();
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
+        let events = Arc::new(RecordingEventSink::default());
+        // A status that says "resettable" next to an open database: the open one wins.
+        let state = state()
+            .with_storage(Err(key_missing()))
+            .with_db(Some(db))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                Arc::new(store),
+                watcher_services(&events),
+            );
+
+        let error = state.reset_history().unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
     }
 
     #[test]

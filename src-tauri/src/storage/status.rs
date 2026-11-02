@@ -36,6 +36,15 @@ impl StorageStatus {
     }
 }
 
+impl StorageStatus {
+    /// Whether the history may be reset: only when the key is gone or does not open the file.
+    /// Any other failure can be temporary (a Keychain prompt that was denied, a locked
+    /// Keychain): a reset would then throw away a history that is only out of reach for now.
+    pub fn can_reset(&self) -> bool {
+        todo!("TAD-022")
+    }
+}
+
 impl Default for StorageStatus {
     /// Before the first open: nothing is promised yet.
     fn default() -> Self {
@@ -54,6 +63,15 @@ mod tests {
             json!(StorageStatus::ready()),
             json!({ "state": "ready", "code": null })
         );
+    }
+
+    #[test]
+    fn only_a_missing_or_wrong_key_can_be_reset() {
+        assert!(StorageStatus::unavailable("storage_key_missing").can_reset());
+        assert!(StorageStatus::unavailable("storage_wrong_key").can_reset());
+        assert!(!StorageStatus::unavailable("storage_error").can_reset());
+        assert!(!StorageStatus::unavailable("storage_unavailable").can_reset());
+        assert!(!StorageStatus::ready().can_reset());
     }
 
     #[test]

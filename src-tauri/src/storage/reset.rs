@@ -17,6 +17,15 @@ const BACKUP: &str = ".bak";
 /// opens a new database. Nothing is lost on a failure: the files are back where they were and
 /// an older `.bak` is replaced only once everything else succeeded.
 pub fn reset(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
+    reset_with(dir, store, open)
+}
+
+/// [`reset`] with the way the new database is opened passed in, so a test can make it fail.
+fn reset_with(
+    dir: &Path,
+    store: &dyn KeyStore,
+    _open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
+) -> Result<Db, StorageError> {
     let staged = stage(dir)?;
     match start_over(dir, store) {
         Ok(db) => {
@@ -172,6 +181,20 @@ mod tests {
         assert_eq!(read(dir.path(), DB_FILE_NAME), before);
         assert_eq!(read(dir.path(), WAL), b"wal");
         assert_eq!(read(dir.path(), "tadidy.db.bak"), b"older");
+    }
+
+    #[test]
+    fn a_database_that_does_not_open_leaves_the_stored_key_and_the_files_alone() {
+        let (dir, before) = orphaned_database();
+        let stale = DbKey::from_bytes([9; 32]);
+        let store = FakeKeyStore::with_key(stale.clone());
+
+        let result = reset_with(dir.path(), &store, |_, _| Err(StorageError::WrongKey));
+
+        assert!(result.is_err());
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), stale.as_bytes());
+        assert_eq!(read(dir.path(), DB_FILE_NAME), before);
+        assert!(!dir.path().join("tadidy.db.bak.new").exists());
     }
 
     #[test]
