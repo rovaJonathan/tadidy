@@ -5,7 +5,6 @@
 use std::path::Path;
 
 use crate::crypto::{DbKey, KeyStore};
-use crate::error::AppError;
 use crate::storage::{DB_FILE_NAME, Db, StorageError, open};
 
 /// The database file and the two files SQLite keeps beside it in WAL mode.
@@ -82,10 +81,7 @@ fn promote(dir: &Path, staged: &[String]) {
 fn unstage(dir: &Path, staged: &[String]) {
     for name in staged {
         if std::fs::rename(dir.join(format!("{name}{STAGED}")), dir.join(name)).is_err() {
-            tracing::warn!(
-                code = %AppError::new("storage_error", "").code,
-                "a database file could not be put back"
-            );
+            tracing::warn!("a database file could not be put back");
         }
     }
 }
