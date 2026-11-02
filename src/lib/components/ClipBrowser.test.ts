@@ -1154,6 +1154,47 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
     expect(container.querySelector("#dialog-reset-history")).toBeNull();
   });
 
+  it("forgets a failed reset when the window is shown again", async () => {
+    fakeCore(history, { storage: UNAVAILABLE, resetError: { code: "storage_error", message: "failed" } });
+    const { container, component } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-confirm"));
+    await settle();
+    expect(container.querySelector("#storage-reset-error")).not.toBeNull();
+
+    await component.reset();
+    await settle();
+
+    expect(container.querySelector("#storage-reset-error")).toBeNull();
+  });
+
+  it("does not say the reset failed when another window's reset already made the history ready", async () => {
+    const refused = deferred<never>();
+    mockIPC(
+      (cmd) => {
+        if (cmd === "get_storage_status") return UNAVAILABLE;
+        if (cmd === "reset_history_database") return refused.promise;
+        if (cmd === "list_clips") return history();
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-confirm"));
+
+    await emit("storage://changed", READY);
+    refused.resolve(Promise.reject({ code: "invalid_state", message: "works" }) as never);
+    await settle(50);
+
+    expect(container.querySelector("#storage-unavailable")).toBeNull();
+    expect(container.querySelector("#storage-reset-error")).toBeNull();
+  });
+
   it("keeps a newer ready announcement when the first status answer comes late", async () => {
     const status = deferred<typeof UNAVAILABLE>();
     mockIPC(

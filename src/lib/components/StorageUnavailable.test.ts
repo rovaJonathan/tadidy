@@ -10,7 +10,7 @@ function find<T extends HTMLElement>(container: HTMLElement, selector: string): 
 
 describe("StorageUnavailable", () => {
   it("says the history can’t be opened, in the agreed words", () => {
-    const { container } = render(StorageUnavailable, { onreset: vi.fn() });
+    const { container } = render(StorageUnavailable, { onreset: vi.fn(), canReset: true });
 
     const state = find(container, "#storage-unavailable");
     expect(state.getAttribute("role")).toBe("status");
@@ -23,7 +23,7 @@ describe("StorageUnavailable", () => {
 
   it("asks to reset when the button is clicked, and does nothing else", async () => {
     const onreset = vi.fn();
-    const { container } = render(StorageUnavailable, { onreset });
+    const { container } = render(StorageUnavailable, { onreset, canReset: true });
 
     await fireEvent.click(find(container, "#btn-reset-history"));
 
@@ -38,17 +38,24 @@ describe("StorageUnavailable", () => {
   });
 
   it("says nothing is wrong with the reset until it failed", () => {
-    const { container } = render(StorageUnavailable, { onreset: vi.fn() });
+    const { container } = render(StorageUnavailable, { onreset: vi.fn(), canReset: true });
 
     expect(container.querySelector("#storage-reset-error")).toBeNull();
   });
 
   it("says the reset did not work, and that nothing changed, after a failed reset", () => {
-    const { container } = render(StorageUnavailable, { onreset: vi.fn(), failed: true });
+    const { container } = render(StorageUnavailable, { onreset: vi.fn(), canReset: true, failed: true });
 
     expect(find(container, "#storage-reset-error").textContent).toBe(
       "The reset didn’t work. Nothing was changed: try again.",
     );
     expect(find(container, "#btn-reset-history")).not.toBeNull();
+  });
+
+  it("does not say “try again” when there is no button to try with", () => {
+    const { container } = render(StorageUnavailable, { onreset: vi.fn(), canReset: false, failed: true });
+
+    expect(container.querySelector("#storage-reset-error")).toBeNull();
+    expect(container.querySelector("#btn-reset-history")).toBeNull();
   });
 });

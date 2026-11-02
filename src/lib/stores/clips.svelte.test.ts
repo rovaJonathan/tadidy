@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
 import type { Page } from "../bindings/Page";
-import { clip, deferred, fakeCore, page } from "../../test/clips";
+import { READY, UNAVAILABLE, clip, deferred, fakeCore, page } from "../../test/clips";
 import { ClipsStore } from "./clips.svelte";
 
 /** A source of clips answering `list_clips` page by page: the cursor is the index of the next clip. */
@@ -603,5 +603,31 @@ describe("ClipsStore settled", () => {
     await store.settled();
 
     expect(store.stale).toBe(true);
+  });
+});
+
+describe("ClipsStore, a reset that is refused", () => {
+  it("does not remember a failure that lands after the history became ready", async () => {
+    let refuse!: (reason: unknown) => void;
+    const refused = new Promise<never>((_, reject) => (refuse = reject));
+    fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE });
+    await store.start();
+    // The core now answers the reset with a delayed refusal.
+    mockIPC(
+      (cmd) => {
+        if (cmd === "reset_history_database") return refused;
+        if (cmd === "list_clips") return page([clip(1)]);
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+    const asking = store.resetHistory();
+
+    await store.start();
+    await emit("storage://changed", READY);
+    refuse({ code: "invalid_state", message: "works" });
+    await asking;
+
+    expect(store.resetFailed).toBe(false);
   });
 });

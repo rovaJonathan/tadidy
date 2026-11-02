@@ -20,7 +20,13 @@ interface Call {
 
 /** A fake core that answers what a hosted browser asks: the clips, the settings and the paste commands. */
 export function hostCore(
-  options: { settings?: Partial<Settings>; paste?: PasteResult; trusted?: boolean; storage?: StorageStatus } = {},
+  options: {
+    settings?: Partial<Settings>;
+    paste?: PasteResult;
+    trusted?: boolean;
+    storage?: StorageStatus;
+    storageAnswer?: Promise<void>;
+  } = {},
 ) {
   const core = {
     calls: [] as Call[],
@@ -43,7 +49,7 @@ export function hostCore(
           return page(search ? everyClip.filter((c) => c.preview?.includes(search)) : everyClip);
         }
         case "get_storage_status":
-          return options.storage ?? READY;
+          return (options.storageAnswer ?? Promise.resolve()).then(() => options.storage ?? READY);
         case "get_app_icon":
           throw { code: "not_found", message: "No icon is cached for this app." };
         case "get_settings":

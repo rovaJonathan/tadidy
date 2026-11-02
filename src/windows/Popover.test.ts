@@ -1,7 +1,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { fireEvent, render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { UNAVAILABLE } from "../test/clips";
+import { UNAVAILABLE, deferred } from "../test/clips";
 import { describeHost, find, hostCore, settle } from "../test/host";
 import Popover from "./Popover.svelte";
 
@@ -128,6 +128,23 @@ describe("Popover, Clear history… from the tray menu", () => {
 
     await emit("menu://clear-history");
     await settle();
+
+    expect(container.querySelector("#dialog-clear-history")).toBeNull();
+    expect(core.commands()).not.toContain("list_clips");
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("waits for the first storage status before it asks for the size, so an early menu choice asks for no list", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const answer = deferred<void>();
+    const core = hostCore({ storage: UNAVAILABLE, storageAnswer: answer.promise });
+    const { container } = render(Popover);
+    await settle();
+
+    await emit("menu://clear-history");
+    await settle();
+    answer.resolve();
+    await settle(50);
 
     expect(container.querySelector("#dialog-clear-history")).toBeNull();
     expect(core.commands()).not.toContain("list_clips");
