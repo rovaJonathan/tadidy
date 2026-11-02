@@ -17,12 +17,6 @@ import type { StorageStatus } from "../bindings/StorageStatus";
 /** SRC-01: the list follows the typing, 50 ms after the last key. */
 const SEARCH_DEBOUNCE_MS = 50;
 
-/**
- * The failures a reset can fix: the history key is gone or does not open the file. Any other failure
- * may be temporary (a Keychain prompt that was denied), and a reset would throw the history away.
- */
-const RESETTABLE_CODES = ["storage_key_missing", "storage_wrong_key"];
-
 /** The core's page sizes (`ClipQuery.limit`: 50 by default, 200 at most). */
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
@@ -39,14 +33,10 @@ export class ClipsStore {
   loaded = $state(false);
   /** The core could not open the history database: nothing is listed until it is reset. */
   storageUnavailable = $state(false);
-  /** The code of the failure that made it unavailable (`StorageStatus.code`). */
-  storageCode = $state<string | null>(null);
   /** The last reset did not work: the history is still unavailable and nothing moved. */
   resetFailed = $state(false);
-  /** The reset may be offered: the key is lost, not only out of reach for now. */
-  storageCanReset = $derived(
-    this.storageUnavailable && this.storageCode !== null && RESETTABLE_CODES.includes(this.storageCode),
-  );
+  /** The reset may be offered: the key is lost, not only out of reach for now. The core decides (`StorageStatus.canReset`). */
+  storageCanReset = $state(false);
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */
   readonly iconUrls = new SvelteMap<string, string>();
@@ -226,7 +216,7 @@ export class ClipsStore {
 
   #setStorage(status: StorageStatus): void {
     this.storageUnavailable = status.state === "unavailable";
-    this.storageCode = status.code;
+    this.storageCanReset = status.state === "unavailable" && status.canReset;
     if (!this.storageUnavailable) this.resetFailed = false;
   }
 
