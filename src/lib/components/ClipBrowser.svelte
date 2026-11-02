@@ -147,6 +147,11 @@
     list?.reveal(0);
   }
 
+  /** The history database cannot be opened: there is no list to size, and nothing to clear. */
+  export function storageUnavailable(): boolean {
+    return store.storageUnavailable;
+  }
+
   export function focusSearch() {
     searchBar?.focus();
   }
