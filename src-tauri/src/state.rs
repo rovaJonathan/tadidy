@@ -238,18 +238,13 @@ impl AppState {
         if self.shortcut_status().accelerator == wanted {
             return;
         }
-        // As at startup: the default one is released, then the stored one registered; when another
-        // app holds it, nothing is registered and the status says so, which is what is true.
-        let current = self.shortcut_status();
-        if current.error.is_none()
-            && let Err(error) = self.shortcuts.unregister(&current.accelerator)
-        {
+        // The stored one is registered first: when another app holds it, the default one stays.
+        if let Err(error) = shortcuts::switch(self.shortcuts.as_ref(), &self.shortcut, &wanted) {
             tracing::warn!(
                 code = error.code(),
-                "the default Quick Panel shortcut was not released"
+                "the stored Quick Panel shortcut is not registered"
             );
         }
-        shortcuts::register_at_startup(self.shortcuts.as_ref(), &self.shortcut, &wanted);
     }
 
     /// Makes `db` the history database and loads its settings.
@@ -883,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_shortcut_that_another_app_holds_leaves_the_status_true_to_what_is_registered() {
+    fn a_stored_shortcut_that_another_app_holds_keeps_the_default_one_working() {
         let dir = tempfile::tempdir().unwrap();
         let store = FakeKeyStore::default();
         let db = open_in_dir(dir.path(), &store).unwrap();
@@ -898,14 +893,15 @@ mod tests {
         let shortcuts = Arc::new(FakeShortcutRegistrar::default());
         let state = unavailable_state(dir.path(), store, &events).with_shortcuts(shortcuts.clone());
         state.apply_stored_settings();
+        let default = state.shortcut_status().accelerator;
         shortcuts.take("Ctrl+Alt+V");
 
         state.reset_history().unwrap();
 
-        // Neither shortcut is registered, and the status says exactly that: the stored one, failed.
-        assert_eq!(shortcuts.registered_count(), 0);
-        assert_eq!(state.shortcut_status().accelerator, "Ctrl+Alt+V");
-        assert!(state.shortcut_status().error.is_some());
+        // The Quick Panel is still reachable, and the status says which shortcut that is.
+        assert_eq!(shortcuts.registered_count(), 1);
+        assert_eq!(state.shortcut_status().accelerator, default);
+        assert!(state.shortcut_status().error.is_none());
     }
 
     #[test]
