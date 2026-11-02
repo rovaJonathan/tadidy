@@ -268,3 +268,24 @@ Signed-build manual QA of the earlier tickets, re-run on this build:
 | TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem is [TAD-026](../../tickets/TAD-026.md). |
 | TAD-017 — Preferences | ❌ (steps 6 to 8) | *Launch at login* cannot be switched on ([TAD-025](../../tickets/TAD-025.md)), so steps 6 to 8 cannot run. History size (criterion 5) works. The rest is not replayed. |
 | TAD-018 — tray menu actions | ✅ (step 7) | Step 7 on the bundled build (owner): About opens in front of TextEdit with the copyright line. The other steps are not replayed. |
+
+### TAD-022 — Tell the user when the history database is unavailable and offer to reset it
+
+Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`), installed, Accessibility granted. Synthetic clips only (`Tadidy before reset`, `Tadidy after reset`). Data folder: `~/Library/Application Support/app.tadidy/` (`D` below). Quit Tadidy before each file operation.
+
+Set-up for steps 1 to 10: launch once, copy `Tadidy before reset` so the history has a clip, quit, then `shasum D/tadidy.db` (note it: **S**) and `ls D`, then delete the key: `security delete-generic-password -s app.tadidy -a database-key`. Launch Tadidy.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Click the tray icon. | The popover shows, in place of the list, an icon, **Your history can’t be opened.**, **Tadidy can’t unlock its encrypted database, so nothing is being recorded.** and a **Reset history…** button. The footer shows no count. |
+| 2 | Press `⌘⇧V` (close the popover first). | The Quick Panel shows the same error state. |
+| 3 | In another app copy `Tadidy after reset`, look at the popover, quit Tadidy, `shasum D/tadidy.db`, launch it again. | Nothing was recorded: the error state stays and the hash is **S**. |
+| 4 | Click **Reset history…**. | A dialog: **Reset clipboard history?**, **The current history can’t be recovered. Tadidy will start a new, empty one. The old encrypted file is kept in the app’s data folder as tadidy.db.bak.**, buttons **Reset history** and **Cancel**; **Cancel** has the focus. |
+| 5 | Press `Return`, then reopen the dialog and click **Cancel**, then reopen it and press `Esc`. | Each time the dialog closes and the error state stays. Quit and `ls D`: no `.bak` file, `shasum D/tadidy.db` is **S**. Launch again. |
+| 6 | With the popover open, click **Reset history…**, then **Reset history**. | The popover shows **Nothing copied yet.** Open the Quick Panel: it shows the empty state too (not the error). |
+| 7 | `ls D`, `shasum D/tadidy.db.bak`, Keychain Access (`app.tadidy`). | `tadidy.db.bak` exists (with `tadidy.db-wal.bak` / `tadidy.db-shm.bak` when `ls D` showed `-wal` / `-shm` files before) and its hash is **S**; a new `tadidy.db` exists; one Keychain item `app.tadidy` / `database-key`. |
+| 8 | Copy `Tadidy after reset` in another app, without restarting Tadidy. | It appears at the top of the popover and of the Quick Panel. |
+| 9 | Quit and launch Tadidy again. | The history holds `Tadidy after reset`; no error state. |
+| 10 | Quit. Run `chmod a-w D`, delete the key again (`security delete-generic-password …`), launch, click **Reset history…** then **Reset history**. Quit, `chmod u+w D`. | The error state stays and the button still works; `ls D` shows the same files as before, no `.bak.new` file. Launch and reset again: it succeeds. |
+| 11 | Wrong key (the bug this ticket comes from): quit, delete `D` and the Keychain item, run `pnpm tauri dev`, copy a clip, quit; then launch the signed build. | The error state shows (the signed build cannot use the key the dev build stored). **Reset history…** then **Reset history** works with no password dialog, or the result is reported here: ❌ + what macOS showed (the Keychain adapter deletes an item that another signature created). |
+| 12 | `RUST_LOG=tadidy_lib=info` on the binary for steps 1 and 7 (`/Applications/Tadidy.app/Contents/MacOS/tadidy`). | The log has `storage_key_missing` (step 1) and no path, key or clip text anywhere. |

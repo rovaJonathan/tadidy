@@ -128,10 +128,12 @@ delete_collection(id) / reorder_collections(ids)
 get_settings() -> Settings ; set_settings(patch: Partial<Settings>) -> Settings
 list_running_apps() -> AppInfo[] ; add_excluded_app(bundleId) ; remove_excluded_app(bundleId)
 check_accessibility() -> boolean ; open_accessibility_settings()
+get_storage_status() -> { state: 'ready'|'unavailable'; code: string|null }
+reset_history_database() -> void     // refused (invalid_state) while the database works
 export_history(path) -> number ; import_history(path) -> number
 ```
 
-**Events emitted by Rust**: `clips://changed` (`{ added?: id, updated?: id, removed?: id[] }`), `settings://changed`, `accessibility://changed`, `panel://shown` (to reset the search and the selection), `menu://clear-history` (no payload: the tray menu's Clear history… asks the popover, already shown, to open its confirmation).
+**Events emitted by Rust**: `clips://changed` (`{ added?: id, updated?: id, removed?: id[] }`), `settings://changed`, `storage://changed` (`{ state, code }`, the history database became usable or unusable), `accessibility://changed`, `panel://shown` (to reset the search and the selection), `menu://clear-history` (no payload: the tray menu's Clear history… asks the popover, already shown, to open its confirmation).
 
 <a id="data-model"></a>
 
@@ -209,7 +211,7 @@ CREATE VIRTUAL TABLE clips_fts USING fts5(
 - The database is encrypted with **SQLCipher** (AES-256, `PRAGMA key`).
 - On first launch, a random 256-bit key is generated and stored in the **macOS Keychain** (`kSecClassGenericPassword`, service `app.tadidy`, accessibility `AfterFirstUnlockThisDeviceOnly`).
 - The key never leaves the process memory and is never logged.
-- If the key is missing while the database exists (Keychain reset), offer to **reset the history**. No recovery is possible.
+- If the key is missing while the database exists (Keychain reset), or does not open it, the app keeps running without a database, says so where the history would be, and offers to **reset the history**. No recovery is possible. The reset moves `tadidy.db`, `tadidy.db-wal` and `tadidy.db-shm` aside as `.bak` files (never deleted; an older `.bak` is replaced only once the new database is ready), creates a new key and database, and starts recording again without a restart. The core refuses it while the database works.
 - The JSON export is **in plain text**, and the export dialog says so.
 - ⚠️ Keychain access is tied to the code signature: see [Permissions, signing, distribution](06-delivery.md#permissions-signing) (stable signature).
 
