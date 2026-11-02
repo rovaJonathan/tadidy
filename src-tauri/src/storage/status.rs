@@ -77,6 +77,8 @@ mod tests {
             (StorageError::InvalidCursor, false),
             (StorageError::Io(std::io::ErrorKind::Other.into()), false),
         ] {
+            // The core decides from the error, the front from the code: they must agree.
+            assert_eq!(error.is_key_lost(), resettable);
             let code = AppError::from(error).code;
             assert_eq!(StorageStatus::unavailable(code).can_reset, resettable);
         }
