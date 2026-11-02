@@ -1355,7 +1355,9 @@ only key that opens the history. The status carries
 The key in the Keychain is overwritten in place, only once the new
 database has opened, so a failure leaves the old key where it was; the
 <code>.bak</code> files of an older reset that this one did not replace
-are removed, so a backup set never mixes two databases.</li>
+are removed, so a backup set never mixes two databases. A staged file
+left by a reset that was stopped is kept under a numbered name
+(<code>tadidy.db.bak.1</code>, …) and never replaced.</li>
 <li>The JSON export is <strong>in plain text</strong>, and the export
 dialog says so.</li>
 <li>⚠️ Keychain access is tied to the code signature: see <a href="#permissions-signing">Permissions, signing, distribution</a>
