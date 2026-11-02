@@ -1344,8 +1344,10 @@ history</strong>. No recovery is possible. The reset moves
 <code>tadidy.db-shm</code> aside as <code>.bak</code> files (never
 deleted; an older <code>.bak</code> is replaced only once the new
 database is ready), creates a new key and database, and starts recording
-again without a restart. The core refuses it while the database
-works.</li>
+again without a restart. The core refuses it while the database works,
+and for any failure other than a missing or non-matching key (a Keychain
+prompt that was denied, a locked Keychain): those may be temporary and a
+reset would delete the only key that opens the history.</li>
 <li>The JSON export is <strong>in plain text</strong>, and the export
 dialog says so.</li>
 <li>⚠️ Keychain access is tied to the code signature: see <a href="#permissions-signing">Permissions, signing, distribution</a>
