@@ -1248,14 +1248,14 @@ delete_collection(id) / reorder_collections(ids)
 get_settings() -&gt; Settings ; set_settings(patch: Partial&lt;Settings&gt;) -&gt; Settings
 list_running_apps() -&gt; AppInfo[] ; add_excluded_app(bundleId) ; remove_excluded_app(bundleId)
 check_accessibility() -&gt; boolean ; open_accessibility_settings()
-get_storage_status() -&gt; { state: &#39;ready&#39;|&#39;unavailable&#39;; code: string|null }
-reset_history_database() -&gt; void     // refused (invalid_state) while the database works
+get_storage_status() -&gt; { state: &#39;ready&#39;|&#39;unavailable&#39;; code: string|null; canReset: boolean }
+reset_history_database() -&gt; void     // opens the database again first; refused (invalid_state) while it works
 export_history(path) -&gt; number ; import_history(path) -&gt; number</code></pre>
 <p><strong>Events emitted by Rust</strong>: <code>clips://changed</code>
 (<code>{ added?: id, updated?: id, removed?: id[] }</code>),
 <code>settings://changed</code>, <code>storage://changed</code>
-(<code>{ state, code }</code>, the history database became usable or
-unusable), <code>accessibility://changed</code>,
+(<code>{ state, code, canReset }</code>, the history database became
+usable or unusable), <code>accessibility://changed</code>,
 <code>panel://shown</code> (to reset the search and the selection),
 <code>menu://clear-history</code> (no payload: the tray menu’s Clear
 history… asks the popover, already shown, to open its confirmation).</p>
@@ -1344,10 +1344,18 @@ history</strong>. No recovery is possible. The reset moves
 <code>tadidy.db-shm</code> aside as <code>.bak</code> files (never
 deleted; an older <code>.bak</code> is replaced only once the new
 database is ready), creates a new key and database, and starts recording
-again without a restart. The core refuses it while the database works,
-and for any failure other than a missing or non-matching key (a Keychain
-prompt that was denied, a locked Keychain): those may be temporary and a
-reset would delete the only key that opens the history.</li>
+again without a restart. The core opens the database again before it
+moves anything, because the failure seen at startup may have passed (a
+Keychain item restored): if it opens, the history is simply attached. It
+refuses the reset while the database works, and for any failure other
+than a missing or non-matching key (a Keychain prompt that was denied, a
+locked Keychain): those may be temporary and a reset would delete the
+only key that opens the history. The status carries
+<code>canReset</code>, so the front never keeps its own list of codes.
+The key in the Keychain is overwritten in place, only once the new
+database has opened, so a failure leaves the old key where it was; the
+<code>.bak</code> files of an older reset that this one did not replace
+are removed, so a backup set never mixes two databases.</li>
 <li>The JSON export is <strong>in plain text</strong>, and the export
 dialog says so.</li>
 <li>⚠️ Keychain access is tied to the code signature: see <a href="#permissions-signing">Permissions, signing, distribution</a>
