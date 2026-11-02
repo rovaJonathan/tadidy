@@ -2,9 +2,13 @@
   interface Props {
     /** Reset history… was clicked: the host opens the confirmation. */
     onreset: () => void;
+    /** The reset may be offered: the key is lost. Not for a failure that may be temporary. */
+    canReset?: boolean;
+    /** The last reset did not work. */
+    failed?: boolean;
   }
 
-  let { onreset }: Props = $props();
+  let { onreset, canReset = true, failed = false }: Props = $props();
 </script>
 
 <div id="storage-unavailable" class="empty-state" role="status">
@@ -15,7 +19,14 @@
   </div>
   <p class="empty-title">Your history can’t be opened.</p>
   <p class="empty-body">Tadidy can’t unlock its encrypted database, so nothing is being recorded.</p>
-  <button type="button" class="btn" id="btn-reset-history" onclick={onreset}>Reset history…</button>
+  {#if failed}
+    <p id="storage-reset-error" class="empty-body" role="alert">
+      The reset didn’t work. Nothing was changed: try again.
+    </p>
+  {/if}
+  {#if canReset}
+    <button type="button" class="btn" id="btn-reset-history" onclick={onreset}>Reset history…</button>
+  {/if}
 </div>
 
 <style>

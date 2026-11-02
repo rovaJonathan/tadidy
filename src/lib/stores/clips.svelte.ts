@@ -17,6 +17,12 @@ import type { StorageStatus } from "../bindings/StorageStatus";
 /** SRC-01: the list follows the typing, 50 ms after the last key. */
 const SEARCH_DEBOUNCE_MS = 50;
 
+/**
+ * The failures a reset can fix: the history key is gone or does not open the file. Any other failure
+ * may be temporary (a Keychain prompt that was denied), and a reset would throw the history away.
+ */
+const RESETTABLE_CODES = ["storage_key_missing", "storage_wrong_key"];
+
 /** The core's page sizes (`ClipQuery.limit`: 50 by default, 200 at most). */
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
@@ -33,6 +39,14 @@ export class ClipsStore {
   loaded = $state(false);
   /** The core could not open the history database: nothing is listed until it is reset. */
   storageUnavailable = $state(false);
+  /** The code of the failure that made it unavailable (`StorageStatus.code`). */
+  storageCode = $state<string | null>(null);
+  /** The last reset did not work: the history is still unavailable and nothing moved. */
+  resetFailed = $state(false);
+  /** The reset may be offered: the key is lost, not only out of reach for now. */
+  storageCanReset = $derived(
+    this.storageUnavailable && this.storageCode !== null && RESETTABLE_CODES.includes(this.storageCode),
+  );
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */
   readonly iconUrls = new SvelteMap<string, string>();
@@ -55,6 +69,8 @@ export class ClipsStore {
   #frame: number | undefined;
   #unlisten: (() => void) | undefined;
   #unlistenStorage: (() => void) | undefined;
+  /** A `storage://changed` arrived: it is newer than the status asked for at start. */
+  #storageAnnounced = false;
   readonly #requestedIcons = new SvelteSet<string>();
 
   /** Loads the first page and follows `clips://changed` and `storage://changed` until `destroy`. */
@@ -67,10 +83,13 @@ export class ClipsStore {
       if (this.#destroyed) void unlisten();
       else this.#unlistenStorage = unlisten;
     });
+    // Listening first: an announcement made while the status is asked for must not be missed.
+    await listeningStorage;
     // A status that cannot be read counts as ready: the list then fails or shows by itself.
     const status = await getStorageStatus().catch((): undefined => undefined);
-    if (status !== undefined && !this.#destroyed) this.storageUnavailable = status.state === "unavailable";
-    await Promise.all([listening, listeningStorage, this.#loadFirstPage(true)]);
+    // An announcement made meanwhile is newer than this answer.
+    if (status !== undefined && !this.#destroyed && !this.#storageAnnounced) this.#setStorage(status);
+    await Promise.all([listening, this.#loadFirstPage(true)]);
   }
 
   /** Releases the event listener, the pending timers and the icon object URLs. */
@@ -173,10 +192,12 @@ export class ClipsStore {
 
   /** Asks the core to start over with an empty history; it announces the result with `storage://changed`. */
   async resetHistory(): Promise<void> {
+    this.resetFailed = false;
     try {
       await resetHistoryDatabase();
     } catch {
-      // Still unavailable, nothing moved: the error state stays and the user can retry.
+      // Still unavailable, nothing moved: the error state says so and the user can retry.
+      this.resetFailed = true;
     }
   }
 
@@ -203,10 +224,17 @@ export class ClipsStore {
     return this.#firstPage;
   }
 
+  #setStorage(status: StorageStatus): void {
+    this.storageUnavailable = status.state === "unavailable";
+    this.storageCode = status.code;
+    if (!this.storageUnavailable) this.resetFailed = false;
+  }
+
   /** The core announced that the database became usable or unusable. */
   #applyStorage(status: StorageStatus): void {
     if (this.#destroyed) return;
-    this.storageUnavailable = status.state === "unavailable";
+    this.#storageAnnounced = true;
+    this.#setStorage(status);
     if (this.storageUnavailable) {
       // Drop any answer on its way and what is shown: it belongs to a database that is gone.
       this.#generation++;
@@ -217,7 +245,8 @@ export class ClipsStore {
       this.loading = false;
       this.selectedIndex = 0;
     } else {
-      void this.#loadFirstPage(false);
+      // The reset also announces `clips://changed`: one reload per animation frame for both.
+      this.#scheduleRefresh();
     }
   }
 

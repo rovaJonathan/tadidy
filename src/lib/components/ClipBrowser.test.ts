@@ -1019,7 +1019,7 @@ describe("ClipBrowser when the history database is unavailable", () => {
 
     core.setStorage(READY);
     await emit("storage://changed", READY);
-    await settle();
+    await settle(50);
 
     expect(container.querySelector("#storage-unavailable")).toBeNull();
     expect(rows(container)).toHaveLength(2);
@@ -1027,20 +1027,14 @@ describe("ClipBrowser when the history database is unavailable", () => {
   });
 
   it("stays on the error state, ready to retry, when the reset fails", async () => {
-    const core = fakeCore(history, { storage: UNAVAILABLE });
+    const core = fakeCore(history, {
+      storage: UNAVAILABLE,
+      resetError: { code: "storage_error", message: "failed" },
+    });
     const { container } = render(ClipBrowser);
     await settle();
     await fireEvent.click(find(container, "#btn-reset-history"));
     await settle();
-    // The reset is refused by the core.
-    mockIPC(
-      (cmd) => {
-        if (cmd === "get_storage_status") return UNAVAILABLE;
-        if (cmd === "reset_history_database") throw { code: "storage_error", message: "failed" };
-        return undefined;
-      },
-      { shouldMockEvents: true },
-    );
 
     await fireEvent.click(find(container, "#btn-reset-confirm"));
     await settle();
@@ -1149,18 +1143,12 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
   });
 
   it("says so when the reset failed, and takes it back once the history is ready", async () => {
-    fakeCore(history, { storage: UNAVAILABLE });
+    const core = fakeCore(history, {
+      storage: UNAVAILABLE,
+      resetError: { code: "storage_error", message: "failed" },
+    });
     const { container } = render(ClipBrowser);
     await settle();
-    mockIPC(
-      (cmd) => {
-        if (cmd === "get_storage_status") return UNAVAILABLE;
-        if (cmd === "reset_history_database") throw { code: "storage_error", message: "failed" };
-        if (cmd === "list_clips") return history();
-        return undefined;
-      },
-      { shouldMockEvents: true },
-    );
     await fireEvent.click(find(container, "#btn-reset-history"));
     await settle();
 
@@ -1171,8 +1159,9 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
       "The reset didn’t work. Nothing was changed: try again.",
     );
 
+    core.setStorage(READY);
     await emit("storage://changed", READY);
-    await settle();
+    await settle(50);
     expect(container.querySelector("#storage-reset-error")).toBeNull();
   });
 

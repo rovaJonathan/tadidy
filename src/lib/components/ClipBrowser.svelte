@@ -76,6 +76,8 @@
       dialog?.handleKey(event);
       return;
     }
+    // A focused button (Reset history…, Preferences) does its own thing on Return and Space.
+    if (event.target instanceof HTMLButtonElement && (event.key === "Enter" || event.key === " ")) return;
     const action = resolveKey(event, {
       searchFocused: searchBar?.hasFocus() ?? false,
       searchEmpty: store.search === "",
@@ -138,6 +140,7 @@
   export async function reset(): Promise<void> {
     // A dialog left open would still hold the clip of the previous session.
     pendingDelete = undefined;
+    confirmingReset = false;
     const loaded = store.reset();
     searchBar?.focus();
     await loaded;
@@ -211,7 +214,11 @@
       onactivate={activate}
     />
     {#if store.storageUnavailable}
-      <StorageUnavailable onreset={() => (confirmingReset = true)} />
+      <StorageUnavailable
+        canReset={store.storageCanReset}
+        failed={store.resetFailed}
+        onreset={() => (confirmingReset = true)}
+      />
     {:else if store.loaded && store.items.length === 0}
       {#if store.loadedQuery}
         <EmptyState variant="search" query={store.loadedQuery} />
