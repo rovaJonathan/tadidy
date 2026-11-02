@@ -31,12 +31,14 @@ export class ClipsStore {
   loading = $state(false);
   /** The first page has arrived: before that, an empty list is not an empty history. */
   loaded = $state(false);
+  /** What the core last said about the history database (`StorageStatus`); the flags below derive from it. */
+  storage = $state<StorageStatus>({ state: "ready", code: null, canReset: false });
   /** The core could not open the history database: nothing is listed until it is reset. */
-  storageUnavailable = $state(false);
+  storageUnavailable = $derived(this.storage.state === "unavailable");
   /** The last reset did not work: the history is still unavailable and nothing moved. */
   resetFailed = $state(false);
   /** The reset may be offered: the key is lost, not only out of reach for now. The core decides (`StorageStatus.canReset`). */
-  storageCanReset = $state(false);
+  storageCanReset = $derived(this.storage.state === "unavailable" && this.storage.canReset);
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */
   readonly iconUrls = new SvelteMap<string, string>();
@@ -233,8 +235,7 @@ export class ClipsStore {
   }
 
   #setStorage(status: StorageStatus): void {
-    this.storageUnavailable = status.state === "unavailable";
-    this.storageCanReset = status.state === "unavailable" && status.canReset;
+    this.storage = status;
     if (!this.storageUnavailable) this.resetFailed = false;
   }
 
