@@ -178,7 +178,7 @@ pub fn copy_clip<R: Runtime>(
 /// The paster over the app's real windows and event channel.
 fn paster<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Result<Paster, AppError> {
     Ok(state.paster(
-        database(state)?.clone(),
+        database(state)?,
         Arc::new(TauriEventSink::new(app.clone())),
         Arc::new(app.clone()),
     ))

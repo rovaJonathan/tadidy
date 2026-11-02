@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { clearHistory, listClips, onClearHistoryRequested, onPanelShown } from "../lib/api";
+  import { clearHistory, isAppError, listClips, onClearHistoryRequested, onPanelShown } from "../lib/api";
   import ClearHistoryDialog from "../lib/components/ClearHistoryDialog.svelte";
   import { reportFailure } from "../lib/report";
   import BrowserHost from "./BrowserHost.svelte";

@@ -159,6 +159,6 @@ export function onClipsChanged(callback: (changed: ClipsChanged) => void): Promi
   return listen<ClipsChanged>("clips://changed", (event) => callback(event.payload));
 }
 
-function isAppError(error: unknown): error is AppError {
+export function isAppError(error: unknown): error is AppError {
   return typeof error === "object" && error !== null && "code" in error;
 }

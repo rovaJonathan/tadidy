@@ -29,6 +29,8 @@ use tracing_subscriber::EnvFilter;
 fn real_state(
     opened: Result<storage::Db, error::AppError>,
     dir: std::path::PathBuf,
+    store: std::sync::Arc<macos::keychain::KeychainKeyStore>,
+    services: watcher::Services,
     app: &tauri::AppHandle,
 ) -> AppState {
     AppState::new(
@@ -38,11 +40,7 @@ fn real_state(
         std::sync::Arc::new(macos::workspace::NsWorkspace),
     )
     .with_storage(opened)
-    .with_storage_reset(
-        dir,
-        std::sync::Arc::new(macos::keychain::KeychainKeyStore::default()),
-        real_watcher_services(app),
-    )
+    .with_storage_reset(dir, store, services)
     .with_shortcuts(std::sync::Arc::new(shortcuts::AppShortcuts(app.clone())))
     .with_login_item(std::sync::Arc::new(macos::login_item::SmLoginItem))
 }
@@ -85,16 +83,21 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 let dir = app.path().app_data_dir()?;
-                let opened =
-                    storage::open_for_startup(&dir, &macos::keychain::KeychainKeyStore::default());
-                app.manage(real_state(opened, dir, app.handle()));
+                // One key store and one set of services, for the startup open, the reset and
+                // the watcher.
+                let store = std::sync::Arc::new(macos::keychain::KeychainKeyStore::default());
+                let services = real_watcher_services(app.handle());
+                let opened = storage::open_for_startup(&dir, store.as_ref());
+                app.manage(real_state(
+                    opened,
+                    dir,
+                    store,
+                    services.clone(),
+                    app.handle(),
+                ));
+                // Records what is copied; not started without the database.
+                watcher::start(&app.state::<AppState>(), services);
             }
-            // Records what is copied; not started without the database.
-            #[cfg(target_os = "macos")]
-            watcher::start(
-                &app.state::<AppState>(),
-                real_watcher_services(app.handle()),
-            );
             // Created hidden at startup so the tray click only has to show it (< 100 ms).
             let popover = windows::create_popover(app)?;
             #[cfg(target_os = "macos")]
