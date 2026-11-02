@@ -45,13 +45,6 @@ impl StorageStatus {
     }
 }
 
-impl Default for StorageStatus {
-    /// Before the first open: nothing is promised yet.
-    fn default() -> Self {
-        Self::unavailable("storage_unavailable")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

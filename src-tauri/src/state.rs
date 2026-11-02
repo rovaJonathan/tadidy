@@ -13,7 +13,7 @@ use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Work
 use crate::settings::Settings;
 use crate::shortcuts::{self, NoShortcuts, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::status::StorageStatus;
-use crate::storage::{self, Db, StorageError};
+use crate::storage::{self, Db};
 use crate::watcher::{self, WatcherHandle};
 use serde_json::json;
 use std::path::PathBuf;
@@ -164,7 +164,7 @@ impl AppState {
 
     /// Starts over with an empty history when its key is gone or does not open it. The database
     /// is tried again first, because the startup failure may have passed (a Keychain item
-    /// restored, a prompt answered): then the history is simply opened and nothing moves.
+    /// restored while the app ran): then the history is simply opened and nothing moves.
     /// Refused with `invalid_state` when a database is open, or when it fails to open for a
     /// reason that may pass (a locked Keychain): the history may be intact.
     pub fn reset_history(&self) -> Result<(), AppError> {
@@ -186,26 +186,27 @@ impl AppState {
         };
         let db = match storage::open_in_dir(&reset.dir, reset.store.as_ref()) {
             Ok(db) => db,
-            Err(StorageError::KeyMissing | StorageError::WrongKey) => {
-                storage::reset::reset(&reset.dir, reset.store.as_ref())?
-            }
             Err(error) => {
-                self.remember_failure(&AppError::from(error).code);
-                reset
-                    .watcher
-                    .events
-                    .emit(STORAGE_CHANGED, json!(self.storage_status()));
-                return Err(AppError::new(
-                    "invalid_state",
-                    "The history database may be only out of reach for now: it cannot be reset.",
-                ));
+                // One rule for the button and for the core: `StorageStatus::can_reset`.
+                let failure = AppError::from(error);
+                if !StorageStatus::unavailable(failure.code.as_str()).can_reset {
+                    self.remember_failure(&failure.code);
+                    reset
+                        .watcher
+                        .events
+                        .emit(STORAGE_CHANGED, json!(self.storage_status()));
+                    return Err(AppError::new(
+                        "invalid_state",
+                        "The history database may be only out of reach for now: it cannot be reset.",
+                    ));
+                }
+                storage::reset::reset(&reset.dir, reset.store.as_ref())?
             }
         };
         self.attach(db.clone());
         watcher::start(self, reset.watcher.clone());
-        // Only the login item: the Quick Panel shortcut registered at startup is the default one,
-        // the same as in the new database, and registering it again would report an error.
         login_item::reconcile(self.login_item.as_ref(), &self.settings, &db);
+        self.follow_stored_shortcut();
         let events = &reset.watcher.events;
         let settings = self
             .settings
@@ -216,6 +217,31 @@ impl AppState {
         events.emit(STORAGE_CHANGED, json!(self.storage_status()));
         events.emit(CLIPS_CHANGED, json!(ClipsChanged::default()));
         Ok(())
+    }
+
+    /// Startup registered the default Quick Panel shortcut, having no database to read the stored
+    /// one from. A reopened history may hold another: it replaces the default. A fresh database
+    /// holds the default, so nothing is registered twice.
+    fn follow_stored_shortcut(&self) {
+        let wanted = self
+            .settings
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .quick_panel_shortcut
+            .clone();
+        if self.shortcut_status().accelerator == wanted {
+            return;
+        }
+        if let Err(error) = shortcuts::switch(self.shortcuts.as_ref(), &self.shortcut, &wanted) {
+            tracing::warn!(
+                code = error.code(),
+                "the stored Quick Panel shortcut is not registered"
+            );
+            *self.shortcut.lock().unwrap_or_else(PoisonError::into_inner) = ShortcutStatus {
+                accelerator: wanted,
+                error: Some(error.code().to_owned()),
+            };
+        }
     }
 
     /// Makes `db` the history database and loads its settings.

@@ -27,6 +27,7 @@ fn reset_with(
     store: &dyn KeyStore,
     open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
 ) -> Result<Db, StorageError> {
+    keep_leftovers(dir)?;
     let staged = stage(dir)?;
     match start_over(dir, store, open) {
         Ok(db) => {
@@ -48,6 +49,19 @@ fn file_names() -> impl Iterator<Item = String> {
     FILE_SUFFIXES
         .into_iter()
         .map(|suffix| format!("{DB_FILE_NAME}{suffix}"))
+}
+
+/// A staging file still there belongs to an earlier reset that worked but could not rename it to
+/// `.bak`: the history it moved aside exists only under that name, and staging would overwrite
+/// it. It becomes the backup now. Nothing is overwritten that this reset has not replaced.
+fn keep_leftovers(dir: &Path) -> Result<(), StorageError> {
+    for name in file_names() {
+        let left = dir.join(format!("{name}{STAGED}"));
+        if left.is_file() {
+            std::fs::rename(&left, dir.join(format!("{name}{BACKUP}")))?;
+        }
+    }
+    Ok(())
 }
 
 /// Renames each existing file to its staging name; on a failure the ones already moved go back.
