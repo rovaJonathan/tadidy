@@ -30,7 +30,7 @@
   /** The tray menu's Clear history… (HIS-06): the confirmation says how many clips are about to go. */
   async function askToClear() {
     // No list to size while the history database is unavailable: the error state explains why.
-    if (host?.storageUnavailable()) return;
+    if (await host?.storageUnavailable()) return;
     try {
       clearing = (await listClips({ limit: 1 })).total;
     } catch (error) {

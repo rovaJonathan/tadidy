@@ -36,7 +36,7 @@
     </div>
     <p class="empty-title">Your history can’t be opened.</p>
     <p class="empty-body">Tadidy can’t unlock its encrypted database, so nothing is being recorded.</p>
-    {#if props.failed}
+    {#if props.failed && props.canReset}
       <p id="storage-reset-error" class="empty-body" role="alert">
         The reset didn’t work. Nothing was changed: try again.
       </p>

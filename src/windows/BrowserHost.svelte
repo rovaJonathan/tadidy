@@ -28,8 +28,8 @@
   });
 
   /** The history database cannot be opened: the tray menu's Clear history… has nothing to ask about. */
-  export function storageUnavailable(): boolean {
-    return browser?.storageUnavailable() ?? false;
+  export async function storageUnavailable(): Promise<boolean> {
+    return (await browser?.storageUnavailable()) ?? false;
   }
 
   /** Gives the focus back to the search field, e.g. when a dialog of the window closes. */

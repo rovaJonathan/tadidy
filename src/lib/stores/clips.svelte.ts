@@ -61,6 +61,9 @@ export class ClipsStore {
   #unlistenStorage: (() => void) | undefined;
   /** A `storage://changed` arrived: it is newer than the status asked for at start. */
   #storageAnnounced = false;
+  #markStorageKnown!: () => void;
+  /** Settles once the storage status is known (asked for, or announced), or the store is destroyed. */
+  readonly storageKnown = new Promise<void>((resolve) => (this.#markStorageKnown = resolve));
   readonly #requestedIcons = new SvelteSet<string>();
 
   /** Loads the first page and follows `clips://changed` and `storage://changed` until `destroy`. */
@@ -79,12 +82,14 @@ export class ClipsStore {
     const status = await getStorageStatus().catch((): undefined => undefined);
     // An announcement made meanwhile is newer than this answer.
     if (status !== undefined && !this.#destroyed && !this.#storageAnnounced) this.#setStorage(status);
+    this.#markStorageKnown();
     await Promise.all([listening, this.#loadFirstPage(true)]);
   }
 
   /** Releases the event listener, the pending timers and the icon object URLs. */
   destroy(): void {
     this.#destroyed = true;
+    this.#markStorageKnown();
     this.#generation++;
     clearTimeout(this.#debounce);
     this.#debounce = undefined;
@@ -118,6 +123,8 @@ export class ClipsStore {
     this.#debounce = undefined;
     this.search = "";
     this.selectedIndex = 0;
+    // An error from an attempt of an earlier session would show before any new attempt.
+    this.resetFailed = false;
     return this.#loadFirstPage(false);
   }
 
@@ -187,7 +194,8 @@ export class ClipsStore {
       await resetHistoryDatabase();
     } catch {
       // Still unavailable, nothing moved: the error state says so and the user can retry.
-      this.resetFailed = true;
+      // A refusal that lands after the history became ready (another window won) says nothing.
+      if (this.storageUnavailable) this.resetFailed = true;
     }
   }
 
@@ -225,6 +233,7 @@ export class ClipsStore {
     if (this.#destroyed) return;
     this.#storageAnnounced = true;
     this.#setStorage(status);
+    this.#markStorageKnown();
     if (this.storageUnavailable) {
       // Drop any answer on its way and what is shown: it belongs to a database that is gone.
       this.#generation++;

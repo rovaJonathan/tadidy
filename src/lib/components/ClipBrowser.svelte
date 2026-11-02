@@ -147,8 +147,9 @@
     list?.reveal(0);
   }
 
-  /** The history database cannot be opened: there is no list to size, and nothing to clear. */
-  export function storageUnavailable(): boolean {
+  /** The history database cannot be opened: there is no list to size, and nothing to clear. Waits for the first status. */
+  export async function storageUnavailable(): Promise<boolean> {
+    await store.storageKnown;
     return store.storageUnavailable;
   }
 

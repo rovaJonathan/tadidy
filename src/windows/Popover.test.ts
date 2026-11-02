@@ -136,14 +136,14 @@ describe("Popover, Clear history… from the tray menu", () => {
 
   it("waits for the first storage status before it asks for the size, so an early menu choice asks for no list", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const answer = deferred<void>();
+    const answer = deferred<undefined>();
     const core = hostCore({ storage: UNAVAILABLE, storageAnswer: answer.promise });
     const { container } = render(Popover);
     await settle();
 
     await emit("menu://clear-history");
     await settle();
-    answer.resolve();
+    answer.resolve(undefined);
     await settle(50);
 
     expect(container.querySelector("#dialog-clear-history")).toBeNull();
