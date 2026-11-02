@@ -95,22 +95,15 @@ pub fn open_in_dir(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError>
     open(&path, &key)
 }
 
-/// What `setup` does at startup: the database, or `None` after logging why not, so the app still
-/// runs (spec *Encryption*: a missing key leaves the file untouched). Only the error code is
-/// logged, never a path or a key.
-pub fn open_or_report(dir: &Path, store: &dyn KeyStore) -> Option<Db> {
-    match open_in_dir(dir, store) {
-        Ok(db) => Some(db),
-        Err(error) => {
-            tracing::error!(code = %AppError::from(error).code, "the history database is unavailable");
-            None
-        }
-    }
-}
-
 /// What `setup` does at startup: the database, or the error to report (logged by its code only).
-pub fn open_for_startup(_dir: &Path, _store: &dyn KeyStore) -> Result<Db, AppError> {
-    todo!("TAD-022")
+/// A database whose key is gone is left untouched (spec *Encryption*): the app runs without it
+/// and offers a reset. Only the error code is logged, never a path or a key.
+pub fn open_for_startup(dir: &Path, store: &dyn KeyStore) -> Result<Db, AppError> {
+    open_in_dir(dir, store).map_err(|error| {
+        let error = AppError::from(error);
+        tracing::error!(code = %error.code, "the history database is unavailable");
+        error
+    })
 }
 
 #[cfg(test)]
@@ -158,28 +151,6 @@ mod tests {
         let result = open_in_dir(dir.path(), &FakeKeyStore::default());
 
         assert!(matches!(result, Err(StorageError::KeyMissing)));
-        assert_eq!(
-            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
-            before
-        );
-    }
-
-    #[test]
-    fn open_or_report_returns_the_database() {
-        let dir = tempfile::tempdir().unwrap();
-
-        assert!(open_or_report(dir.path(), &FakeKeyStore::default()).is_some());
-    }
-
-    #[test]
-    fn open_or_report_runs_without_a_database_when_the_key_is_gone() {
-        let dir = tempfile::tempdir().unwrap();
-        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
-        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
-
-        let db = open_or_report(dir.path(), &FakeKeyStore::default());
-
-        assert!(db.is_none());
         assert_eq!(
             std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
             before

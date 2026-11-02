@@ -23,16 +23,26 @@ use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
 /// The platform services of the running app: the AppKit and CoreGraphics ones, the global
-/// shortcut plugin and the system's login item.
+/// shortcut plugin and the system's login item. `opened` is the history database, or why it is
+/// not there; the state keeps what it needs to reset it from `dir`.
 #[cfg(target_os = "macos")]
-fn real_state(db: Option<storage::Db>, app: &tauri::AppHandle) -> AppState {
+fn real_state(
+    opened: Result<storage::Db, error::AppError>,
+    dir: std::path::PathBuf,
+    app: &tauri::AppHandle,
+) -> AppState {
     AppState::new(
         std::sync::Arc::new(macos::accessibility::AxProbe),
         std::sync::Arc::new(macos::keys::CgKeySender),
         std::sync::Arc::new(macos::pasteboard::NsPasteboard),
         std::sync::Arc::new(macos::workspace::NsWorkspace),
     )
-    .with_db(db)
+    .with_storage(opened)
+    .with_storage_reset(
+        dir,
+        std::sync::Arc::new(macos::keychain::KeychainKeyStore::default()),
+        real_watcher_services(app),
+    )
     .with_shortcuts(std::sync::Arc::new(shortcuts::AppShortcuts(app.clone())))
     .with_login_item(std::sync::Arc::new(macos::login_item::SmLoginItem))
 }
@@ -70,15 +80,15 @@ pub fn run() {
             // bundle's Info.plist (LSUIElement) does not apply (MNU-06).
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            // The history database; without it (key missing) the app still runs, see `storage`.
+            // The history database; without it (key missing) the app still runs and offers to
+            // reset the history, see `storage`.
             #[cfg(target_os = "macos")]
-            app.manage(real_state(
-                storage::open_or_report(
-                    &app.path().app_data_dir()?,
-                    &macos::keychain::KeychainKeyStore::default(),
-                ),
-                app.handle(),
-            ));
+            {
+                let dir = app.path().app_data_dir()?;
+                let opened =
+                    storage::open_for_startup(&dir, &macos::keychain::KeychainKeyStore::default());
+                app.manage(real_state(opened, dir, app.handle()));
+            }
             // Records what is copied; not started without the database.
             #[cfg(target_os = "macos")]
             watcher::start(

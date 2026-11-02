@@ -6,15 +6,16 @@ use crate::clip::HistoryLimit;
 use crate::clock::SystemClock;
 use crate::crypto::KeyStore;
 use crate::error::AppError;
-use crate::events::EventSink;
+use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, STORAGE_CHANGED};
 use crate::login_item::{self, LoginItem, NoLoginItem};
 use crate::paster::{AccessibilityMonitor, PASTE_DELAY, Paster, PasterServices, WindowHider};
 use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
 use crate::settings::Settings;
 use crate::shortcuts::{self, NoShortcuts, ShortcutRegistrar, ShortcutStatus};
-use crate::storage::status::StorageStatus;
+use crate::storage::status::{StorageState, StorageStatus};
 use crate::storage::{self, Db};
 use crate::watcher::{self, WatcherHandle};
+use serde_json::json;
 use std::path::PathBuf;
 
 /// Tadidy's own bundle identifier (AGENTS.md §3).
@@ -104,16 +105,9 @@ impl AppState {
     /// Attaches the database and loads the stored settings from it, so the history limit is
     /// right before the watcher's first tick. Without a database the defaults stay.
     pub fn with_db(self, db: Option<Db>) -> Self {
-        let settings = db.as_ref().map_or_else(Settings::default, |db| {
-            db.with_conn(storage::settings::load)
-                .unwrap_or_else(|error| {
-                    tracing::warn!(
-                        code = %AppError::from(error).code,
-                        "the settings could not be read, using the defaults"
-                    );
-                    Settings::default()
-                })
-        });
+        let settings = db
+            .as_ref()
+            .map_or_else(Settings::default, load_settings_or_defaults);
         self.history_limit.set(settings.history_limit());
         Self {
             db: RwLock::new(db),
@@ -123,28 +117,87 @@ impl AppState {
     }
 
     /// The database that opened at startup, or the error that kept it from opening.
-    pub fn with_storage(self, _opened: Result<Db, AppError>) -> Self {
-        todo!("TAD-022")
+    pub fn with_storage(self, opened: Result<Db, AppError>) -> Self {
+        let status = match &opened {
+            Ok(_) => StorageStatus::ready(),
+            Err(error) => StorageStatus::unavailable(error.code.clone()),
+        };
+        let state = self.with_db(opened.ok());
+        *state
+            .storage_status
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = status;
+        state
     }
 
     /// Lets [`AppState::reset_history`] move the database in `dir` aside and start over.
     pub fn with_storage_reset(
         self,
-        _dir: PathBuf,
-        _store: Arc<dyn KeyStore>,
-        _watcher: watcher::Services,
+        dir: PathBuf,
+        store: Arc<dyn KeyStore>,
+        watcher: watcher::Services,
     ) -> Self {
-        todo!("TAD-022")
+        Self {
+            storage_reset: Some(StorageReset {
+                dir,
+                store,
+                watcher,
+            }),
+            ..self
+        }
     }
 
     pub fn storage_status(&self) -> StorageStatus {
-        todo!("TAD-022")
+        self.storage_status
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Starts over with an empty history when the database is unavailable: refused with
     /// `invalid_state` when it works.
     pub fn reset_history(&self) -> Result<(), AppError> {
-        todo!("TAD-022")
+        let _gate = self
+            .reset_gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if self.storage_status().state == StorageState::Ready {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database works: it cannot be reset.",
+            ));
+        }
+        let Some(reset) = &self.storage_reset else {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database cannot be reset here.",
+            ));
+        };
+        let db = storage::reset::reset(&reset.dir, reset.store.as_ref())?;
+        self.attach(db.clone());
+        watcher::start(self, reset.watcher.clone());
+        // Only the login item: the Quick Panel shortcut registered at startup is the default one,
+        // the same as in the new database, and registering it again would report an error.
+        login_item::reconcile(self.login_item.as_ref(), &self.settings, &db);
+        let events = &reset.watcher.events;
+        events.emit(STORAGE_CHANGED, json!(self.storage_status()));
+        events.emit(CLIPS_CHANGED, json!(ClipsChanged::default()));
+        Ok(())
+    }
+
+    /// Makes `db` the history database and loads its settings.
+    fn attach(&self, db: Db) {
+        let settings = load_settings_or_defaults(&db);
+        self.history_limit.set(settings.history_limit());
+        *self
+            .settings
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = settings;
+        *self.db.write().unwrap_or_else(PoisonError::into_inner) = Some(db);
+        *self
+            .storage_status
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = StorageStatus::ready();
     }
 
     /// The history database, `None` while it is unavailable. A clone: the handle is shared.
@@ -218,6 +271,18 @@ impl AppState {
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
     }
+}
+
+/// The settings stored in `db`; the defaults when they cannot be read.
+fn load_settings_or_defaults(db: &Db) -> Settings {
+    db.with_conn(storage::settings::load)
+        .unwrap_or_else(|error| {
+            tracing::warn!(
+                code = %AppError::from(error).code,
+                "the settings could not be read, using the defaults"
+            );
+            Settings::default()
+        })
 }
 
 #[cfg(test)]
@@ -483,10 +548,9 @@ mod tests {
     // --- history reset (TAD-022) ---
 
     use crate::clock::FixedClock;
-    use crate::events::{CLIPS_CHANGED, RecordingEventSink};
+    use crate::events::RecordingEventSink;
     use crate::platform::fakes::FakeIdle;
     use crate::storage::{DB_FILE_NAME, status::StorageStatus};
-    use serde_json::json;
 
     /// A data folder holding a database whose key `FakeKeyStore::default()` does not have.
     fn orphaned_dir() -> (tempfile::TempDir, Vec<u8>) {
