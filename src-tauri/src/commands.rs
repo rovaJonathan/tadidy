@@ -103,15 +103,15 @@ pub fn open_preferences<R: Runtime>(app: AppHandle<R>) -> Result<(), AppError> {
 
 /// Whether the history database is usable, and the code of the failure when it is not.
 #[tauri::command]
-pub fn get_storage_status(_state: State<'_, AppState>) -> StorageStatus {
-    todo!("TAD-022")
+pub fn get_storage_status(state: State<'_, AppState>) -> StorageStatus {
+    state.storage_status()
 }
 
 /// Moves the unusable history aside and starts a new one; refused with `invalid_state` while the
 /// database works. The state announces `storage://changed` and `clips://changed`.
 #[tauri::command(async)]
-pub fn reset_history_database(_state: State<'_, AppState>) -> Result<(), AppError> {
-    todo!("TAD-022")
+pub fn reset_history_database(state: State<'_, AppState>) -> Result<(), AppError> {
+    state.reset_history()
 }
 
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
