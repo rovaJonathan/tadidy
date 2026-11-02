@@ -41,7 +41,10 @@ impl StorageStatus {
     /// Any other failure can be temporary (a Keychain prompt that was denied, a locked
     /// Keychain): a reset would then throw away a history that is only out of reach for now.
     pub fn can_reset(&self) -> bool {
-        todo!("TAD-022")
+        matches!(
+            self.code.as_deref(),
+            Some("storage_key_missing" | "storage_wrong_key")
+        )
     }
 }
 

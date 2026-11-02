@@ -154,17 +154,23 @@ impl AppState {
             .clone()
     }
 
-    /// Starts over with an empty history when the database is unavailable: refused with
-    /// `invalid_state` when it works.
+    /// Starts over with an empty history when its key is gone or does not open it: refused with
+    /// `invalid_state` when the database works, is open, or may only be out of reach for now.
     pub fn reset_history(&self) -> Result<(), AppError> {
         let _gate = self
             .reset_gate
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if self.storage_status().state == StorageState::Ready {
+        if self.db().is_some() || self.storage_status().state == StorageState::Ready {
             return Err(AppError::new(
                 "invalid_state",
                 "The history database works: it cannot be reset.",
+            ));
+        }
+        if !self.storage_status().can_reset() {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database may be only out of reach for now: it cannot be reset.",
             ));
         }
         let Some(reset) = &self.storage_reset else {

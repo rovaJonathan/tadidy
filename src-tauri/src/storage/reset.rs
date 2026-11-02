@@ -13,9 +13,10 @@ const FILE_SUFFIXES: [&str; 3] = ["", "-wal", "-shm"];
 const STAGED: &str = ".bak.new";
 const BACKUP: &str = ".bak";
 
-/// Moves `tadidy.db`, `tadidy.db-wal` and `tadidy.db-shm` aside as `.bak`, stores a new key and
-/// opens a new database. Nothing is lost on a failure: the files are back where they were and
-/// an older `.bak` is replaced only once everything else succeeded.
+/// Moves `tadidy.db`, `tadidy.db-wal` and `tadidy.db-shm` aside as `.bak`, opens a new database
+/// with a new key, then stores that key. Nothing is lost on a failure: the files are back where
+/// they were, the stored key was not touched until the new database opened, and an older `.bak`
+/// is replaced only once everything else succeeded.
 pub fn reset(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
     reset_with(dir, store, open)
 }
@@ -24,10 +25,10 @@ pub fn reset(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
 fn reset_with(
     dir: &Path,
     store: &dyn KeyStore,
-    _open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
+    open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
 ) -> Result<Db, StorageError> {
     let staged = stage(dir)?;
-    match start_over(dir, store) {
+    match start_over(dir, store, open) {
         Ok(db) => {
             promote(dir, &staged);
             Ok(db)
@@ -66,10 +67,17 @@ fn stage(dir: &Path) -> Result<Vec<String>, StorageError> {
     Ok(staged)
 }
 
-fn start_over(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
+/// The new database first, the key in the store last: the old key is replaced only once nothing
+/// can fail any more, so a failure before that leaves it where it was.
+fn start_over(
+    dir: &Path,
+    store: &dyn KeyStore,
+    open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
+) -> Result<Db, StorageError> {
     let key = DbKey::generate()?;
+    let db = open(&dir.join(DB_FILE_NAME), &key)?;
     store.replace(&key)?;
-    open(&dir.join(DB_FILE_NAME), &key)
+    Ok(db)
 }
 
 /// Staging names become the backups, replacing the older ones.
