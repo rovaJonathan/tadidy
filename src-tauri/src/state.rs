@@ -34,8 +34,9 @@ pub struct AppState {
     pub shortcuts: Arc<dyn ShortcutRegistrar>,
     /// The system's "open at login" entry for the app (SYS-01).
     pub login_item: Arc<dyn LoginItem>,
-    /// `None` when the database could not be opened (e.g. its key is missing from the Keychain).
-    pub db: Option<Db>,
+    /// `None` when the database could not be opened (e.g. its key is missing from the Keychain);
+    /// the history reset sets it later. Read it with [`AppState::db`].
+    db: RwLock<Option<Db>>,
     /// How many clips the history keeps (HIS-02), shared with the settings and the purger.
     pub history_limit: HistoryLimit,
     /// The user's preferences, loaded from the database at startup.
@@ -63,7 +64,7 @@ impl AppState {
             shortcut: Mutex::default(),
             shortcuts: Arc::new(NoShortcuts),
             login_item: Arc::new(NoLoginItem),
-            db: None,
+            db: RwLock::default(),
             history_limit: HistoryLimit::default(),
             settings: RwLock::default(),
             settings_gate: Mutex::default(),
@@ -96,16 +97,24 @@ impl AppState {
         });
         self.history_limit.set(settings.history_limit());
         Self {
-            db,
+            db: RwLock::new(db),
             settings: RwLock::new(settings),
             ..self
         }
     }
 
+    /// The history database, `None` while it is unavailable. A clone: the handle is shared.
+    pub fn db(&self) -> Option<Db> {
+        self.db
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     /// Brings the system in line with the stored settings at startup: the login item is read back
     /// (the system wins) and the stored Quick Panel shortcut is registered, not the default.
     pub fn apply_stored_settings(&self) {
-        if let Some(db) = &self.db {
+        if let Some(db) = &self.db() {
             login_item::reconcile(self.login_item.as_ref(), &self.settings, db);
         }
         let accelerator = self
@@ -284,7 +293,7 @@ mod tests {
 
     #[test]
     fn the_state_starts_without_a_database() {
-        assert!(state().db.is_none());
+        assert!(state().db().is_none());
     }
 
     #[test]
@@ -292,7 +301,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
 
-        assert!(state().with_db(Some(db)).db.is_some());
+        assert!(state().with_db(Some(db)).db().is_some());
     }
 
     #[test]

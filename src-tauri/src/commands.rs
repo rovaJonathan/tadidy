@@ -71,7 +71,7 @@ pub fn set_settings<R: Runtime>(
     patch: SettingsPatch,
 ) -> Result<Settings, AppError> {
     settings::update(
-        database(&state)?,
+        &database(&state)?,
         &state.settings,
         &state.history_limit,
         &TauriEventSink::new(app),
@@ -101,8 +101,8 @@ pub fn open_preferences<R: Runtime>(app: AppHandle<R>) -> Result<(), AppError> {
 }
 
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
-fn database(state: &AppState) -> Result<&Db, AppError> {
-    state.db.as_ref().ok_or_else(|| {
+fn database(state: &AppState) -> Result<Db, AppError> {
+    state.db().ok_or_else(|| {
         AppError::new(
             "storage_unavailable",
             "The history database is unavailable.",
@@ -123,7 +123,7 @@ pub fn delete_clips<R: Runtime>(
     state: State<'_, AppState>,
     ids: Vec<String>,
 ) -> Result<(), AppError> {
-    history::delete_clips(database(&state)?, &TauriEventSink::new(app), &ids)
+    history::delete_clips(&database(&state)?, &TauriEventSink::new(app), &ids)
 }
 
 /// Empties the history and returns how many clips went; pinned clips stay when `keep_pinned`.
@@ -133,7 +133,7 @@ pub fn clear_history<R: Runtime>(
     state: State<'_, AppState>,
     keep_pinned: bool,
 ) -> Result<u32, AppError> {
-    history::clear_history(database(&state)?, &TauriEventSink::new(app), keep_pinned)
+    history::clear_history(&database(&state)?, &TauriEventSink::new(app), keep_pinned)
 }
 
 /// Puts a clip back on the pasteboard and into the app that was in front (PST-01), or only on
