@@ -178,6 +178,24 @@ mod tests {
     }
 
     #[test]
+    fn a_second_reset_leaves_no_sidecar_of_the_first_beside_its_backup() {
+        let (dir, _) = orphaned_database();
+        std::fs::write(dir.path().join(WAL), b"wal").unwrap();
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+        assert!(dir.path().join("tadidy.db-wal.bak").exists());
+        // The new database lost its key as well; nothing but the main file is there to move.
+        std::fs::remove_file(dir.path().join(WAL)).ok();
+        std::fs::remove_file(dir.path().join(SHM)).ok();
+        let second = read(dir.path(), DB_FILE_NAME);
+
+        reset(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak"), second);
+        assert!(!dir.path().join("tadidy.db-wal.bak").exists());
+        assert!(!dir.path().join("tadidy.db-shm.bak").exists());
+    }
+
+    #[test]
     fn a_failed_reset_puts_every_file_back_and_keeps_the_older_backup() {
         let (dir, before) = orphaned_database();
         std::fs::write(dir.path().join(WAL), b"wal").unwrap();
