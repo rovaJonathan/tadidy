@@ -126,4 +126,11 @@ describe("resolveKey", () => {
     expect(resolveKey(press("Enter"), IDLE)).toBe("paste");
     expect(resolveKey(press("ArrowDown"), { ...IDLE, buttonFocused: true })).toBe("select-next");
   });
+
+  it("still pastes and copies with a modified Return while a button has the focus", () => {
+    const onButton = { ...IDLE, buttonFocused: true };
+
+    expect(resolveKey(press("Enter", { metaKey: true }), onButton)).toBe("paste");
+    expect(resolveKey(press("Enter", { altKey: true }), onButton)).toBe("copy");
+  });
 });

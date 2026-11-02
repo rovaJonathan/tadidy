@@ -909,6 +909,25 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_waits_for_a_settings_change_in_progress_before_it_attaches_the_history() {
+        let (dir, _) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = unavailable_state(dir.path(), FakeKeyStore::default(), &events);
+
+        std::thread::scope(|scope| {
+            // A `set_settings` call holds the gate: the reset must not interleave with it.
+            let change = state.settings_gate.lock().unwrap();
+            let reset = scope.spawn(|| state.reset_history());
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            assert!(state.db().is_none());
+            drop(change);
+            assert!(reset.join().unwrap().is_ok());
+        });
+
+        assert!(state.db().is_some());
+    }
+
+    #[test]
     fn a_reset_announces_the_settings_the_login_item_changed() {
         let (dir, _) = orphaned_dir();
         let events = Arc::new(RecordingEventSink::default());

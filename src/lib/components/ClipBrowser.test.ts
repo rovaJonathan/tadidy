@@ -1154,6 +1154,32 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
     expect(container.querySelector("#dialog-reset-history")).toBeNull();
   });
 
+  it("puts the focus in the search field after a confirmed reset", async () => {
+    fakeCore(history, { storage: UNAVAILABLE });
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+
+    await fireEvent.click(find(container, "#btn-reset-confirm"));
+    await settle();
+
+    expect(document.activeElement).toBe(find(container, "#search-input"));
+  });
+
+  it("puts the focus back on Reset history… when the reset fails, for a retry", async () => {
+    fakeCore(history, { storage: UNAVAILABLE, resetError: { code: "storage_error", message: "failed" } });
+    const { container } = render(ClipBrowser);
+    await settle();
+    await fireEvent.click(find(container, "#btn-reset-history"));
+    await settle();
+
+    await fireEvent.click(find(container, "#btn-reset-confirm"));
+    await settle();
+
+    expect(document.activeElement).toBe(find(container, "#btn-reset-history"));
+  });
+
   it("forgets a failed reset when the window is shown again", async () => {
     fakeCore(history, { storage: UNAVAILABLE, resetError: { code: "storage_error", message: "failed" } });
     const { container, component } = render(ClipBrowser);
