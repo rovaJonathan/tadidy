@@ -232,16 +232,18 @@ impl AppState {
         if self.shortcut_status().accelerator == wanted {
             return;
         }
-        if let Err(error) = shortcuts::switch(self.shortcuts.as_ref(), &self.shortcut, &wanted) {
+        // As at startup: the default one is released, then the stored one registered; when another
+        // app holds it, nothing is registered and the status says so, which is what is true.
+        let current = self.shortcut_status();
+        if current.error.is_none()
+            && let Err(error) = self.shortcuts.unregister(&current.accelerator)
+        {
             tracing::warn!(
                 code = error.code(),
-                "the stored Quick Panel shortcut is not registered"
+                "the default Quick Panel shortcut was not released"
             );
-            *self.shortcut.lock().unwrap_or_else(PoisonError::into_inner) = ShortcutStatus {
-                accelerator: wanted,
-                error: Some(error.code().to_owned()),
-            };
         }
+        shortcuts::register_at_startup(self.shortcuts.as_ref(), &self.shortcut, &wanted);
     }
 
     /// Makes `db` the history database and loads its settings.

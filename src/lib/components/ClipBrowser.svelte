@@ -76,13 +76,12 @@
       dialog?.handleKey(event);
       return;
     }
-    // A focused button (Reset history…, Preferences) does its own thing on Return and Space.
-    if (event.target instanceof HTMLButtonElement && (event.key === "Enter" || event.key === " ")) return;
     const action = resolveKey(event, {
       searchFocused: searchBar?.hasFocus() ?? false,
       searchEmpty: store.search === "",
       inputHasSelection: searchBar?.hasSelection() ?? false,
       dialogOpen: pendingDelete !== undefined,
+      buttonFocused: event.target instanceof HTMLButtonElement,
     });
     if (action === null) return;
     // A typed character is not stopped: it goes on into the field that just got the focus.

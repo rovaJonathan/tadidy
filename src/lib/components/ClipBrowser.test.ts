@@ -1172,9 +1172,10 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
 
   it("does not say the reset failed when another window's reset already made the history ready", async () => {
     const refused = deferred<never>();
+    let status = UNAVAILABLE;
     mockIPC(
       (cmd) => {
-        if (cmd === "get_storage_status") return UNAVAILABLE;
+        if (cmd === "get_storage_status") return status;
         if (cmd === "reset_history_database") return refused.promise;
         if (cmd === "list_clips") return history();
         return undefined;
@@ -1187,6 +1188,7 @@ describe("ClipBrowser when the history database is unavailable: review fixes", (
     await settle();
     await fireEvent.click(find(container, "#btn-reset-confirm"));
 
+    status = READY;
     await emit("storage://changed", READY);
     refused.resolve(Promise.reject({ code: "invalid_state", message: "works" }) as never);
     await settle(50);

@@ -77,9 +77,15 @@ export class ClipsStore {
       else this.#unlistenStorage = unlisten;
     });
     // Listening first: an announcement made while the status is asked for must not be missed.
-    await listeningStorage;
-    // A status that cannot be read counts as ready: the list then fails or shows by itself.
-    const status = await getStorageStatus().catch((): undefined => undefined);
+    // A status that cannot be read (or a listener that cannot be set) counts as ready: the list
+    // then fails or shows by itself.
+    let status: StorageStatus | undefined;
+    try {
+      await listeningStorage;
+      status = await getStorageStatus();
+    } catch {
+      status = undefined;
+    }
     // An announcement made meanwhile is newer than this answer.
     if (status !== undefined && !this.#destroyed && !this.#storageAnnounced) this.#setStorage(status);
     this.#markStorageKnown();
@@ -194,8 +200,12 @@ export class ClipsStore {
       await resetHistoryDatabase();
     } catch {
       // Still unavailable, nothing moved: the error state says so and the user can retry.
-      // A refusal that lands after the history became ready (another window won) says nothing.
-      if (this.storageUnavailable) this.resetFailed = true;
+      // The core announces its status just before it refuses, but the refusal can arrive first:
+      // read the status, so the message and the button are decided from one state. A refusal that
+      // lands after the history became ready (another window won) says nothing.
+      const status = await getStorageStatus().catch((): undefined => undefined);
+      if (status !== undefined && !this.#destroyed) this.#setStorage(status);
+      if (this.storageUnavailable && this.storageCanReset) this.resetFailed = true;
     }
   }
 

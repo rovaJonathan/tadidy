@@ -23,12 +23,15 @@ export interface KeyContext {
   inputHasSelection: boolean;
   /** A dialog is open: it handles its own keys. */
   dialogOpen: boolean;
+  /** A button has the focus (Reset history…, Preferences): Return and Space are its own. */
+  buttonFocused: boolean;
 }
 
 /** The action a key press means in the clip browser, or `null` to leave it to the page. */
 export function resolveKey(event: KeyInput, context: KeyContext): BrowserAction | null {
   // WebKit reports the keys of an input method as `Process`, or with `isComposing` set.
   if (context.dialogOpen || event.isComposing || event.key === "Process") return null;
+  if (context.buttonFocused && (event.key === "Enter" || event.key === " ")) return null;
 
   if (event.metaKey) return resolveCommandKey(event.key.toLowerCase(), context);
   if (event.ctrlKey) return null;
