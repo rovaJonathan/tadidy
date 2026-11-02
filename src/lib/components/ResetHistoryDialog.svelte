@@ -150,7 +150,7 @@
   .btn-primary {
     background: var(--color-accent);
     color: var(--color-on-accent);
-    box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-primary-button);
   }
 
   .btn-primary:active {

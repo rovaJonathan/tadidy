@@ -1,5 +1,16 @@
 <script lang="ts">
-  type Props = { variant: "history" } | { variant: "search"; query: string };
+  type Props =
+    | { variant: "history" }
+    | { variant: "search"; query: string }
+    | {
+        variant: "storage";
+        /** The reset may be offered: the key is lost. Not for a failure that may be temporary. */
+        canReset: boolean;
+        /** The last reset did not work. */
+        failed: boolean;
+        /** Reset history… was clicked: the host opens the confirmation. */
+        onreset: () => void;
+      };
 
   let props: Props = $props();
 </script>
@@ -15,6 +26,24 @@
     </div>
     <p class="empty-title">Nothing copied yet.</p>
     <p class="empty-body">Press ⌘C anywhere — Tadidy remembers.</p>
+  </div>
+{:else if props.variant === "storage"}
+  <div id="storage-unavailable" class="empty-state" role="status">
+    <div class="empty-icon">
+      <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"
+        ><path d="M8 2.2 14 12.8H2L8 2.2Z" /><path d="M8 6.6v2.7" /><circle cx="8" cy="11.1" r="0.35" /></svg
+      >
+    </div>
+    <p class="empty-title">Your history can’t be opened.</p>
+    <p class="empty-body">Tadidy can’t unlock its encrypted database, so nothing is being recorded.</p>
+    {#if props.failed}
+      <p id="storage-reset-error" class="empty-body" role="alert">
+        The reset didn’t work. Nothing was changed: try again.
+      </p>
+    {/if}
+    {#if props.canReset}
+      <button type="button" class="btn" id="btn-reset-history" onclick={props.onreset}>Reset history…</button>
+    {/if}
   </div>
 {:else}
   <div id="empty-search" class="empty-state" role="status">
@@ -73,5 +102,27 @@
     line-height: var(--leading-headline);
     font-weight: var(--weight-semibold);
     color: var(--color-text-primary);
+  }
+
+  .btn {
+    height: 28px;
+    margin-top: var(--space-8);
+    padding: 0 var(--space-12);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--color-control-bg);
+    box-shadow: var(--shadow-control);
+    font: inherit;
+    font-size: var(--text-body);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+
+  .btn:active {
+    background: var(--color-fill-pressed);
+  }
+
+  .btn:focus-visible {
+    outline: 3px solid var(--color-focus-ring);
   }
 </style>

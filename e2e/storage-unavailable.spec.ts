@@ -77,3 +77,17 @@ for (const url of ["/popover.html", "/"]) {
     });
   });
 }
+
+test("a failure that may be temporary shows the error state without a reset button", async ({ page }) => {
+  await mockIpc(
+    page,
+    { get_storage_status: { state: "unavailable", code: "storage_error" }, reset_history_database: null },
+    { clips: syntheticClips(3) },
+  );
+
+  await page.goto("/popover.html");
+
+  await expect(page.locator("#storage-unavailable")).toBeVisible();
+  await expect(page.locator("#btn-reset-history")).toHaveCount(0);
+  expect(await ipcCalls(page)).not.toContain("list_clips");
+});
