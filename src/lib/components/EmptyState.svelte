@@ -105,7 +105,7 @@
   }
 
   .btn {
-    height: 28px;
+    height: var(--button-height);
     margin-top: var(--space-8);
     padding: 0 var(--space-12);
     border: 0;

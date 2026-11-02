@@ -132,6 +132,9 @@ Spacing: `--space-2` 2px · `--space-4` 4 · `--space-6` 6 · `--space-8` 8 · `
 | `--prefs-sidebar-width` | 184 px |
 | `--onboarding-width` × `--onboarding-height` | 520 × 440 px |
 | `--tile-size` | 28 px (20 px in compact mode) |
+| `--alert-width` | 260 px (confirmation alerts) |
+| `--alert-icon-size` | 56 px (the icon at the top of an alert) |
+| `--button-height` | 28 px (push buttons of alerts and empty states) |
 | `--preview-lines` | 2 (Preferences › Preview lines, 1–4; compact mode forces 1) |
 
 ### 2.5 Shadows
