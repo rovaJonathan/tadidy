@@ -6,14 +6,14 @@ use crate::clip::HistoryLimit;
 use crate::clock::SystemClock;
 use crate::crypto::KeyStore;
 use crate::error::AppError;
-use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, STORAGE_CHANGED};
+use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, SETTINGS_CHANGED, STORAGE_CHANGED};
 use crate::login_item::{self, LoginItem, NoLoginItem};
 use crate::paster::{AccessibilityMonitor, PASTE_DELAY, Paster, PasterServices, WindowHider};
 use crate::platform::{AccessibilityProbe, KeySender, Pasteboard, SourceApp, Workspace};
 use crate::settings::Settings;
 use crate::shortcuts::{self, NoShortcuts, ShortcutRegistrar, ShortcutStatus};
-use crate::storage::status::{StorageState, StorageStatus};
-use crate::storage::{self, Db};
+use crate::storage::status::StorageStatus;
+use crate::storage::{self, Db, StorageError};
 use crate::watcher::{self, WatcherHandle};
 use serde_json::json;
 use std::path::PathBuf;
@@ -49,8 +49,9 @@ pub struct AppState {
     pub settings_gate: Mutex<()>,
     /// The clipboard watcher thread, `None` until it starts (and when there is no database).
     pub watcher: Mutex<Option<WatcherHandle>>,
-    /// Whether the database opened at startup, or why not (`get_storage_status`).
-    storage_status: RwLock<StorageStatus>,
+    /// The code of the failure that kept the database from opening, last seen. The status the
+    /// webview gets is derived from it and from `db`, so the two cannot disagree.
+    storage_failure: RwLock<Option<String>>,
     /// What the history reset needs to start over; `None` where it cannot run.
     storage_reset: Option<StorageReset>,
     /// Serializes the history reset: two windows can ask at once.
@@ -86,7 +87,7 @@ impl AppState {
             settings: RwLock::default(),
             settings_gate: Mutex::default(),
             watcher: Mutex::default(),
-            storage_status: RwLock::default(),
+            storage_failure: RwLock::default(),
             storage_reset: None,
             reset_gate: Mutex::default(),
         }
@@ -118,16 +119,10 @@ impl AppState {
 
     /// The database that opened at startup, or the error that kept it from opening.
     pub fn with_storage(self, opened: Result<Db, AppError>) -> Self {
-        let status = match &opened {
-            Ok(_) => StorageStatus::ready(),
-            Err(error) => StorageStatus::unavailable(error.code.clone()),
-        };
-        let state = self.with_db(opened.ok());
-        *state
-            .storage_status
-            .write()
-            .unwrap_or_else(PoisonError::into_inner) = status;
-        state
+        if let Err(error) = &opened {
+            self.remember_failure(&error.code);
+        }
+        self.with_db(opened.ok())
     }
 
     /// Lets [`AppState::reset_history`] move the database in `dir` aside and start over.
@@ -147,30 +142,40 @@ impl AppState {
         }
     }
 
+    /// Ready with a database; otherwise unavailable, with the code of the failure.
     pub fn storage_status(&self) -> StorageStatus {
-        self.storage_status
+        if self.db().is_some() {
+            return StorageStatus::ready();
+        }
+        let failure = self
+            .storage_failure
             .read()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .clone();
+        StorageStatus::unavailable(failure.unwrap_or_else(|| "storage_unavailable".to_owned()))
     }
 
-    /// Starts over with an empty history when its key is gone or does not open it: refused with
-    /// `invalid_state` when the database works, is open, or may only be out of reach for now.
+    fn remember_failure(&self, code: &str) {
+        *self
+            .storage_failure
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = Some(code.to_owned());
+    }
+
+    /// Starts over with an empty history when its key is gone or does not open it. The database
+    /// is tried again first, because the startup failure may have passed (a Keychain item
+    /// restored, a prompt answered): then the history is simply opened and nothing moves.
+    /// Refused with `invalid_state` when a database is open, or when it fails to open for a
+    /// reason that may pass (a locked Keychain): the history may be intact.
     pub fn reset_history(&self) -> Result<(), AppError> {
         let _gate = self
             .reset_gate
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if self.db().is_some() || self.storage_status().state == StorageState::Ready {
+        if self.db().is_some() {
             return Err(AppError::new(
                 "invalid_state",
                 "The history database works: it cannot be reset.",
-            ));
-        }
-        if !self.storage_status().can_reset {
-            return Err(AppError::new(
-                "invalid_state",
-                "The history database may be only out of reach for now: it cannot be reset.",
             ));
         }
         let Some(reset) = &self.storage_reset else {
@@ -179,13 +184,35 @@ impl AppState {
                 "The history database cannot be reset here.",
             ));
         };
-        let db = storage::reset::reset(&reset.dir, reset.store.as_ref())?;
+        let db = match storage::open_in_dir(&reset.dir, reset.store.as_ref()) {
+            Ok(db) => db,
+            Err(StorageError::KeyMissing | StorageError::WrongKey) => {
+                storage::reset::reset(&reset.dir, reset.store.as_ref())?
+            }
+            Err(error) => {
+                self.remember_failure(&AppError::from(error).code);
+                reset
+                    .watcher
+                    .events
+                    .emit(STORAGE_CHANGED, json!(self.storage_status()));
+                return Err(AppError::new(
+                    "invalid_state",
+                    "The history database may be only out of reach for now: it cannot be reset.",
+                ));
+            }
+        };
         self.attach(db.clone());
         watcher::start(self, reset.watcher.clone());
         // Only the login item: the Quick Panel shortcut registered at startup is the default one,
         // the same as in the new database, and registering it again would report an error.
         login_item::reconcile(self.login_item.as_ref(), &self.settings, &db);
         let events = &reset.watcher.events;
+        let settings = self
+            .settings
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        events.emit(SETTINGS_CHANGED, json!(settings));
         events.emit(STORAGE_CHANGED, json!(self.storage_status()));
         events.emit(CLIPS_CHANGED, json!(ClipsChanged::default()));
         Ok(())
@@ -200,10 +227,6 @@ impl AppState {
             .write()
             .unwrap_or_else(PoisonError::into_inner) = settings;
         *self.db.write().unwrap_or_else(PoisonError::into_inner) = Some(db);
-        *self
-            .storage_status
-            .write()
-            .unwrap_or_else(PoisonError::into_inner) = StorageStatus::ready();
     }
 
     /// The history database, `None` while it is unavailable. A clone: the handle is shared.
@@ -791,6 +814,7 @@ mod tests {
         assert_eq!(
             events.events(),
             vec![
+                ("settings://changed", json!(Settings::default())),
                 (
                     "storage://changed",
                     json!({ "state": "ready", "code": null, "canReset": false })
@@ -825,7 +849,7 @@ mod tests {
     fn a_failed_reset_leaves_the_storage_unavailable_and_the_files_in_place() {
         let (dir, before) = orphaned_dir();
         let events = Arc::new(RecordingEventSink::default());
-        let state = unavailable_state(dir.path(), FakeKeyStore::failing(), &events);
+        let state = unavailable_state(dir.path(), FakeKeyStore::refusing_replace(), &events);
 
         let error = state.reset_history().unwrap_err();
 
