@@ -39,7 +39,7 @@
 | App shell, IPC, windows, tray | `tauri` 2 (features `tray-icon`, `macos-private-api`) |
 | Global shortcut | `tauri-plugin-global-shortcut` |
 | Launch at login | `tauri-plugin-autostart` (or `smappservice-rs`) |
-| Positioning under the tray | `tauri-plugin-positioner` (feature `tray-icon`) |
+| Positioning under the tray | Tadidy's own placement in logical points (`windows::popover_placement`), from the tray icon's rectangle and Tauri's monitors (TAD-032) |
 | Non-activating panel | `tauri-nspanel` (turns a `WebviewWindow` into an `NSPanel`) |
 | Vibrancy | `window-vibrancy` |
 | Updates (P2) | `tauri-plugin-updater` |
@@ -90,7 +90,7 @@ macOS provides **no notification** when the clipboard changes. So we have to pol
 
 | Window | Label | Type | Behavior |
 |---|---|---|---|
-| Popover | `popover` | Undecorated, transparent WebviewWindow, `alwaysOnTop`, `skipTaskbar` | Created at startup **then hidden** (opens in < 100 ms). Positioned under the tray (`Position::TrayBottomCenter`). Hidden on `Focused(false)`. |
+| Popover | `popover` | Undecorated, transparent WebviewWindow, `alwaysOnTop`, `skipTaskbar` | Created at startup **then hidden** (opens in < 100 ms). Positioned under the tray icon, inside the display of the menu bar that was clicked; centered on the display under the pointer when the icon cannot be located. Hidden on `Focused(false)`. |
 | Quick Panel | `panel` | Non-activating NSPanel (`tauri-nspanel`), `nonactivatingPanel` style, `floating` level, `canJoinAllSpaces` + `fullScreenAuxiliary` | Created at startup then hidden. Appears on the current Space, including above full-screen apps. |
 | Preferences | `settings` | Standard window | Created on demand. Temporarily switches the activation policy to `Regular` so it can take focus, then back to `Accessory` when closed. |
 | Onboarding | `onboarding` | Standard window | First launch only. |

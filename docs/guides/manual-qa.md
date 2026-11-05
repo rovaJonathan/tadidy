@@ -312,3 +312,18 @@ Signed universal build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tad
 | 5 | Turn it on again, then in *Login Items & Extensions* switch Tadidy off (its toggle under *Allow in the Background*, or remove it from *Open at Login*). Quit and start Tadidy, open Preferences. | *Launch at login* is **off** (the system wins). Click the switch: either it turns on and Tadidy is enabled again in System Settings, or it stays off and "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again." shows under the label, with `after=RequiresApproval` in the log. Note which. In the second case, allow Tadidy in System Settings, then click the switch: it turns on. |
 | 5b | With the history database unavailable (TAD-022 step 1 set-up: Keychain item deleted), click the right half of *Launch at login*. | The switch goes back to off and "The history database is unavailable." shows under the label: a refusal is never silent. |
 | 6 | Clean up the test records: turn *Launch at login* off if the owner does not want it. | No stale *Tadidy* or *TadidyProbe* entry is left in *Login Items & Extensions* (`sfltool resetbtm` resets **every** app's record: only with the owner's consent, then restart). |
+
+### TAD-032 — Show the popover under the tray icon when the Mac has several displays
+
+Signed universal build installed in `/Applications`, started from a terminal so the log is visible: `RUST_LOG=tadidy_lib=debug /Applications/Tadidy.app/Contents/MacOS/tadidy 2> /tmp/tadidy.log`. A built-in Retina display (scale 2) and an external display at scale 1. The bug needs the two scales: a window is created on the display that has the keyboard focus, so **start Tadidy while the focused window is on the external display** (the terminal, for instance). With the old placement the popover then went off every display and each click logged `No monitor found for the window`.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | External display on the left of the built-in one (System Settings › Displays › Arrange). Start Tadidy with the focus on the external display. Click the Tadidy icon in the built-in display's menu bar, `Esc`, click it again. | Both times the popover opens right under the icon, focused. The log has no `could not place the popover` nor `the popover is centered` line. |
+| 2 | Click the Tadidy icon in the external display's menu bar, `Esc`, then on the built-in one. | Under the icon on the external display, then under the icon on the built-in one. |
+| 3 | Move the external display to the right of the built-in one (its pixel range then overlaps the built-in one's). Click the icon on each menu bar. | Under the icon on both. |
+| 4 | Unplug the external display. Click the icon, `Esc`, click again. | Under the icon both times (no regression with one display). |
+
+The fallback (no tray rectangle, or an icon on no display: the popover is centered on the display under the pointer and `the tray icon was not found on a display: the popover is centered` is logged) cannot be caused by hand; the unit tests of `windows::popover_placement` cover it.
+
+Run 2026-11-05 by the owner on a MacBook Pro (1512 × 982 points, scale 2) with a 2560 × 1440 display (scale 1): steps 1 to 4 OK, empty log.

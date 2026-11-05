@@ -86,7 +86,7 @@ tadidy/
 
 ## 6. Stack
 
-- **Core**: Rust (stable toolchain, `rust-toolchain.toml`), Tauri 2 (`tray-icon`, `macos-private-api`), `objc2` + `objc2-app-kit` + `objc2-foundation`, `core-graphics`, `rusqlite` with `bundled-sqlcipher-vendored-openssl` + `rusqlite_migration`, `security-framework`, `sha2`, `image`, `uuid` (v7), `serde`, `thiserror`, `anyhow`, `tracing`, `ts-rs`. Plugins: `global-shortcut`, `autostart`, `positioner`; `tauri-nspanel`, `window-vibrancy`.
+- **Core**: Rust (stable toolchain, `rust-toolchain.toml`), Tauri 2 (`tray-icon`, `macos-private-api`), `objc2` + `objc2-app-kit` + `objc2-foundation`, `core-graphics`, `rusqlite` with `bundled-sqlcipher-vendored-openssl` + `rusqlite_migration`, `security-framework`, `sha2`, `image`, `uuid` (v7), `serde`, `thiserror`, `anyhow`, `tracing`, `ts-rs`. Plugins: `global-shortcut`, `autostart`; `tauri-nspanel`, `window-vibrancy`.
 - **Front**: Svelte 5 (runes), TypeScript strict, Vite, `@tauri-apps/api`. Tests: Vitest + `@testing-library/svelte` + jsdom, Playwright (Chromium, against the Vite dev server with mocked IPC).
 - **Tools**: Node 24 LTS (`.nvmrc`), pnpm 10, lefthook, gitleaks, cargo-llvm-cov.
 - **Expected majors** (a change needs an ADR): Tauri 2, Svelte 5; the other majors (Vite, TypeScript, Vitest, ESLint, rusqlite…) are fixed by TAD-001 at the newest stable major that the rest of the toolchain accepts (peer dependencies: e.g. TypeScript must be supported by `svelte-check` and `typescript-eslint`), and recorded in [docs/reference.md](docs/reference.md). That file is a **snapshot** of what is installed, not a list to copy.
