@@ -121,6 +121,31 @@ describe("GeneralTab", () => {
     );
   });
 
+  it("shows any refusal of Launch at login under its label, not only a login item error", async () => {
+    const core = fakeSettingsCore();
+    core.refuse = { code: "storage_key_missing", message: "The history key is missing from the Keychain." };
+    const { container } = await open(core);
+
+    await fireEvent.click(find(container, "#pref-launch-at-login"));
+    await settle();
+
+    expect(find<HTMLInputElement>(container, "#pref-launch-at-login").checked).toBe(false);
+    expect(find(container, "#pref-launch-at-login-error").textContent).toBe(
+      "The history key is missing from the Keychain.",
+    );
+  });
+
+  it("does not show a refused History size under Launch at login", async () => {
+    const core = fakeSettingsCore();
+    core.refuse = { code: "storage_key_missing", message: "The history key is missing from the Keychain." };
+    const { container } = await open(core);
+
+    await fireEvent.change(find(container, "#pref-history-size"), { target: { value: "10" } });
+    await settle();
+
+    expect(container.querySelector("#pref-launch-at-login-error")).toBeNull();
+  });
+
   it("says where to allow Tadidy when the login item waits for approval", async () => {
     const core = fakeSettingsCore();
     const message = "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again.";
