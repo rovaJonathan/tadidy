@@ -58,7 +58,6 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `thiserror` / `anyhow` | 2.0.21 / 1.0.104 | |
 | `tracing` / `tracing-subscriber` | 0.1.44 / 0.3.23 | `env-filter` |
 | `ts-rs` | 12.0.1 | ADR 0006 |
-| `tauri-plugin-positioner` | 2.4.0 | added by TAD-003, feature `tray-icon`; crates.io's latest is `3.0.0-alpha.3` (Tauri 3 pre-release), so the newest 2.x is used |
 | `window-vibrancy` | 0.8.1 | added by TAD-003, popover material (`src-tauri/src/macos/vibrancy.rs`) |
 | `tauri-plugin-global-shortcut` | 2.4.1 | added by TAD-006, Rust side only; crates.io's latest is `3.0.0-alpha.3` (Tauri 3 pre-release), so the newest 2.x is used |
 | `tauri-nspanel` | 2.1.1 | added by TAD-006, macOS target only, published on crates.io (no git dependency needed); the Quick Panel in `src-tauri/src/macos/panel.rs` |

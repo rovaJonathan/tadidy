@@ -8,7 +8,6 @@ use tauri::{
     AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
     WindowEvent,
 };
-use tauri_plugin_positioner::{Position as TrayPosition, WindowExt};
 
 use crate::events::{TauriEventSink, emit_panel_shown};
 use crate::paster::{PasteOrigin, WindowHider};
@@ -105,9 +104,8 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
     fn reveal(&self) {
         // Before the window takes the focus: afterwards it is the front app itself.
         prepare_to_show(self.app_handle(), PasteOrigin::Popover);
-        // Without a tray position yet (no tray event seen) the window keeps its place.
-        if let Err(error) = self.move_window(TrayPosition::TrayBottomCenter) {
-            tracing::warn!(%error, "could not place the popover under the tray icon");
+        if let Err(error) = place_popover(self) {
+            tracing::warn!(%error, "could not place the popover");
         }
         if let Err(error) = self.show().and_then(|()| self.set_focus()) {
             tracing::error!(%error, "could not show the popover");
@@ -295,13 +293,27 @@ impl<R: Runtime> WindowHider for AppHandle<R> {
     }
 }
 
-/// A screen rectangle, in the physical pixels of the desktop space.
+/// A rectangle on the desktop, in logical points or in pixels: each use says which.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+impl Rect {
+    fn contains(&self, point: Position) -> bool {
+        (self.x..self.x + self.width).contains(&point.x)
+            && (self.y..self.y + self.height).contains(&point.y)
+    }
+
+    fn center(&self) -> Position {
+        Position {
+            x: self.x + self.width / 2.0,
+            y: self.y + self.height / 2.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -328,12 +340,63 @@ pub fn center_in(screen: Rect, size: Size) -> Position {
 pub fn target_screen(pointer: Position, screens: &[Rect]) -> Option<Rect> {
     screens
         .iter()
-        .find(|screen| {
-            (screen.x..screen.x + screen.width).contains(&pointer.x)
-                && (screen.y..screen.y + screen.height).contains(&pointer.y)
-        })
+        .find(|screen| screen.contains(pointer))
         .or_else(|| screens.first())
         .copied()
+}
+
+/// A display as the popover placement sees it: its area in logical points and its scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Display {
+    pub area: Rect,
+    pub scale: f64,
+}
+
+/// Where the popover goes, in logical points (MNU-02).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PopoverPlacement {
+    /// Centered under the tray icon, inside the display of the menu bar that was clicked.
+    UnderTray(Position),
+    /// The tray icon could not be located: centered on the display under the pointer.
+    Centered(Position),
+}
+
+/// Places the popover under the tray icon. `tray` is the icon's rectangle as tray-icon reports
+/// it, in pixels of the display that holds the menu bar; that display is the one under the
+/// pointer, since the pointer is on the icon when it is clicked. Working in points keeps the
+/// scales of the displays from mixing (TAD-032). `None` without any display.
+pub fn popover_placement(
+    tray: Option<Rect>,
+    pointer: Position,
+    displays: &[Display],
+) -> Option<PopoverPlacement> {
+    let display = displays
+        .iter()
+        .find(|display| display.area.contains(pointer))
+        .or_else(|| displays.first())?;
+    let area = display.area;
+    let size = Size {
+        width: POPOVER_WIDTH,
+        height: POPOVER_HEIGHT,
+    };
+    let icon = tray.map(|pixels| Rect {
+        x: pixels.x / display.scale,
+        y: pixels.y / display.scale,
+        width: pixels.width / display.scale,
+        height: pixels.height / display.scale,
+    });
+    match icon {
+        Some(icon) if area.contains(icon.center()) => {
+            let x = (icon.center().x - size.width / 2.0)
+                .min(area.x + area.width - size.width)
+                .max(area.x);
+            Some(PopoverPlacement::UnderTray(Position {
+                x,
+                y: icon.y + icon.height,
+            }))
+        }
+        _ => Some(PopoverPlacement::Centered(center_in(area, size))),
+    }
 }
 
 /// What the Quick Panel toggle needs from the panel, so it runs against a fake in the tests.
@@ -383,31 +446,82 @@ pub fn pointer_in_points(cursor: (f64, f64), primary_scale: f64) -> Position {
     }
 }
 
-/// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
-pub fn center_on_pointer_screen<R: Runtime>(
-    app: &AppHandle<R>,
+/// The pointer and the displays, in logical points, the unit AppKit places windows in: the
+/// physical values tao reports use a different scale for the pointer, for each monitor and for
+/// the window being moved.
+fn pointer_and_displays<R: Runtime>(
     window: &WebviewWindow<R>,
-) -> tauri::Result<()> {
-    // Everything is worked out in logical points, the unit AppKit places windows in: the
-    // physical values tao reports use a different scale for the pointer, for each monitor
-    // and for the window being moved.
-    let cursor = app.cursor_position()?;
-    let primary_scale = app
+) -> tauri::Result<(Position, Vec<Display>)> {
+    let cursor = window.cursor_position()?;
+    let primary_scale = window
         .primary_monitor()?
         .map_or(1.0, |monitor| monitor.scale_factor());
-    let screens: Vec<Rect> = app
+    let displays = window
         .available_monitors()?
         .iter()
         .map(|monitor| {
             let (position, size) = (monitor.position(), monitor.size());
-            logical_rect(
-                (position.x, position.y),
-                (size.width, size.height),
-                monitor.scale_factor(),
-            )
+            Display {
+                area: logical_rect(
+                    (position.x, position.y),
+                    (size.width, size.height),
+                    monitor.scale_factor(),
+                ),
+                scale: monitor.scale_factor(),
+            }
         })
         .collect();
-    let pointer = pointer_in_points((cursor.x, cursor.y), primary_scale);
+    Ok((
+        pointer_in_points((cursor.x, cursor.y), primary_scale),
+        displays,
+    ))
+}
+
+/// The tray icon's rectangle in pixels, as tray-icon reports it. One that cannot be read counts
+/// as missing, so the popover still gets the centered fallback instead of its last place.
+fn tray_pixels(rect: tauri::Result<Option<tauri::Rect>>) -> Option<Rect> {
+    let rect = rect.unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not read the tray icon's rectangle");
+        None
+    })?;
+    let (position, size) = (
+        rect.position.to_physical::<f64>(1.0),
+        rect.size.to_physical::<f64>(1.0),
+    );
+    Some(Rect {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
+/// Places the popover under the tray icon (MNU-02), or centered on the display under the
+/// pointer when the icon cannot be located.
+fn place_popover<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let app = window.app_handle();
+    let tray = app
+        .tray_by_id(crate::tray::TRAY_ID)
+        .and_then(|tray| tray_pixels(tray.rect()));
+    let (pointer, displays) = pointer_and_displays(window)?;
+    let origin = match popover_placement(tray, pointer, &displays) {
+        Some(PopoverPlacement::UnderTray(origin)) => origin,
+        Some(PopoverPlacement::Centered(origin)) => {
+            tracing::warn!("the tray icon was not found on a display: the popover is centered");
+            origin
+        }
+        None => {
+            tracing::warn!("no display found: the popover keeps its place");
+            return Ok(());
+        }
+    };
+    window.set_position(tauri::LogicalPosition::new(origin.x, origin.y))
+}
+
+/// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
+pub fn center_on_pointer_screen<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let (pointer, displays) = pointer_and_displays(window)?;
+    let screens: Vec<Rect> = displays.iter().map(|display| display.area).collect();
     let Some(screen) = target_screen(pointer, &screens) else {
         return Ok(());
     };
@@ -861,6 +975,208 @@ mod tests {
         assert_eq!(target_screen(pointer, &[]), None);
     }
 
+    /// A MacBook's built-in display: 1512 × 982 points at scale 2, the primary one.
+    const BUILT_IN: Display = Display {
+        area: Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1512.0,
+            height: 982.0,
+        },
+        scale: 2.0,
+    };
+
+    /// A 2560 × 1440 display at scale 1, on the left of the built-in one and bottom-aligned
+    /// with it, so its origin is negative on both axes.
+    const EXTERNAL_LEFT: Display = Display {
+        area: Rect {
+            x: -2560.0,
+            y: -458.0,
+            width: 2560.0,
+            height: 1440.0,
+        },
+        scale: 1.0,
+    };
+
+    /// The same display on the right: in pixels its range overlaps the built-in one's.
+    const EXTERNAL_RIGHT: Display = Display {
+        area: Rect {
+            x: 1512.0,
+            y: -458.0,
+            width: 2560.0,
+            height: 1440.0,
+        },
+        scale: 1.0,
+    };
+
+    /// The tray icon as tray-icon reports it on the built-in display's menu bar: points times
+    /// that display's scale (1073, 0, 34 × 33 points).
+    const TRAY_ON_BUILT_IN: Rect = Rect {
+        x: 2146.0,
+        y: 0.0,
+        width: 68.0,
+        height: 66.0,
+    };
+
+    /// The pointer on that icon, in points.
+    const POINTER_ON_BUILT_IN_TRAY: Position = Position { x: 1090.0, y: 10.0 };
+
+    /// Centered under the icon of `TRAY_ON_BUILT_IN`: 1073 + 34 / 2 - 380 / 2, and 0 + 33.
+    const UNDER_BUILT_IN_TRAY: PopoverPlacement =
+        PopoverPlacement::UnderTray(Position { x: 900.0, y: 33.0 });
+
+    #[test]
+    fn the_popover_goes_under_the_tray_icon_on_a_single_display() {
+        let placement = popover_placement(
+            Some(TRAY_ON_BUILT_IN),
+            POINTER_ON_BUILT_IN_TRAY,
+            &[BUILT_IN],
+        );
+
+        assert_eq!(placement, Some(UNDER_BUILT_IN_TRAY));
+    }
+
+    #[test]
+    fn the_tray_pixels_are_read_at_the_scale_of_the_menu_bar_display() {
+        // TAD-032: the plugin converted these pixels at the scale of the display the popover
+        // was on (1, the external one), which put it at x = 1990 points, off every display.
+        let placement = popover_placement(
+            Some(TRAY_ON_BUILT_IN),
+            POINTER_ON_BUILT_IN_TRAY,
+            &[BUILT_IN, EXTERNAL_LEFT],
+        );
+
+        assert_eq!(placement, Some(UNDER_BUILT_IN_TRAY));
+    }
+
+    #[test]
+    fn a_display_on_the_right_whose_pixels_overlap_does_not_take_the_icon() {
+        let placement = popover_placement(
+            Some(TRAY_ON_BUILT_IN),
+            POINTER_ON_BUILT_IN_TRAY,
+            &[EXTERNAL_RIGHT, BUILT_IN],
+        );
+
+        assert_eq!(placement, Some(UNDER_BUILT_IN_TRAY));
+    }
+
+    #[test]
+    fn the_popover_goes_under_an_icon_on_the_external_display() {
+        // A 24-point menu bar at the top of the external display, icon at x = -400 points.
+        let tray = Rect {
+            x: -400.0,
+            y: -458.0,
+            width: 34.0,
+            height: 24.0,
+        };
+        let pointer = Position {
+            x: -383.0,
+            y: -450.0,
+        };
+
+        let placement = popover_placement(Some(tray), pointer, &[BUILT_IN, EXTERNAL_LEFT]);
+
+        assert_eq!(
+            placement,
+            Some(PopoverPlacement::UnderTray(Position {
+                x: -573.0,
+                y: -434.0
+            }))
+        );
+    }
+
+    #[test]
+    fn the_popover_stays_inside_the_display_near_its_edges() {
+        // Icons at 1500 points (right edge of the built-in) and -2555 (left edge of the left one).
+        let right = Rect {
+            x: 3000.0,
+            y: 0.0,
+            width: 20.0,
+            height: 66.0,
+        };
+        let left = Rect {
+            x: -2555.0,
+            y: -458.0,
+            width: 34.0,
+            height: 24.0,
+        };
+        let displays = [BUILT_IN, EXTERNAL_LEFT];
+
+        let at_right = popover_placement(Some(right), Position { x: 1505.0, y: 5.0 }, &displays);
+        let at_left = popover_placement(
+            Some(left),
+            Position {
+                x: -2540.0,
+                y: -450.0,
+            },
+            &displays,
+        );
+
+        assert_eq!(
+            at_right,
+            Some(PopoverPlacement::UnderTray(Position { x: 1132.0, y: 33.0 }))
+        );
+        assert_eq!(
+            at_left,
+            Some(PopoverPlacement::UnderTray(Position {
+                x: -2560.0,
+                y: -434.0
+            }))
+        );
+    }
+
+    #[test]
+    fn without_a_tray_position_the_popover_is_centered_on_the_pointer_display() {
+        let placement =
+            popover_placement(None, POINTER_ON_BUILT_IN_TRAY, &[EXTERNAL_LEFT, BUILT_IN]);
+
+        assert_eq!(
+            placement,
+            Some(PopoverPlacement::Centered(Position { x: 566.0, y: 231.0 }))
+        );
+    }
+
+    #[test]
+    fn a_tray_position_on_no_display_centers_the_popover_on_the_pointer_display() {
+        // The pointer is on the external display, the icon reported on the built-in one.
+        let pointer = Position {
+            x: -1000.0,
+            y: 300.0,
+        };
+
+        let placement =
+            popover_placement(Some(TRAY_ON_BUILT_IN), pointer, &[BUILT_IN, EXTERNAL_LEFT]);
+
+        assert_eq!(
+            placement,
+            Some(PopoverPlacement::Centered(Position { x: -1470.0, y: 2.0 }))
+        );
+    }
+
+    #[test]
+    fn the_tray_rectangle_is_read_in_pixels() {
+        let rect = tauri::Rect {
+            position: tauri::PhysicalPosition::new(2146, 0).into(),
+            size: tauri::PhysicalSize::new(68, 66).into(),
+        };
+
+        assert_eq!(tray_pixels(Ok(Some(rect))), Some(TRAY_ON_BUILT_IN));
+        assert_eq!(tray_pixels(Ok(None)), None);
+    }
+
+    #[test]
+    fn a_tray_rectangle_that_cannot_be_read_counts_as_missing() {
+        // So the centered fallback runs instead of showing the popover wherever it was.
+        assert_eq!(tray_pixels(Err(tauri::Error::WindowNotFound)), None);
+    }
+
+    #[test]
+    fn without_any_display_the_popover_is_not_placed() {
+        let placement = popover_placement(Some(TRAY_ON_BUILT_IN), POINTER_ON_BUILT_IN_TRAY, &[]);
+
+        assert_eq!(placement, None);
+    }
+
     #[derive(Default)]
     struct FakePanel {
         visible: Cell<bool>,
@@ -901,9 +1217,6 @@ mod tests {
     fn revealing_the_popover_emits_panel_shown_with_its_label() {
         use tauri::Listener;
         let (app, popover) = app_with_popover();
-        app.handle()
-            .plugin(tauri_plugin_positioner::init())
-            .unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         app.listen_any(crate::events::PANEL_SHOWN, move |event| {
             sender.send(event.payload().to_owned()).unwrap();
@@ -952,9 +1265,6 @@ mod tests {
     fn showing_the_popover_remembers_the_app_that_was_in_front() {
         let app = app_with_state(true);
         app.manage(PopoverState::default());
-        app.handle()
-            .plugin(tauri_plugin_positioner::init())
-            .unwrap();
         let popover = create_popover(&app).unwrap();
 
         popover.reveal();

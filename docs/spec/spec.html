@@ -1049,8 +1049,9 @@ fails because of a conflict, show an error in the preferences.</p>
 </tr>
 <tr class="even">
 <td>Positioning under the tray</td>
-<td><code>tauri-plugin-positioner</code> (feature
-<code>tray-icon</code>)</td>
+<td>Tadidy’s own placement in logical points
+(<code>windows::popover_placement</code>), from the tray icon’s
+rectangle and Tauri’s monitors (TAD-032)</td>
 </tr>
 <tr class="odd">
 <td>Non-activating panel</td>
@@ -1190,9 +1191,9 @@ previous item back 500 ms later.</li>
 <td>Undecorated, transparent WebviewWindow, <code>alwaysOnTop</code>,
 <code>skipTaskbar</code></td>
 <td>Created at startup <strong>then hidden</strong> (opens in &lt; 100
-ms). Positioned under the tray
-(<code>Position::TrayBottomCenter</code>). Hidden on
-<code>Focused(false)</code>.</td>
+ms). Positioned under the tray icon, inside the display of the menu bar
+that was clicked; centered on the display under the pointer when the
+icon cannot be located. Hidden on <code>Focused(false)</code>.</td>
 </tr>
 <tr class="even">
 <td>Quick Panel</td>
