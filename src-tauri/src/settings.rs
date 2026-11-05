@@ -463,6 +463,27 @@ mod tests {
     }
 
     #[test]
+    fn a_login_item_waiting_for_approval_refuses_the_change_and_says_where_to_allow_it() {
+        let h = harness();
+        h.login_item.require_approval();
+
+        let error = h.update(launch(true)).unwrap_err();
+
+        assert_eq!(error.code, "login_item_requires_approval");
+        assert!(
+            error
+                .message
+                .contains("System Settings › General › Login Items & Extensions"),
+            "{}",
+            error.message
+        );
+        assert!(!h.login_item.enabled());
+        assert!(!h.live().launch_at_login);
+        assert!(!h.stored().launch_at_login);
+        assert_eq!(h.announced(), 0);
+    }
+
+    #[test]
     fn a_patch_that_leaves_launch_at_login_alone_does_not_touch_the_login_item() {
         let h = harness();
         h.login_item.fail();
