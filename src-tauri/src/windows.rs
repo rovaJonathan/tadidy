@@ -340,10 +340,7 @@ pub fn center_in(screen: Rect, size: Size) -> Position {
 pub fn target_screen(pointer: Position, screens: &[Rect]) -> Option<Rect> {
     screens
         .iter()
-        .find(|screen| {
-            (screen.x..screen.x + screen.width).contains(&pointer.x)
-                && (screen.y..screen.y + screen.height).contains(&pointer.y)
-        })
+        .find(|screen| screen.contains(pointer))
         .or_else(|| screens.first())
         .copied()
 }
