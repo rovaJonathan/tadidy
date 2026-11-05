@@ -239,7 +239,7 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 | 4 | Accessibility revoked: `Return` only copies and the banner shows | ✅ | Reported by the owner. | |
 | 5 | Limit 10: an 11th copy deletes the oldest unpinned clip | ✅ | Reported by the owner. | |
 | 6 | Typing "sel" filters in < 50 ms and shows only matching clips | ✅ | Reported by the owner; `search_perf` median 8.8 ms over 10 000 clips. | |
-| 7 | After a restart of the Mac, Tadidy runs and the history is intact | ❌ not runnable | *Launch at login* cannot be switched on in Preferences, and Tadidy is absent from *System Settings → General → Login Items & Extensions*; no warning in the log. | [TAD-025](../../tickets/TAD-025.md) |
+| 7 | After a restart of the Mac, Tadidy runs and the history is intact | ⏳ waiting for a restart | Was not runnable: *Launch at login* could not be switched on. Fixed by [TAD-025](../../tickets/TAD-025.md): on the 2026-11-05 build the switch turns on and Tadidy is registered and enabled in *Login Items & Extensions* (`sfltool dumpbtm`: `app.tadidy`, `[enabled, allowed, notified]`, `/Applications/Tadidy.app`). The restart itself is still to run (owner's Mac busy). | [TAD-025](../../tickets/TAD-025.md) |
 | 8 | `sqlite3` on `tadidy.db` without the key: "file is not a database" | ✅ | `sqlite3 -readonly …/tadidy.db .tables` prints `Error: file is not a database`; header bytes `62da 6a71 …`, one Keychain item, no `SecurityAgent` dialog on launch. | |
 | 9 | No icon in the Dock or in `⌘Tab` | ✅ | Checked by the owner; `LSUIElement = true` in the bundle `Info.plist`. | |
 | 10 | Idle CPU < 0.5 % over 10 min in Activity Monitor | ✅ | `top -l` on the `tadidy` process, 121 samples at 5 s (10 min), nothing touched: mean 0.03 %, median 0.0 %, max 0.9 % (one 5 s sample). Activity Monitor itself was not opened. | |
@@ -266,7 +266,7 @@ Signed-build manual QA of the earlier tickets, re-run on this build:
 | TAD-010 — clipboard watcher | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-015 — paste and copy commands | covered | Criteria 3 and 4. |
 | TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem is [TAD-026](../../tickets/TAD-026.md). |
-| TAD-017 — Preferences | ❌ (steps 6 to 8) | *Launch at login* cannot be switched on ([TAD-025](../../tickets/TAD-025.md)), so steps 6 to 8 cannot run. History size (criterion 5) works. The rest is not replayed. |
+| TAD-017 — Preferences | partial (step 6 ✅, steps 7 and 8 not run) | *Launch at login* could not be switched on; fixed by [TAD-025](../../tickets/TAD-025.md), whose QA covers step 6 on the 2026-11-05 build. Steps 7 (restart) and 8 are still to run. History size (criterion 5) works. The rest is not replayed. |
 | TAD-018 — tray menu actions | ✅ (step 7) | Step 7 on the bundled build (owner): About opens in front of TextEdit with the copyright line. The other steps are not replayed. |
 
 ### TAD-022 — Tell the user when the history database is unavailable and offer to reset it
@@ -310,4 +310,5 @@ Signed universal build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tad
 | 3 | Restart the Mac (Tadidy quit or not). | After logging in, Tadidy runs by itself: its tray icon is there, no window opens, the history is intact (MVP criterion 7). |
 | 4 | Click the right half of the *Launch at login* switch to turn it off. | The switch turns off; Tadidy leaves *Open at Login*. |
 | 5 | Turn it on again, then in *Login Items & Extensions* switch Tadidy off (its toggle under *Allow in the Background*, or remove it from *Open at Login*). Quit and start Tadidy, open Preferences. | *Launch at login* is **off** (the system wins). Click the switch: either it turns on and Tadidy is enabled again in System Settings, or it stays off and "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again." shows under the label, with `after=RequiresApproval` in the log. Note which. In the second case, allow Tadidy in System Settings, then click the switch: it turns on. |
+| 5b | With the history database unavailable (TAD-022 step 1 set-up: Keychain item deleted), click the right half of *Launch at login*. | The switch goes back to off and "The history database is unavailable." shows under the label: a refusal is never silent. |
 | 6 | Clean up the test records: turn *Launch at login* off if the owner does not want it. | No stale *Tadidy* or *TadidyProbe* entry is left in *Login Items & Extensions* (`sfltool resetbtm` resets **every** app's record: only with the owner's consent, then restart). |
