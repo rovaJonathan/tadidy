@@ -10,7 +10,11 @@ export default defineConfig({
     baseURL: "http://localhost:1420",
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // The app runs in WKWebView: what only WebKit lays out differently is checked there too.
+    { name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /preferences\.spec\.ts/ },
+  ],
   webServer: {
     command: "pnpm dev",
     url: "http://localhost:1420",

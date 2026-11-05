@@ -14,6 +14,10 @@ use crate::storage::{self, Db};
 pub enum LoginItemError {
     #[error("the login item could not be changed")]
     Failed,
+    /// The system registered the item but keeps it off until the user allows it in System
+    /// Settings.
+    #[error("the login item waits for the user's approval")]
+    RequiresApproval,
 }
 
 /// The "Open at Login" entry of the app, as the system sees it.
@@ -41,6 +45,7 @@ impl LoginItem for NoLoginItem {
 pub struct FakeLoginItem {
     enabled: AtomicBool,
     failing: AtomicBool,
+    awaiting_approval: AtomicBool,
     changes: AtomicU32,
 }
 
@@ -55,6 +60,11 @@ impl FakeLoginItem {
     /// Makes every later call fail, as a bundle that is not signed does.
     pub fn fail(&self) {
         self.failing.store(true, Ordering::SeqCst);
+    }
+
+    /// Makes every later switch-on wait for the user's approval: the item stays off.
+    pub fn require_approval(&self) {
+        self.awaiting_approval.store(true, Ordering::SeqCst);
     }
 
     /// The state the system holds now.
@@ -79,6 +89,9 @@ impl LoginItem for FakeLoginItem {
     fn set_enabled(&self, on: bool) -> Result<(), LoginItemError> {
         if self.failing.load(Ordering::SeqCst) {
             return Err(LoginItemError::Failed);
+        }
+        if on && self.awaiting_approval.load(Ordering::SeqCst) {
+            return Err(LoginItemError::RequiresApproval);
         }
         self.enabled.store(on, Ordering::SeqCst);
         self.changes.fetch_add(1, Ordering::SeqCst);

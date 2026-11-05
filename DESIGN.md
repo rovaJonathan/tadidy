@@ -327,6 +327,7 @@ Each component lists its anatomy, its states and the prototype id(s). The Svelte
 
 - **Anatomy.** A 32 × 18 track with a 16 px white knob. Off: `--color-toggle-off`. On: `--color-accent`. The knob moves 14 px in 120 ms.
 - **Markup.** `<input type="checkbox" role="switch">` with a visible `<label for>`.
+- **Hit area.** The input is invisible and covers the whole track with an explicit `width: 100%; height: 100%`: WebKit (the app's webview) keeps a checkbox at its intrinsic 12 px despite `inset: 0`.
 - **States.** Off · on · focus-visible (3 px ring) · disabled (45 % opacity).
 
 ### 4.14 Other controls

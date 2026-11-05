@@ -107,6 +107,60 @@ describe("GeneralTab", () => {
     expect(error.textContent).toContain("Launch at login could not be changed.");
   });
 
+  it("keeps the box checked and shows the error when the login item cannot be switched off", async () => {
+    const core = fakeSettingsCore({ settings: { launchAtLogin: true } });
+    core.refuse = { code: "login_item_failed", message: "Launch at login could not be changed." };
+    const { container } = await open(core);
+
+    await fireEvent.click(find(container, "#pref-launch-at-login"));
+    await settle();
+
+    expect(find<HTMLInputElement>(container, "#pref-launch-at-login").checked).toBe(true);
+    expect(find(container, "#pref-launch-at-login-error").textContent).toContain(
+      "Launch at login could not be changed.",
+    );
+  });
+
+  it("shows any refusal of Launch at login under its label, not only a login item error", async () => {
+    const core = fakeSettingsCore();
+    core.refuse = { code: "storage_key_missing", message: "The history key is missing from the Keychain." };
+    const { container } = await open(core);
+
+    await fireEvent.click(find(container, "#pref-launch-at-login"));
+    await settle();
+
+    expect(find<HTMLInputElement>(container, "#pref-launch-at-login").checked).toBe(false);
+    expect(find(container, "#pref-launch-at-login-error").textContent).toBe(
+      "The history key is missing from the Keychain.",
+    );
+  });
+
+  it("does not show a refused History size under Launch at login", async () => {
+    const core = fakeSettingsCore();
+    core.refuse = { code: "storage_key_missing", message: "The history key is missing from the Keychain." };
+    const { container } = await open(core);
+
+    await fireEvent.change(find(container, "#pref-history-size"), { target: { value: "10" } });
+    await settle();
+
+    expect(container.querySelector("#pref-launch-at-login-error")).toBeNull();
+  });
+
+  it("says where to allow Tadidy when the login item waits for approval", async () => {
+    const core = fakeSettingsCore();
+    const message = "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again.";
+    core.refuse = { code: "login_item_requires_approval", message };
+    const { container } = await open(core);
+
+    await fireEvent.click(find(container, "#pref-launch-at-login"));
+    await settle();
+
+    expect(find<HTMLInputElement>(container, "#pref-launch-at-login").checked).toBe(false);
+    const error = find(container, "#pref-launch-at-login-error");
+    expect(error.getAttribute("role")).toBe("alert");
+    expect(error.textContent).toBe(message);
+  });
+
   it("shows no error while nothing failed", async () => {
     const { container } = await open();
 

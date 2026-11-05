@@ -44,7 +44,7 @@ Installed by TAD-001 on 2026-10-28 (exact versions in `pnpm-lock.yaml` and `src-
 | `vitest` / `@vitest/coverage-v8` | 5.0.5 | |
 | `jsdom` | 30.1.3 | |
 | `@testing-library/svelte` / `@testing-library/jest-dom` | 5.4.2 / 7.0.1 | |
-| `@playwright/test` | 1.64.1 | Chromium only |
+| `@playwright/test` | 1.64.1 | Chromium; WebKit too for `e2e/preferences.spec.ts` (`pnpm exec playwright install chromium webkit`) |
 | `@tsconfig/svelte` | 5.0.8 | |
 | `@types/node` | 24.19.2 | the 24 line, matching Node 24 LTS (`.nvmrc`) |
 

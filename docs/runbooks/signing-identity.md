@@ -37,6 +37,7 @@ Diagnosis (read-only): `security find-identity -v -p codesigning` lists the iden
 - `codesign -d -r- <same path>` prints `designated => identifier "app.tadidy" and certificate leaf = H"…"`: the same line after every rebuild, because it names the certificate, not the build.
 - `lipo -archs <same path>/Contents/MacOS/*` prints `x86_64 arm64`.
 - A build without notarization variables prints `skipping app notarization`: expected for a development build.
+- *Launch at login* needs nothing more: `SMAppService.mainApp` registers an app signed by the self-signed `Tadidy Dev` identity, without a Team ID (`TeamIdentifier=not set`), checked on macOS 27.0 with a probe bundle (TAD-025). A Developer ID build uses the same call.
 - Grant Accessibility once, rebuild, relaunch: *System Settings → Privacy & Security → Accessibility* still lists Tadidy enabled, and auto-paste works.
 
 ## Rollback

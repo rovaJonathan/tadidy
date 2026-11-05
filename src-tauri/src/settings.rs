@@ -11,7 +11,7 @@ use ts_rs::TS;
 use crate::clip::{DEFAULT_HISTORY_SIZE, HistoryLimit};
 use crate::error::AppError;
 use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, SETTINGS_CHANGED};
-use crate::login_item::LoginItem;
+use crate::login_item::{LoginItem, LoginItemError};
 use crate::shortcuts::{self, DEFAULT_QUICK_PANEL_SHORTCUT, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::clips::enforce_limit;
 use crate::storage::{self, Db};
@@ -120,8 +120,14 @@ impl Effects<'_> {
         if login_changed {
             self.login_item
                 .set_enabled(to.launch_at_login)
-                .map_err(|_| {
-                    AppError::new("login_item_failed", "Launch at login could not be changed.")
+                .map_err(|error| match error {
+                    LoginItemError::Failed => {
+                        AppError::new("login_item_failed", "Launch at login could not be changed.")
+                    }
+                    LoginItemError::RequiresApproval => AppError::new(
+                        "login_item_requires_approval",
+                        "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again.",
+                    ),
                 })?;
         }
         // Saving the stored shortcut again retries it when it failed to register.
@@ -457,6 +463,27 @@ mod tests {
         let error = h.update(launch(true)).unwrap_err();
 
         assert_eq!(error.code, "login_item_failed");
+        assert!(!h.live().launch_at_login);
+        assert!(!h.stored().launch_at_login);
+        assert_eq!(h.announced(), 0);
+    }
+
+    #[test]
+    fn a_login_item_waiting_for_approval_refuses_the_change_and_says_where_to_allow_it() {
+        let h = harness();
+        h.login_item.require_approval();
+
+        let error = h.update(launch(true)).unwrap_err();
+
+        assert_eq!(error.code, "login_item_requires_approval");
+        assert!(
+            error
+                .message
+                .contains("System Settings › General › Login Items & Extensions"),
+            "{}",
+            error.message
+        );
+        assert!(!h.login_item.enabled());
         assert!(!h.live().launch_at_login);
         assert!(!h.stored().launch_at_login);
         assert_eq!(h.announced(), 0);
