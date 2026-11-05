@@ -1148,6 +1148,23 @@ mod tests {
     }
 
     #[test]
+    fn the_tray_rectangle_is_read_in_pixels() {
+        let rect = tauri::Rect {
+            position: tauri::PhysicalPosition::new(2146, 0).into(),
+            size: tauri::PhysicalSize::new(68, 66).into(),
+        };
+
+        assert_eq!(tray_pixels(Ok(Some(rect))), Some(TRAY_ON_BUILT_IN));
+        assert_eq!(tray_pixels(Ok(None)), None);
+    }
+
+    #[test]
+    fn a_tray_rectangle_that_cannot_be_read_counts_as_missing() {
+        // So the centered fallback runs instead of showing the popover wherever it was.
+        assert_eq!(tray_pixels(Err(tauri::Error::WindowNotFound)), None);
+    }
+
+    #[test]
     fn without_any_display_the_popover_is_not_placed() {
         let placement = popover_placement(Some(TRAY_ON_BUILT_IN), POINTER_ON_BUILT_IN_TRAY, &[]);
 
