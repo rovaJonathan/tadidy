@@ -43,6 +43,20 @@ test("Launch at login, History size and Confirm before delete send their setting
     .toEqual([{ launchAtLogin: true }, { historySize: 10 }, { historySize: 0 }, { confirmBeforeDelete: false }]);
 });
 
+test("a click anywhere on a switch toggles it", async ({ page }) => {
+  await open(page);
+
+  // The right end of the track, where the knob goes: far from the corner a bare checkbox covers.
+  for (const id of ["#pref-launch-at-login", "#pref-confirm-delete"]) {
+    const track = page.locator(`${id} + .toggle-track`);
+    const box = await track.boundingBox();
+    if (!box) throw new Error(`${id} has no track`);
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
+  }
+
+  await expect.poll(() => settingsPatches(page)).toEqual([{ launchAtLogin: true }, { confirmBeforeDelete: false }]);
+});
+
 test("a login item the system refuses unchecks the box and shows the error", async ({ page }) => {
   await open(page, { refuse: { code: "login_item_failed", message: "Launch at login could not be changed." } });
 
