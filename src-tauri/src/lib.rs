@@ -14,6 +14,8 @@ pub mod settings;
 pub mod shortcuts;
 pub mod state;
 pub mod storage;
+#[cfg(test)]
+mod test_log;
 pub mod tray;
 pub mod watcher;
 pub mod windows;

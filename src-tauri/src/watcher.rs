@@ -267,14 +267,12 @@ pub fn start(state: &AppState, services: Services) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Mutex, MutexGuard};
     use std::time::Instant;
 
     use serde_json::json;
     use tempfile::TempDir;
-    use tracing_subscriber::fmt::MakeWriter;
 
     use crate::clip::{ClipKind, ClipRecord, content_hash};
     use crate::clock::FixedClock;
@@ -805,39 +803,11 @@ mod tests {
         );
     }
 
-    #[derive(Clone, Default)]
-    struct LogBuffer(Arc<Mutex<Vec<u8>>>);
-
-    impl io::Write for LogBuffer {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'a> MakeWriter<'a> for LogBuffer {
-        type Writer = LogBuffer;
-
-        fn make_writer(&'a self) -> LogBuffer {
-            self.clone()
-        }
-    }
-
     #[test]
     fn logs_never_contain_clip_text() {
         let h = Harness::new();
-        let logs = LogBuffer::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_ansi(false)
-            .with_writer(logs.clone())
-            .finish();
 
-        tracing::subscriber::with_default(subscriber, || {
+        let logged = crate::test_log::capture(|| {
             let mut watcher = h.watcher();
             h.copy(&mut watcher, CANARY);
             h.copy(&mut watcher, CANARY);
@@ -854,7 +824,6 @@ mod tests {
             assert!(watcher.tick().is_err());
         });
 
-        let logged = String::from_utf8(logs.0.lock().unwrap().clone()).unwrap();
         assert!(
             logged.contains("clip recorded"),
             "nothing was logged: {logged}"

@@ -157,19 +157,27 @@ impl From<ShortcutError> for AppError {
 }
 
 /// Registers the stored shortcut at startup. A failure does not stop the app: it is logged
-/// (code only) and kept in `status` for the preferences.
+/// (code only) and kept in `status` for the preferences. A success is logged too, so that a
+/// launch started with `RUST_LOG=tadidy_lib=info` tells a shortcut that does not answer apart
+/// from one that never registered (without `RUST_LOG` only errors are logged).
 pub fn register_at_startup(
     registrar: &dyn ShortcutRegistrar,
     status: &Mutex<ShortcutStatus>,
     accelerator: &str,
 ) {
-    let error = registrar.register(accelerator).err().map(|error| {
-        tracing::warn!(
-            code = error.code(),
-            "the Quick Panel shortcut is not registered"
-        );
-        error.code().to_owned()
-    });
+    let error = match registrar.register(accelerator) {
+        Ok(()) => {
+            tracing::info!("the Quick Panel shortcut is registered");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(
+                code = error.code(),
+                "the Quick Panel shortcut is not registered"
+            );
+            Some(error.code().to_owned())
+        }
+    };
     *status.lock().unwrap_or_else(PoisonError::into_inner) = ShortcutStatus {
         accelerator: accelerator.to_owned(),
         error,
@@ -291,6 +299,38 @@ mod tests {
         let status = status.lock().unwrap();
         assert_eq!(status.accelerator, DEFAULT_QUICK_PANEL_SHORTCUT);
         assert_eq!(status.error.as_deref(), Some("unavailable"));
+    }
+
+    #[test]
+    fn a_startup_failure_is_logged_with_its_code_only() {
+        let registrar = FakeShortcutRegistrar::default();
+        registrar.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        let status = Mutex::new(ShortcutStatus::default());
+
+        let logged = crate::test_log::capture(|| {
+            register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
+        });
+
+        assert!(
+            logged.contains("WARN") && logged.contains("code=\"unavailable\""),
+            "{logged}"
+        );
+        assert!(!logged.contains(DEFAULT_QUICK_PANEL_SHORTCUT), "{logged}");
+    }
+
+    #[test]
+    fn a_startup_success_is_logged_without_the_accelerator() {
+        let status = Mutex::new(ShortcutStatus::default());
+
+        let logged = crate::test_log::capture(|| {
+            register_at_startup(&FakeShortcutRegistrar::default(), &status, "Ctrl+Alt+V");
+        });
+
+        assert!(
+            logged.contains("INFO") && logged.contains("the Quick Panel shortcut is registered"),
+            "{logged}"
+        );
+        assert!(!logged.contains("Ctrl+Alt+V"), "{logged}");
     }
 
     #[test]

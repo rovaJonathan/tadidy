@@ -603,6 +603,21 @@ mod tests {
         assert!(shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
     }
 
+    #[test]
+    fn startup_from_a_fresh_database_registers_the_default_shortcut() {
+        // The first launch: the database was just created and no setting was ever stored.
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let shortcuts = Arc::new(FakeShortcutRegistrar::default());
+        let state = state().with_db(Some(db)).with_shortcuts(shortcuts.clone());
+
+        state.apply_stored_settings();
+
+        assert!(shortcuts.is_registered(DEFAULT_QUICK_PANEL_SHORTCUT));
+        assert_eq!(shortcuts.registered_count(), 1);
+        assert_eq!(state.shortcut_status(), ShortcutStatus::default());
+    }
+
     // --- history reset (TAD-022) ---
 
     use crate::clock::FixedClock;

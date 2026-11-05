@@ -235,7 +235,7 @@ Runs on the signed universal build (`pnpm build:universal` with `APPLE_SIGNING_I
 |---|---|---|---|---|
 | 1 | Copy text in any app: it is at the top of the popover in < 500 ms | ✅ | Reported by the owner; the watcher log shows `elapsed_ms` of 3 to 6 per recorded clip. | |
 | 2 | Copy the same text twice: one clip, moved to the top, `copy_count = 2` | ✅ | Reported by the owner. | |
-| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | ✅ after the first launch · ❌ first launch | Paste and focus OK (owner). On the first launch of the fresh install the Quick Panel did not open on `⌘⇧V`; after quitting and starting Tadidy again it opens. | [TAD-026](../../tickets/TAD-026.md) |
+| 3 | `⌘⇧V` in TextEdit, `↓`, `Return`: the 2nd clip is pasted, TextEdit keeps focus | ✅ | Paste and focus OK (owner). On the first launch of the fresh install the Quick Panel did not open on `⌘⇧V`; after quitting and starting Tadidy again it opened. Re-run in [TAD-026](../../tickets/TAD-026.md) on 2026-11-05 from a clean state: it opens on the first launch and `Tadidy flow A` is pasted; the first failure did not reproduce in five clean launches. | [TAD-026](../../tickets/TAD-026.md) |
 | 4 | Accessibility revoked: `Return` only copies and the banner shows | ✅ | Reported by the owner. | |
 | 5 | Limit 10: an 11th copy deletes the oldest unpinned clip | ✅ | Reported by the owner. | |
 | 6 | Typing "sel" filters in < 50 ms and shows only matching clips | ✅ | Reported by the owner; `search_perf` median 8.8 ms over 10 000 clips. | |
@@ -260,12 +260,12 @@ Signed-build manual QA of the earlier tickets, re-run on this build:
 | TAD-003 — tray and popover | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-004 — pasteboard and workspace | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-005 — key sender and Accessibility | covered | Paste (criterion 3) and the revoked-permission path (criterion 4) pass; the rest is not replayed. |
-| TAD-006 — Quick Panel and global shortcut | partial | The shortcut opens the panel after a restart; not on the first launch ([TAD-026](../../tickets/TAD-026.md)). The rest is not replayed. |
+| TAD-006 — Quick Panel and global shortcut | partial | The shortcut opens the panel on the first launch and after a restart ([TAD-026](../../tickets/TAD-026.md), 2026-11-05). The rest is not replayed. |
 | TAD-007 — encrypted database | covered | Criterion 8 and TAD-008 step 8: encrypted header, one Keychain item, no dialog. |
 | TAD-008 — signing and universal build (incl. steps 7 and 8) | ✅ | Steps 1 to 4: `Authority=Tadidy Dev`, verify exits 0, `x86_64 arm64`. Step 5: the designated requirement is identical across two builds (binaries differ). Step 6: with the identity unset the bundle is `Signature=adhoc`. Step 7 (owner): Accessibility still granted after installing build N+1 over N. Step 8: both builds use the same key (same header bytes), one Keychain item, no `SecurityAgent`, no `storage_key_missing`. The ad-hoc build's `.dmg` step failed on a leftover mounted image (`hdiutil` busy), unrelated to signing. |
 | TAD-010 — clipboard watcher | covered | Covered by MVP criteria 1 to 6, 9 and 10 on this build; the steps were not replayed one by one (owner's choice: key steps only). |
 | TAD-015 — paste and copy commands | covered | Criteria 3 and 4. |
-| TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem is [TAD-026](../../tickets/TAD-026.md). |
+| TAD-016 — clip browser in both windows | covered | Criteria 1 to 3 and 6; the Quick Panel first-launch problem did not reproduce in [TAD-026](../../tickets/TAD-026.md). |
 | TAD-017 — Preferences | partial (step 6 ✅, steps 7 and 8 not run) | *Launch at login* could not be switched on; fixed by [TAD-025](../../tickets/TAD-025.md), whose QA covers step 6 on the 2026-11-05 build. Step 7 (restart) is no longer required (not an MVP criterion since 2026-11-05); step 8 is TAD-025 step 5. History size (criterion 5) works. The rest is not replayed. |
 | TAD-018 — tray menu actions | ✅ (step 7) | Step 7 on the bundled build (owner): About opens in front of TextEdit with the copyright line. The other steps are not replayed. |
 
@@ -327,3 +327,16 @@ Signed universal build installed in `/Applications`, started from a terminal so 
 The fallback (no tray rectangle, or an icon on no display: the popover is centered on the display under the pointer and `the tray icon was not found on a display: the popover is centered` is logged) cannot be caused by hand; the unit tests of `windows::popover_placement` cover it.
 
 Run 2026-11-05 by the owner on a MacBook Pro (1512 × 982 points, scale 2) with a 2560 × 1440 display (scale 1): steps 1 to 4 OK, empty log.
+
+### TAD-026 — Open the Quick Panel on the first launch with a fresh database
+
+Signed universal build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`) installed in `/Applications`, Accessibility already granted to the `Tadidy Dev` identity. Each run starts from a clean state: quit Tadidy (`pgrep -x tadidy` prints nothing), delete `~/Library/Application Support/app.tadidy/` and the Keychain item (`security delete-generic-password -s app.tadidy -a database-key`). Start it through LaunchServices with the log in a file: `open -a /Applications/Tadidy.app --stdout /tmp/tadidy.log --env RUST_LOG=tadidy_lib=info --env NO_COLOR=1` (the log goes to standard output). Synthetic clips only.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Clean state, focus on a window of the built-in display. Start Tadidy and wait for its tray icon. | The log has `the Quick Panel shortcut is registered` and no `is not registered` line. |
+| 2 | In TextEdit press `⌘⇧V`. | The Quick Panel opens on the display under the pointer. |
+| 3 | Clean state again, focus on a window of the external display (when there is one). Start Tadidy, copy `Tadidy flow A` then `Tadidy flow B` in TextEdit, click the tray icon, click back in TextEdit, press `⌘⇧V`, `↓`, `Return`. | The popover opens under the icon; the Quick Panel opens; `Tadidy flow A` is pasted into TextEdit, which keeps the focus (MVP criterion 3). |
+| 4 | Quit Tadidy and start it again (no clean state), press `⌘⇧V` in TextEdit. | The Quick Panel opens. |
+
+Run 2026-11-05 by the owner on a MacBook Pro (scale 2) with a 2560 × 1440 display (scale 1), four clean first launches with debug diagnostics: the current code with the focus on the external display, on the built-in one, then the step 3 sequence on the external one; and the pre-TAD-032 code with the step 3 sequence. All four registered `Cmd+Shift+V` without error, received the press and showed the panel. The TAD-019 failure did not reproduce. Then steps 1 to 4 on the final build (no diagnostics), focus on the built-in display: all OK; the log has `the Quick Panel shortcut is registered` on both launches and `clip pasted … result="pasted"` for the first clip copied.
