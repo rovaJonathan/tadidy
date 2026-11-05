@@ -16,7 +16,9 @@
   ] as const;
 
   const settings = $derived(store.settings);
-  const loginItemError = $derived(store.error?.code === "login_item_failed" ? store.error : null);
+  /** The login item errors shown under the switch: a refusal, or an item the user still has to allow. */
+  const LOGIN_ITEM_ERRORS: readonly string[] = ["login_item_failed", "login_item_requires_approval"];
+  const loginItemError = $derived(store.error && LOGIN_ITEM_ERRORS.includes(store.error.code) ? store.error : null);
 
   async function setLaunchAtLogin(event: Event & { currentTarget: HTMLInputElement }) {
     const box = event.currentTarget;
