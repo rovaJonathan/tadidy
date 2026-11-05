@@ -861,6 +861,191 @@ mod tests {
         assert_eq!(target_screen(pointer, &[]), None);
     }
 
+    /// A MacBook's built-in display: 1512 × 982 points at scale 2, the primary one.
+    const BUILT_IN: Display = Display {
+        area: Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1512.0,
+            height: 982.0,
+        },
+        scale: 2.0,
+    };
+
+    /// A 2560 × 1440 display at scale 1, on the left of the built-in one and bottom-aligned
+    /// with it, so its origin is negative on both axes.
+    const EXTERNAL_LEFT: Display = Display {
+        area: Rect {
+            x: -2560.0,
+            y: -458.0,
+            width: 2560.0,
+            height: 1440.0,
+        },
+        scale: 1.0,
+    };
+
+    /// The same display on the right: in pixels its range overlaps the built-in one's.
+    const EXTERNAL_RIGHT: Display = Display {
+        area: Rect {
+            x: 1512.0,
+            y: -458.0,
+            width: 2560.0,
+            height: 1440.0,
+        },
+        scale: 1.0,
+    };
+
+    /// The tray icon as tray-icon reports it on the built-in display's menu bar: points times
+    /// that display's scale (1073, 0, 34 × 33 points).
+    const TRAY_ON_BUILT_IN: Rect = Rect {
+        x: 2146.0,
+        y: 0.0,
+        width: 68.0,
+        height: 66.0,
+    };
+
+    /// The pointer on that icon, in points.
+    const POINTER_ON_BUILT_IN_TRAY: Position = Position { x: 1090.0, y: 10.0 };
+
+    /// Centered under the icon of `TRAY_ON_BUILT_IN`: 1073 + 34 / 2 - 380 / 2, and 0 + 33.
+    const UNDER_BUILT_IN_TRAY: PopoverPlacement =
+        PopoverPlacement::UnderTray(Position { x: 900.0, y: 33.0 });
+
+    #[test]
+    fn the_popover_goes_under_the_tray_icon_on_a_single_display() {
+        let placement = popover_placement(
+            Some(TRAY_ON_BUILT_IN),
+            POINTER_ON_BUILT_IN_TRAY,
+            &[BUILT_IN],
+        );
+
+        assert_eq!(placement, Some(UNDER_BUILT_IN_TRAY));
+    }
+
+    #[test]
+    fn the_tray_pixels_are_read_at_the_scale_of_the_menu_bar_display() {
+        // TAD-032: the plugin converted these pixels at the scale of the display the popover
+        // was on (1, the external one), which put it at x = 1990 points, off every display.
+        let placement = popover_placement(
+            Some(TRAY_ON_BUILT_IN),
+            POINTER_ON_BUILT_IN_TRAY,
+            &[BUILT_IN, EXTERNAL_LEFT],
+        );
+
+        assert_eq!(placement, Some(UNDER_BUILT_IN_TRAY));
+    }
+
+    #[test]
+    fn a_display_on_the_right_whose_pixels_overlap_does_not_take_the_icon() {
+        let placement = popover_placement(
+            Some(TRAY_ON_BUILT_IN),
+            POINTER_ON_BUILT_IN_TRAY,
+            &[EXTERNAL_RIGHT, BUILT_IN],
+        );
+
+        assert_eq!(placement, Some(UNDER_BUILT_IN_TRAY));
+    }
+
+    #[test]
+    fn the_popover_goes_under_an_icon_on_the_external_display() {
+        // A 24-point menu bar at the top of the external display, icon at x = -200 points.
+        let tray = Rect {
+            x: -200.0,
+            y: -458.0,
+            width: 34.0,
+            height: 24.0,
+        };
+        let pointer = Position {
+            x: -183.0,
+            y: -450.0,
+        };
+
+        let placement = popover_placement(Some(tray), pointer, &[BUILT_IN, EXTERNAL_LEFT]);
+
+        assert_eq!(
+            placement,
+            Some(PopoverPlacement::UnderTray(Position {
+                x: -373.0,
+                y: -434.0
+            }))
+        );
+    }
+
+    #[test]
+    fn the_popover_stays_inside_the_display_near_its_edges() {
+        // Icons at 1500 points (right edge of the built-in) and -2555 (left edge of the left one).
+        let right = Rect {
+            x: 3000.0,
+            y: 0.0,
+            width: 20.0,
+            height: 66.0,
+        };
+        let left = Rect {
+            x: -2555.0,
+            y: -458.0,
+            width: 34.0,
+            height: 24.0,
+        };
+        let displays = [BUILT_IN, EXTERNAL_LEFT];
+
+        let at_right = popover_placement(Some(right), Position { x: 1505.0, y: 5.0 }, &displays);
+        let at_left = popover_placement(
+            Some(left),
+            Position {
+                x: -2540.0,
+                y: -450.0,
+            },
+            &displays,
+        );
+
+        assert_eq!(
+            at_right,
+            Some(PopoverPlacement::UnderTray(Position { x: 1132.0, y: 33.0 }))
+        );
+        assert_eq!(
+            at_left,
+            Some(PopoverPlacement::UnderTray(Position {
+                x: -2560.0,
+                y: -434.0
+            }))
+        );
+    }
+
+    #[test]
+    fn without_a_tray_position_the_popover_is_centered_on_the_pointer_display() {
+        let placement =
+            popover_placement(None, POINTER_ON_BUILT_IN_TRAY, &[EXTERNAL_LEFT, BUILT_IN]);
+
+        assert_eq!(
+            placement,
+            Some(PopoverPlacement::Centered(Position { x: 566.0, y: 231.0 }))
+        );
+    }
+
+    #[test]
+    fn a_tray_position_on_no_display_centers_the_popover_on_the_pointer_display() {
+        // The pointer is on the external display, the icon reported on the built-in one.
+        let pointer = Position {
+            x: -1000.0,
+            y: 300.0,
+        };
+
+        let placement =
+            popover_placement(Some(TRAY_ON_BUILT_IN), pointer, &[BUILT_IN, EXTERNAL_LEFT]);
+
+        assert_eq!(
+            placement,
+            Some(PopoverPlacement::Centered(Position { x: -1470.0, y: 2.0 }))
+        );
+    }
+
+    #[test]
+    fn without_any_display_the_popover_is_not_placed() {
+        let placement = popover_placement(Some(TRAY_ON_BUILT_IN), POINTER_ON_BUILT_IN_TRAY, &[]);
+
+        assert_eq!(placement, None);
+    }
+
     #[derive(Default)]
     struct FakePanel {
         visible: Cell<bool>,
