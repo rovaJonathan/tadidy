@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { AppError } from "../../bindings/AppError";
   import type { SettingsStore } from "../../stores/settings.svelte";
 
   let { store, hidden = false }: { store: SettingsStore; hidden?: boolean } = $props();
@@ -16,13 +17,13 @@
   ] as const;
 
   const settings = $derived(store.settings);
-  /** The login item errors shown under the switch: a refusal, or an item the user still has to allow. */
-  const LOGIN_ITEM_ERRORS: readonly string[] = ["login_item_failed", "login_item_requires_approval"];
-  const loginItemError = $derived(store.error && LOGIN_ITEM_ERRORS.includes(store.error.code) ? store.error : null);
+  /** Why the last change of Launch at login was refused, whatever the cause: the login item, its approval, the database. */
+  let loginItemError = $state.raw<AppError | null>(null);
 
   async function setLaunchAtLogin(event: Event & { currentTarget: HTMLInputElement }) {
     const box = event.currentTarget;
     const saved = await store.patch({ launchAtLogin: box.checked });
+    loginItemError = saved ? null : store.error;
     // A refused change leaves the setting as it was, and Svelte sees nothing to redraw: the box goes back by hand.
     if (!saved) box.checked = store.settings?.launchAtLogin ?? false;
   }
