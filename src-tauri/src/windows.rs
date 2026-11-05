@@ -8,7 +8,6 @@ use tauri::{
     AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window,
     WindowEvent,
 };
-use tauri_plugin_positioner::{Position as TrayPosition, WindowExt};
 
 use crate::events::{TauriEventSink, emit_panel_shown};
 use crate::paster::{PasteOrigin, WindowHider};
@@ -105,9 +104,8 @@ impl<R: Runtime> PopoverWindow for WebviewWindow<R> {
     fn reveal(&self) {
         // Before the window takes the focus: afterwards it is the front app itself.
         prepare_to_show(self.app_handle(), PasteOrigin::Popover);
-        // Without a tray position yet (no tray event seen) the window keeps its place.
-        if let Err(error) = self.move_window(TrayPosition::TrayBottomCenter) {
-            tracing::warn!(%error, "could not place the popover under the tray icon");
+        if let Err(error) = place_popover(self) {
+            tracing::warn!(%error, "could not place the popover");
         }
         if let Err(error) = self.show().and_then(|()| self.set_focus()) {
             tracing::error!(%error, "could not show the popover");
@@ -295,7 +293,7 @@ impl<R: Runtime> WindowHider for AppHandle<R> {
     }
 }
 
-/// A screen rectangle, in the physical pixels of the desktop space.
+/// A rectangle on the desktop, in logical points or in pixels: each use says which.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub x: f64,
@@ -451,31 +449,76 @@ pub fn pointer_in_points(cursor: (f64, f64), primary_scale: f64) -> Position {
     }
 }
 
-/// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
-pub fn center_on_pointer_screen<R: Runtime>(
-    app: &AppHandle<R>,
+/// The pointer and the displays, in logical points, the unit AppKit places windows in: the
+/// physical values tao reports use a different scale for the pointer, for each monitor and for
+/// the window being moved.
+fn pointer_and_displays<R: Runtime>(
     window: &WebviewWindow<R>,
-) -> tauri::Result<()> {
-    // Everything is worked out in logical points, the unit AppKit places windows in: the
-    // physical values tao reports use a different scale for the pointer, for each monitor
-    // and for the window being moved.
-    let cursor = app.cursor_position()?;
-    let primary_scale = app
+) -> tauri::Result<(Position, Vec<Display>)> {
+    let cursor = window.cursor_position()?;
+    let primary_scale = window
         .primary_monitor()?
         .map_or(1.0, |monitor| monitor.scale_factor());
-    let screens: Vec<Rect> = app
+    let displays = window
         .available_monitors()?
         .iter()
         .map(|monitor| {
             let (position, size) = (monitor.position(), monitor.size());
-            logical_rect(
-                (position.x, position.y),
-                (size.width, size.height),
-                monitor.scale_factor(),
-            )
+            Display {
+                area: logical_rect(
+                    (position.x, position.y),
+                    (size.width, size.height),
+                    monitor.scale_factor(),
+                ),
+                scale: monitor.scale_factor(),
+            }
         })
         .collect();
-    let pointer = pointer_in_points((cursor.x, cursor.y), primary_scale);
+    Ok((
+        pointer_in_points((cursor.x, cursor.y), primary_scale),
+        displays,
+    ))
+}
+
+/// Places the popover under the tray icon (MNU-02), or centered on the display under the
+/// pointer when the icon cannot be located.
+fn place_popover<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let app = window.app_handle();
+    let tray = match app.tray_by_id(crate::tray::TRAY_ID) {
+        Some(tray) => tray.rect()?,
+        None => None,
+    }
+    .map(|rect| {
+        let (position, size) = (
+            rect.position.to_physical::<f64>(1.0),
+            rect.size.to_physical::<f64>(1.0),
+        );
+        Rect {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        }
+    });
+    let (pointer, displays) = pointer_and_displays(window)?;
+    let origin = match popover_placement(tray, pointer, &displays) {
+        Some(PopoverPlacement::UnderTray(origin)) => origin,
+        Some(PopoverPlacement::Centered(origin)) => {
+            tracing::warn!("the tray icon was not found on a display: the popover is centered");
+            origin
+        }
+        None => {
+            tracing::warn!("no display found: the popover keeps its place");
+            return Ok(());
+        }
+    };
+    window.set_position(tauri::LogicalPosition::new(origin.x, origin.y))
+}
+
+/// Centers `window` on the screen that contains the mouse pointer (QPN-03, default option).
+pub fn center_on_pointer_screen<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    let (pointer, displays) = pointer_and_displays(window)?;
+    let screens: Vec<Rect> = displays.iter().map(|display| display.area).collect();
     let Some(screen) = target_screen(pointer, &screens) else {
         return Ok(());
     };
@@ -1154,9 +1197,6 @@ mod tests {
     fn revealing_the_popover_emits_panel_shown_with_its_label() {
         use tauri::Listener;
         let (app, popover) = app_with_popover();
-        app.handle()
-            .plugin(tauri_plugin_positioner::init())
-            .unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         app.listen_any(crate::events::PANEL_SHOWN, move |event| {
             sender.send(event.payload().to_owned()).unwrap();
@@ -1205,9 +1245,6 @@ mod tests {
     fn showing_the_popover_remembers_the_app_that_was_in_front() {
         let app = app_with_state(true);
         app.manage(PopoverState::default());
-        app.handle()
-            .plugin(tauri_plugin_positioner::init())
-            .unwrap();
         let popover = create_popover(&app).unwrap();
 
         popover.reveal();

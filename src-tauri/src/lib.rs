@@ -69,7 +69,6 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
     if let Err(error) = builder
-        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(windows::PopoverState::default())
         .manage(windows::PolicyState::default())

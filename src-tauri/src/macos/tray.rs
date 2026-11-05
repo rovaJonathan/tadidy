@@ -77,11 +77,8 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .menu(&build_menu(app)?)
         .on_menu_event(|app, event| on_menu_event(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {
-            let app = tray.app_handle();
-            // The positioner needs the icon's position to place the popover under it.
-            tauri_plugin_positioner::on_tray_event(app, &event);
             if toggles_the_popover(&event) {
-                windows::toggle_popover(app);
+                windows::toggle_popover(tray.app_handle());
             }
         })
         .build(app)?;

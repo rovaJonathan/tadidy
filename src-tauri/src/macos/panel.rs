@@ -106,7 +106,7 @@ impl<R: Runtime> QuickPanel for NsQuickPanel<R> {
             tracing::error!("the Quick Panel is missing");
             return;
         };
-        if let Err(error) = windows::center_on_pointer_screen(&self.app, &window) {
+        if let Err(error) = windows::center_on_pointer_screen(&window) {
             tracing::warn!(%error, "could not center the Quick Panel");
         }
         windows::prepare_to_show(&self.app, PasteOrigin::Panel);
