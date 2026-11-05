@@ -17,7 +17,7 @@ rustup show                                 # installs the toolchain, components
 git config --local core.hooksPath "$(git rev-parse --path-format=absolute --git-common-dir)/hooks"   # absolute: hooks must also run in worktrees
 lefthook install --force                    # the hooks are the only quality gate (no CI)
 pnpm install                                # front dependencies (pnpm version from packageManager)
-pnpm exec playwright install chromium       # browser for the end-to-end tests (pnpm e2e)
+pnpm exec playwright install chromium webkit # browsers for the end-to-end tests (pnpm e2e; WebKit for the preferences spec)
 scripts/check.sh                            # everything green before you start
 ```
 
