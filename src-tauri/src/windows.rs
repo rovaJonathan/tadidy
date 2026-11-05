@@ -477,26 +477,32 @@ fn pointer_and_displays<R: Runtime>(
     ))
 }
 
+/// The tray icon's rectangle in pixels, as tray-icon reports it. One that cannot be read counts
+/// as missing, so the popover still gets the centered fallback instead of its last place.
+fn tray_pixels(rect: tauri::Result<Option<tauri::Rect>>) -> Option<Rect> {
+    let rect = rect.unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not read the tray icon's rectangle");
+        None
+    })?;
+    let (position, size) = (
+        rect.position.to_physical::<f64>(1.0),
+        rect.size.to_physical::<f64>(1.0),
+    );
+    Some(Rect {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
 /// Places the popover under the tray icon (MNU-02), or centered on the display under the
 /// pointer when the icon cannot be located.
 fn place_popover<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
     let app = window.app_handle();
-    let tray = match app.tray_by_id(crate::tray::TRAY_ID) {
-        Some(tray) => tray.rect()?,
-        None => None,
-    }
-    .map(|rect| {
-        let (position, size) = (
-            rect.position.to_physical::<f64>(1.0),
-            rect.size.to_physical::<f64>(1.0),
-        );
-        Rect {
-            x: position.x,
-            y: position.y,
-            width: size.width,
-            height: size.height,
-        }
-    });
+    let tray = app
+        .tray_by_id(crate::tray::TRAY_ID)
+        .and_then(|tray| tray_pixels(tray.rect()));
     let (pointer, displays) = pointer_and_displays(window)?;
     let origin = match popover_placement(tray, pointer, &displays) {
         Some(PopoverPlacement::UnderTray(origin)) => origin,
