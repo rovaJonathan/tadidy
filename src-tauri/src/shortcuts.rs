@@ -157,19 +157,26 @@ impl From<ShortcutError> for AppError {
 }
 
 /// Registers the stored shortcut at startup. A failure does not stop the app: it is logged
-/// (code only) and kept in `status` for the preferences.
+/// (code only) and kept in `status` for the preferences. A success is logged too, so a launch
+/// whose shortcut does not answer can be told apart from one where it never registered.
 pub fn register_at_startup(
     registrar: &dyn ShortcutRegistrar,
     status: &Mutex<ShortcutStatus>,
     accelerator: &str,
 ) {
-    let error = registrar.register(accelerator).err().map(|error| {
-        tracing::warn!(
-            code = error.code(),
-            "the Quick Panel shortcut is not registered"
-        );
-        error.code().to_owned()
-    });
+    let error = match registrar.register(accelerator) {
+        Ok(()) => {
+            tracing::info!("the Quick Panel shortcut is registered");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(
+                code = error.code(),
+                "the Quick Panel shortcut is not registered"
+            );
+            Some(error.code().to_owned())
+        }
+    };
     *status.lock().unwrap_or_else(PoisonError::into_inner) = ShortcutStatus {
         accelerator: accelerator.to_owned(),
         error,
