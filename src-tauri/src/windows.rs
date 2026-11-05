@@ -304,6 +304,20 @@ pub struct Rect {
     pub height: f64,
 }
 
+impl Rect {
+    fn contains(&self, point: Position) -> bool {
+        (self.x..self.x + self.width).contains(&point.x)
+            && (self.y..self.y + self.height).contains(&point.y)
+    }
+
+    fn center(&self) -> Position {
+        Position {
+            x: self.x + self.width / 2.0,
+            y: self.y + self.height / 2.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Size {
     pub width: f64,
@@ -334,6 +348,60 @@ pub fn target_screen(pointer: Position, screens: &[Rect]) -> Option<Rect> {
         })
         .or_else(|| screens.first())
         .copied()
+}
+
+/// A display as the popover placement sees it: its area in logical points and its scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Display {
+    pub area: Rect,
+    pub scale: f64,
+}
+
+/// Where the popover goes, in logical points (MNU-02).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PopoverPlacement {
+    /// Centered under the tray icon, inside the display of the menu bar that was clicked.
+    UnderTray(Position),
+    /// The tray icon could not be located: centered on the display under the pointer.
+    Centered(Position),
+}
+
+/// Places the popover under the tray icon. `tray` is the icon's rectangle as tray-icon reports
+/// it, in pixels of the display that holds the menu bar; that display is the one under the
+/// pointer, since the pointer is on the icon when it is clicked. Working in points keeps the
+/// scales of the displays from mixing (TAD-032). `None` without any display.
+pub fn popover_placement(
+    tray: Option<Rect>,
+    pointer: Position,
+    displays: &[Display],
+) -> Option<PopoverPlacement> {
+    let display = displays
+        .iter()
+        .find(|display| display.area.contains(pointer))
+        .or_else(|| displays.first())?;
+    let area = display.area;
+    let size = Size {
+        width: POPOVER_WIDTH,
+        height: POPOVER_HEIGHT,
+    };
+    let icon = tray.map(|pixels| Rect {
+        x: pixels.x / display.scale,
+        y: pixels.y / display.scale,
+        width: pixels.width / display.scale,
+        height: pixels.height / display.scale,
+    });
+    match icon {
+        Some(icon) if area.contains(icon.center()) => {
+            let x = (icon.center().x - size.width / 2.0)
+                .min(area.x + area.width - size.width)
+                .max(area.x);
+            Some(PopoverPlacement::UnderTray(Position {
+                x,
+                y: icon.y + icon.height,
+            }))
+        }
+        _ => Some(PopoverPlacement::Centered(center_in(area, size))),
+    }
 }
 
 /// What the Quick Panel toggle needs from the panel, so it runs against a fake in the tests.
