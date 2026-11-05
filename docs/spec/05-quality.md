@@ -26,7 +26,7 @@
 4. Accessibility permission revoked: `Return` only copies and the banner is shown.
 5. With the limit set to 10, an 11th copy deletes the oldest unpinned clip.
 6. Typing "sel" filters in less than 50 ms and shows only the clips containing "sel".
-7. After restarting the Mac, Tadidy is running (if the option is checked) and the history is intact.
+7. With *Launch at login* checked, Tadidy is listed and enabled in *System Settings → General → Login Items & Extensions*. (Restarting the Mac is not an MVP criterion: owner's decision, 2026-11-05, TAD-025.)
 8. Opening `tadidy.db` with `sqlite3` without the key fails ("file is not a database").
 9. No icon in the Dock or in `⌘Tab`.
 10. Idle CPU < 0.5%, measured over 10 min in Activity Monitor.
