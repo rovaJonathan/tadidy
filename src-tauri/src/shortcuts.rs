@@ -294,6 +294,38 @@ mod tests {
     }
 
     #[test]
+    fn a_startup_failure_is_logged_with_its_code_only() {
+        let registrar = FakeShortcutRegistrar::default();
+        registrar.take(DEFAULT_QUICK_PANEL_SHORTCUT);
+        let status = Mutex::new(ShortcutStatus::default());
+
+        let logged = crate::test_log::capture(|| {
+            register_at_startup(&registrar, &status, DEFAULT_QUICK_PANEL_SHORTCUT);
+        });
+
+        assert!(
+            logged.contains("WARN") && logged.contains("code=\"unavailable\""),
+            "{logged}"
+        );
+        assert!(!logged.contains(DEFAULT_QUICK_PANEL_SHORTCUT), "{logged}");
+    }
+
+    #[test]
+    fn a_startup_success_is_logged_without_the_accelerator() {
+        let status = Mutex::new(ShortcutStatus::default());
+
+        let logged = crate::test_log::capture(|| {
+            register_at_startup(&FakeShortcutRegistrar::default(), &status, "Ctrl+Alt+V");
+        });
+
+        assert!(
+            logged.contains("INFO") && logged.contains("the Quick Panel shortcut is registered"),
+            "{logged}"
+        );
+        assert!(!logged.contains("Ctrl+Alt+V"), "{logged}");
+    }
+
+    #[test]
     fn startup_success_leaves_no_error() {
         let status = Mutex::new(ShortcutStatus::default());
 
