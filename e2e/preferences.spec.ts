@@ -67,6 +67,16 @@ test("a login item the system refuses unchecks the box and shows the error", asy
   await expect(page.locator("#pref-launch-at-login")).not.toBeChecked();
 });
 
+test("a login item waiting for approval says where to allow it", async ({ page }) => {
+  const message = "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again.";
+  await open(page, { refuse: { code: "login_item_requires_approval", message } });
+
+  await page.locator("label[for='pref-launch-at-login']").click();
+
+  await expect(page.locator("#pref-launch-at-login-error")).toHaveText(message);
+  await expect(page.locator("#pref-launch-at-login")).not.toBeChecked();
+});
+
 test("↓ and ↑ move between the tabs", async ({ page }) => {
   await open(page);
 

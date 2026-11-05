@@ -107,6 +107,21 @@ describe("GeneralTab", () => {
     expect(error.textContent).toContain("Launch at login could not be changed.");
   });
 
+  it("says where to allow Tadidy when the login item waits for approval", async () => {
+    const core = fakeSettingsCore();
+    const message = "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again.";
+    core.refuse = { code: "login_item_requires_approval", message };
+    const { container } = await open(core);
+
+    await fireEvent.click(find(container, "#pref-launch-at-login"));
+    await settle();
+
+    expect(find<HTMLInputElement>(container, "#pref-launch-at-login").checked).toBe(false);
+    const error = find(container, "#pref-launch-at-login-error");
+    expect(error.getAttribute("role")).toBe("alert");
+    expect(error.textContent).toBe(message);
+  });
+
   it("shows no error while nothing failed", async () => {
     const { container } = await open();
 
