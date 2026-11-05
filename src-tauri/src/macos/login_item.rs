@@ -29,6 +29,13 @@ impl LoginItem for SmLoginItem {
             }
             (false, _) => return Ok(()),
         };
+        let after = service.status();
+        tracing::debug!(on, before = %status, after = %after, "login item changed");
+        // The system may accept the registration and keep the item off until the user allows it
+        // in System Settings (or refuse it for that reason): either way, only the user can finish.
+        if on && after == ServiceStatus::RequiresApproval {
+            return Err(LoginItemError::RequiresApproval);
+        }
         result.map_err(|error| {
             tracing::warn!(code = error.code(), "the login item could not be changed");
             LoginItemError::Failed

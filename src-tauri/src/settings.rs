@@ -11,7 +11,7 @@ use ts_rs::TS;
 use crate::clip::{DEFAULT_HISTORY_SIZE, HistoryLimit};
 use crate::error::AppError;
 use crate::events::{CLIPS_CHANGED, ClipsChanged, EventSink, SETTINGS_CHANGED};
-use crate::login_item::LoginItem;
+use crate::login_item::{LoginItem, LoginItemError};
 use crate::shortcuts::{self, DEFAULT_QUICK_PANEL_SHORTCUT, ShortcutRegistrar, ShortcutStatus};
 use crate::storage::clips::enforce_limit;
 use crate::storage::{self, Db};
@@ -120,8 +120,14 @@ impl Effects<'_> {
         if login_changed {
             self.login_item
                 .set_enabled(to.launch_at_login)
-                .map_err(|_| {
-                    AppError::new("login_item_failed", "Launch at login could not be changed.")
+                .map_err(|error| match error {
+                    LoginItemError::Failed => {
+                        AppError::new("login_item_failed", "Launch at login could not be changed.")
+                    }
+                    LoginItemError::RequiresApproval => AppError::new(
+                        "login_item_requires_approval",
+                        "Allow Tadidy in System Settings › General › Login Items & Extensions, then switch it on again.",
+                    ),
                 })?;
         }
         // Saving the stored shortcut again retries it when it failed to register.
