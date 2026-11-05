@@ -948,15 +948,15 @@ mod tests {
 
     #[test]
     fn the_popover_goes_under_an_icon_on_the_external_display() {
-        // A 24-point menu bar at the top of the external display, icon at x = -200 points.
+        // A 24-point menu bar at the top of the external display, icon at x = -400 points.
         let tray = Rect {
-            x: -200.0,
+            x: -400.0,
             y: -458.0,
             width: 34.0,
             height: 24.0,
         };
         let pointer = Position {
-            x: -183.0,
+            x: -383.0,
             y: -450.0,
         };
 
@@ -965,7 +965,7 @@ mod tests {
         assert_eq!(
             placement,
             Some(PopoverPlacement::UnderTray(Position {
-                x: -373.0,
+                x: -573.0,
                 y: -434.0
             }))
         );
