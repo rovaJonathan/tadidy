@@ -157,8 +157,9 @@ impl From<ShortcutError> for AppError {
 }
 
 /// Registers the stored shortcut at startup. A failure does not stop the app: it is logged
-/// (code only) and kept in `status` for the preferences. A success is logged too, so a launch
-/// whose shortcut does not answer can be told apart from one where it never registered.
+/// (code only) and kept in `status` for the preferences. A success is logged too, so that a
+/// launch started with `RUST_LOG=tadidy_lib=info` tells a shortcut that does not answer apart
+/// from one that never registered (without `RUST_LOG` only errors are logged).
 pub fn register_at_startup(
     registrar: &dyn ShortcutRegistrar,
     status: &Mutex<ShortcutStatus>,
