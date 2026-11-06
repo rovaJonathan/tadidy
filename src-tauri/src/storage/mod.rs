@@ -42,10 +42,11 @@ pub enum StorageError {
 }
 
 impl StorageError {
-    /// The key is gone, is not a key, or does not open the file: the history can never be read
-    /// again, so it may be started over. Any other failure can pass (a denied Keychain prompt, a
-    /// locked Keychain).
-    pub fn is_key_lost(&self) -> bool {
+    /// The history can never be opened again as it is, so it may be started over: the key is gone,
+    /// is not a key, or does not open the file, or the file cannot be migrated. Any other failure
+    /// can pass (a denied Keychain prompt, a locked Keychain, a busy or full disk), and a database
+    /// made by a newer version of the app opens again once the app is updated.
+    pub fn is_unrecoverable(&self) -> bool {
         matches!(
             self,
             Self::KeyMissing | Self::WrongKey | Self::KeyStore(KeyStoreError::Malformed)
@@ -301,7 +302,7 @@ mod tests {
             rusqlite::ffi::SQLITE_NOMEM,
         ] {
             let error = migration_error(sqlite_code);
-            assert!(!error.is_key_lost());
+            assert!(!error.is_unrecoverable());
             assert_eq!(AppError::from(error).code, "storage_error");
         }
     }

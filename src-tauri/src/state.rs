@@ -162,11 +162,13 @@ impl AppState {
             .unwrap_or_else(PoisonError::into_inner) = Some(code.to_owned());
     }
 
-    /// Starts over with an empty history when its key is gone or does not open it. The database
+    /// Starts over with an empty history when it can never be opened again as it is (key gone,
+    /// malformed or not matching, a file that cannot be migrated). The database
     /// is tried again first, because the startup failure may have passed (a Keychain item
     /// restored while the app ran): then the history is simply opened and nothing moves.
     /// Refused with `invalid_state` when a database is open, or when it fails to open for a
-    /// reason that may pass (a locked Keychain): the history may be intact.
+    /// reason that may pass (a locked Keychain) or was made by a newer version of the app (an
+    /// update opens it): the history may be intact.
     pub fn reset_history(&self) -> Result<(), AppError> {
         let _gate = self
             .reset_gate
@@ -188,7 +190,7 @@ impl AppState {
             Ok(db) => db,
             Err(error) => {
                 // The same rule as the button's `StorageStatus::can_reset`, tied by a test.
-                if !error.is_key_lost() {
+                if !error.is_unrecoverable() {
                     // Nothing is remembered: a prompt that was denied this time must not hide
                     // the reset for good when the key really is gone.
                     return Err(AppError::new(

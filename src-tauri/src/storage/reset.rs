@@ -1,4 +1,5 @@
-//! Starting over when the history database can no longer be opened (key gone, key not matching).
+//! Starting over when the history database can no longer be opened (key gone, malformed or
+//! not matching, a schema that cannot be migrated).
 //! The old files are moved aside as `.bak`, never deleted (AGENTS.md §2: the old key and the
 //! clip content are never read or logged, here only file names move).
 

@@ -39,7 +39,7 @@ export class ClipsStore {
   resetFailed = $state(false);
   /** A reset is running (it can wait on a Keychain prompt): the button stays off and a second request is ignored. */
   resetting = $state(false);
-  /** The reset may be offered: the key is lost, not only out of reach for now. The core decides (`StorageStatus.canReset`). */
+  /** The reset may be offered: the history can never be opened again, not only out of reach for now. The core decides (`StorageStatus.canReset`). */
   storageCanReset = $derived(this.storage.state === "unavailable" && this.storage.canReset);
   selectedIndex = $state(0);
   /** Object URLs of the icons found, by bundle id; a bundle id without an icon is absent. */

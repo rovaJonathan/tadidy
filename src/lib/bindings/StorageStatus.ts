@@ -7,7 +7,8 @@ export type StorageStatus = { state: StorageState,
  */
 code: string | null, 
 /**
- * Whether the history may be reset: only when the key is gone or does not open the file.
+ * Whether the history may be reset: only when it can never be opened again as it is (the key
+ * is gone, malformed or does not open the file, or the file cannot be migrated).
  * Any other failure can be temporary (a Keychain prompt that was denied, a locked
  * Keychain): a reset would then throw away a history that is only out of reach for now.
  * The front shows its button from this flag, never from its own list of codes.

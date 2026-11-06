@@ -19,7 +19,8 @@ pub struct StorageStatus {
     pub state: StorageState,
     /// The `AppError` code of the failure that made the database unavailable, `null` when ready.
     pub code: Option<String>,
-    /// Whether the history may be reset: only when the key is gone or does not open the file.
+    /// Whether the history may be reset: only when it can never be opened again as it is (the key
+    /// is gone, malformed or does not open the file, or the file cannot be migrated).
     /// Any other failure can be temporary (a Keychain prompt that was denied, a locked
     /// Keychain): a reset would then throw away a history that is only out of reach for now.
     /// The front shows its button from this flag, never from its own list of codes.
@@ -77,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn the_codes_of_the_errors_that_lose_the_key_are_the_ones_that_can_be_reset() {
+    fn the_codes_of_the_unrecoverable_errors_are_the_ones_that_can_be_reset() {
         use crate::crypto::KeyStoreError;
         use crate::error::AppError;
         use crate::storage::StorageError;
@@ -110,7 +111,7 @@ mod tests {
             (StorageError::Io(std::io::ErrorKind::Other.into()), false),
         ] {
             // The core decides from the error, the front from the code: they must agree.
-            assert_eq!(error.is_key_lost(), resettable);
+            assert_eq!(error.is_unrecoverable(), resettable);
             let code = AppError::from(error).code;
             assert_eq!(StorageStatus::unavailable(code).can_reset, resettable);
         }

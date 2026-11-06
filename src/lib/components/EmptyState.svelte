@@ -4,7 +4,7 @@
     | { variant: "search"; query: string }
     | {
         variant: "storage";
-        /** The reset may be offered: the key is lost. Not for a failure that may be temporary. */
+        /** The reset may be offered: the history can never be opened again. Not for a failure that may be temporary. */
         canReset: boolean;
         /** The last reset did not work. */
         failed: boolean;
