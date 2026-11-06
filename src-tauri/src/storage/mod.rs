@@ -42,10 +42,14 @@ pub enum StorageError {
 }
 
 impl StorageError {
-    /// The key is gone or does not open the file: the history can never be read again, so it may
-    /// be started over. Any other failure can pass (a denied Keychain prompt, a locked Keychain).
+    /// The key is gone, is not a key, or does not open the file: the history can never be read
+    /// again, so it may be started over. Any other failure can pass (a denied Keychain prompt, a
+    /// locked Keychain).
     pub fn is_key_lost(&self) -> bool {
-        matches!(self, Self::KeyMissing | Self::WrongKey)
+        matches!(
+            self,
+            Self::KeyMissing | Self::WrongKey | Self::KeyStore(KeyStoreError::Malformed)
+        )
     }
 }
 

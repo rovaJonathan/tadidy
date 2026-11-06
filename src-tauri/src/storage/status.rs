@@ -39,7 +39,10 @@ impl StorageStatus {
         let code = code.into();
         Self {
             state: StorageState::Unavailable,
-            can_reset: matches!(code.as_str(), "storage_key_missing" | "storage_wrong_key"),
+            can_reset: matches!(
+                code.as_str(),
+                "storage_key_missing" | "storage_wrong_key" | "storage_key_malformed"
+            ),
             code: Some(code),
         }
     }

@@ -4,6 +4,7 @@
 use serde::Serialize;
 use ts_rs::TS;
 
+use crate::crypto::KeyStoreError;
 use crate::storage::StorageError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS, thiserror::Error)]
@@ -35,6 +36,10 @@ impl From<StorageError> for AppError {
             StorageError::WrongKey => Self::new(
                 "storage_wrong_key",
                 "The history key does not match the database.",
+            ),
+            StorageError::KeyStore(KeyStoreError::Malformed) => Self::new(
+                "storage_key_malformed",
+                "The history key in the Keychain is not a valid key.",
             ),
             StorageError::InvalidCursor => {
                 Self::new("invalid_cursor", "The list position is not valid.")
