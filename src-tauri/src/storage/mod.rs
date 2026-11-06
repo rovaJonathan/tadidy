@@ -49,7 +49,36 @@ impl StorageError {
         matches!(
             self,
             Self::KeyMissing | Self::WrongKey | Self::KeyStore(KeyStoreError::Malformed)
-        )
+        ) || self.is_failed_migration()
+    }
+
+    /// A migration that can never succeed on this file: its schema is not the one the migrations
+    /// expect (an SQL error), it is damaged, or its version is not one this app wrote. A busy,
+    /// locked, full or unreadable database may work later, so it is not one.
+    pub fn is_failed_migration(&self) -> bool {
+        use rusqlite_migration::Error as MigrationError;
+        match self {
+            Self::Migration(MigrationError::RusqliteError { err, .. }) => {
+                // A statement SQLite refused to prepare comes as `SqlInputError`.
+                let (rusqlite::Error::SqliteFailure(error, _)
+                | rusqlite::Error::SqlInputError { error, .. }) = err
+                else {
+                    return false;
+                };
+                matches!(
+                    error.code,
+                    ErrorCode::Unknown
+                        | ErrorCode::DatabaseCorrupt
+                        | ErrorCode::NotADatabase
+                        | ErrorCode::ConstraintViolation
+                        | ErrorCode::TypeMismatch
+                )
+            }
+            Self::Migration(
+                MigrationError::InvalidUserVersion | MigrationError::ForeignKeyCheck(_),
+            ) => true,
+            _ => false,
+        }
     }
 }
 

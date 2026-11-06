@@ -41,6 +41,10 @@ impl From<StorageError> for AppError {
                 "storage_key_malformed",
                 "The history key in the Keychain is not a valid key.",
             ),
+            ref error if error.is_failed_migration() => Self::new(
+                "storage_migration_failed",
+                "The history database could not be brought up to date.",
+            ),
             StorageError::InvalidCursor => {
                 Self::new("invalid_cursor", "The list position is not valid.")
             }

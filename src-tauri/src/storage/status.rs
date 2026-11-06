@@ -41,7 +41,10 @@ impl StorageStatus {
             state: StorageState::Unavailable,
             can_reset: matches!(
                 code.as_str(),
-                "storage_key_missing" | "storage_wrong_key" | "storage_key_malformed"
+                "storage_key_missing"
+                    | "storage_wrong_key"
+                    | "storage_key_malformed"
+                    | "storage_migration_failed"
             ),
             code: Some(code),
         }
