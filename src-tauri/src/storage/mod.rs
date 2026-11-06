@@ -265,6 +265,15 @@ mod tests {
     }
 
     #[test]
+    fn open_for_startup_reports_a_database_from_a_newer_version_of_the_app() {
+        let (dir, store) = database_at_version(99);
+
+        let error = open_for_startup(dir.path(), &store).unwrap_err();
+
+        assert_eq!(error.code, "storage_schema_too_new");
+    }
+
+    #[test]
     fn a_migration_stopped_by_a_damaged_file_or_a_bad_version_fails_for_good() {
         let code = |error: StorageError| AppError::from(error).code;
 

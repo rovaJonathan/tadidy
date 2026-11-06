@@ -846,6 +846,35 @@ mod tests {
     }
 
     #[test]
+    fn the_reset_is_refused_for_a_database_from_a_newer_version_of_the_app() {
+        // An update of the app opens it: a reset would replace the only key that does.
+        let dir = tempfile::tempdir().unwrap();
+        let key = DbKey::from_bytes([7; 32]);
+        let store = FakeKeyStore::with_key(key.clone());
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        db.with_conn(|conn| conn.pragma_update(None, "user_version", 99))
+            .unwrap();
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let store = Arc::new(store);
+        let state = state()
+            .with_storage(Err(AppError::new("storage_schema_too_new", "newer")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                store.clone(),
+                watcher_services(&events),
+            );
+
+        let error = state.reset_history().unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), key.as_bytes());
+        assert!(state.db().is_none());
+        assert!(events.events().is_empty());
+    }
+
+    #[test]
     fn the_reset_never_moves_a_database_that_is_open() {
         let dir = tempfile::tempdir().unwrap();
         let store = FakeKeyStore::default();

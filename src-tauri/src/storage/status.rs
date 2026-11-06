@@ -71,6 +71,7 @@ mod tests {
         assert!(StorageStatus::unavailable("storage_key_malformed").can_reset);
         assert!(StorageStatus::unavailable("storage_migration_failed").can_reset);
         assert!(!StorageStatus::unavailable("storage_error").can_reset);
+        assert!(!StorageStatus::unavailable("storage_schema_too_new").can_reset);
         assert!(!StorageStatus::unavailable("storage_unavailable").can_reset);
         assert!(!StorageStatus::ready().can_reset);
     }
@@ -88,6 +89,12 @@ mod tests {
             (
                 StorageError::Migration(rusqlite_migration::Error::InvalidUserVersion),
                 true,
+            ),
+            (
+                StorageError::Migration(rusqlite_migration::Error::MigrationDefinition(
+                    rusqlite_migration::MigrationDefinitionError::DatabaseTooFarAhead,
+                )),
+                false,
             ),
             (
                 StorageError::Migration(rusqlite_migration::Error::with_sql(
