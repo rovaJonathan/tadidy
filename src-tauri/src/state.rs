@@ -791,6 +791,27 @@ mod tests {
     }
 
     #[test]
+    fn the_reset_is_allowed_when_the_stored_key_is_malformed() {
+        let (dir, before) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = state()
+            .with_storage(Err(AppError::new("storage_key_malformed", "not a key")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                Arc::new(FakeKeyStore::malformed()),
+                watcher_services(&events),
+            );
+
+        state.reset_history().unwrap();
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert_eq!(
+            std::fs::read(dir.path().join("tadidy.db.bak")).unwrap(),
+            before
+        );
+    }
+
+    #[test]
     fn the_reset_never_moves_a_database_that_is_open() {
         let dir = tempfile::tempdir().unwrap();
         let store = FakeKeyStore::default();

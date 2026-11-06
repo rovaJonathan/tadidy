@@ -194,6 +194,16 @@ mod tests {
     }
 
     #[test]
+    fn open_for_startup_reports_the_code_of_a_malformed_key() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let error = open_for_startup(dir.path(), &FakeKeyStore::malformed()).unwrap_err();
+
+        assert_eq!(error.code, "storage_key_malformed");
+    }
+
+    #[test]
     fn open_in_dir_reports_a_wrong_key() {
         let dir = tempfile::tempdir().unwrap();
         open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
@@ -210,6 +220,14 @@ mod tests {
 
         assert_eq!(code(StorageError::KeyMissing), "storage_key_missing");
         assert_eq!(code(StorageError::WrongKey), "storage_wrong_key");
+        assert_eq!(
+            code(StorageError::KeyStore(KeyStoreError::Malformed)),
+            "storage_key_malformed"
+        );
+        assert_eq!(
+            code(StorageError::KeyStore(KeyStoreError::Unavailable)),
+            "storage_error"
+        );
         assert_eq!(
             code(StorageError::Sqlite(rusqlite::Error::InvalidQuery)),
             "storage_error"

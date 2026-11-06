@@ -59,9 +59,10 @@ mod tests {
     }
 
     #[test]
-    fn only_a_missing_or_wrong_key_can_be_reset() {
+    fn only_a_failure_that_cannot_pass_can_be_reset() {
         assert!(StorageStatus::unavailable("storage_key_missing").can_reset);
         assert!(StorageStatus::unavailable("storage_wrong_key").can_reset);
+        assert!(StorageStatus::unavailable("storage_key_malformed").can_reset);
         assert!(!StorageStatus::unavailable("storage_error").can_reset);
         assert!(!StorageStatus::unavailable("storage_unavailable").can_reset);
         assert!(!StorageStatus::ready().can_reset);
@@ -69,11 +70,14 @@ mod tests {
 
     #[test]
     fn the_codes_of_the_errors_that_lose_the_key_are_the_ones_that_can_be_reset() {
+        use crate::crypto::KeyStoreError;
         use crate::error::AppError;
         use crate::storage::StorageError;
         for (error, resettable) in [
             (StorageError::KeyMissing, true),
             (StorageError::WrongKey, true),
+            (StorageError::KeyStore(KeyStoreError::Malformed), true),
+            (StorageError::KeyStore(KeyStoreError::Unavailable), false),
             (StorageError::InvalidCursor, false),
             (StorageError::Io(std::io::ErrorKind::Other.into()), false),
         ] {
