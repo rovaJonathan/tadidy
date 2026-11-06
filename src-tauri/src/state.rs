@@ -815,12 +815,12 @@ mod tests {
     fn the_reset_is_allowed_when_the_database_cannot_be_migrated() {
         // The key opens the file, but the second migration runs again on tables that exist.
         let dir = tempfile::tempdir().unwrap();
-        let store = FakeKeyStore::default();
+        let old_key = DbKey::from_bytes([7; 32]);
+        let store = FakeKeyStore::with_key(old_key.clone());
         let db = open_in_dir(dir.path(), &store).unwrap();
         db.with_conn(|conn| conn.pragma_update(None, "user_version", 1))
             .unwrap();
         drop(db);
-        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
         let events = Arc::new(RecordingEventSink::default());
         let state = state()
             .with_storage(Err(AppError::new("storage_migration_failed", "no")))
@@ -833,10 +833,16 @@ mod tests {
         state.reset_history().unwrap();
 
         assert_eq!(state.storage_status(), StorageStatus::ready());
-        assert_eq!(
-            std::fs::read(dir.path().join("tadidy.db.bak")).unwrap(),
-            before
-        );
+        // SQLCipher rewrites the header page on every open, so the backup is checked by content:
+        // the old history, under the old key, at the version that failed.
+        let backup = rusqlite::Connection::open(dir.path().join("tadidy.db.bak")).unwrap();
+        backup
+            .execute_batch(&format!("PRAGMA key = \"{}\";", old_key.to_pragma_value()))
+            .unwrap();
+        let version: i64 = backup
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1);
     }
 
     #[test]
