@@ -1341,13 +1341,17 @@ service <code>app.tadidy</code>, accessibility
 not a 256-bit key, or does not open the database, or if the database
 cannot be migrated (an SQL error, a damaged file), the app keeps running
 without a database, says so where the history would be, and offers to
-<strong>reset the history</strong>. No recovery is possible. The reset
+<strong>reset the history</strong>. The app offers no recovery. When the
+key is lost, nothing can open the old file again; when the database
+could not be migrated, the reset keeps the Keychain key (it still opens
+the file), so the moved-aside file stays readable with it. The reset
 moves <code>tadidy.db</code>, <code>tadidy.db-wal</code> and
 <code>tadidy.db-shm</code> aside as <code>.bak</code> files (never
 deleted; an older <code>.bak</code> is replaced only once the new
-database is ready), creates a new key and database, and starts recording
-again without a restart. The core opens the database again before it
-moves anything, because the failure seen at startup may have passed (a
+database is ready), creates a new key (or, after a migration failure,
+keeps the stored one) and a new database, and starts recording again
+without a restart. The core opens the database again before it moves
+anything, because the failure seen at startup may have passed (a
 Keychain item restored): if it opens, the history is simply attached. It
 refuses the reset while the database works, and for any other failure (a
 Keychain prompt that was denied, a locked Keychain, a busy or full
