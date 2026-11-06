@@ -79,6 +79,8 @@ pub struct FakeKeyStore {
     replace_fails: bool,
     /// The next `get` answers "no key" although one is stored: a launch that lost a race.
     hide_next_get: Mutex<bool>,
+    /// `get` finds an item that is not a key (wrong length) until `replace` stores one.
+    malformed: Mutex<bool>,
 }
 
 impl FakeKeyStore {
@@ -105,6 +107,14 @@ impl FakeKeyStore {
         }
     }
 
+    /// A store whose item is not a 32-byte key, until `replace` overwrites it.
+    pub fn malformed() -> Self {
+        Self {
+            malformed: Mutex::new(true),
+            ..Self::default()
+        }
+    }
+
     /// A store whose every call fails, as a locked Keychain would.
     pub fn failing() -> Self {
         Self {
@@ -123,6 +133,9 @@ impl KeyStore for FakeKeyStore {
             std::mem::take(&mut *self.hide_next_get.lock().unwrap_or_else(|e| e.into_inner()));
         if hidden {
             return Ok(None);
+        }
+        if *self.malformed.lock().unwrap_or_else(|e| e.into_inner()) {
+            return Err(KeyStoreError::Malformed);
         }
         Ok(self.key.lock().unwrap_or_else(|e| e.into_inner()).clone())
     }
@@ -143,6 +156,7 @@ impl KeyStore for FakeKeyStore {
         if self.failing || self.replace_fails {
             return Err(KeyStoreError::Unavailable);
         }
+        *self.malformed.lock().unwrap_or_else(|e| e.into_inner()) = false;
         *self.key.lock().unwrap_or_else(|e| e.into_inner()) = Some(key.clone());
         Ok(())
     }

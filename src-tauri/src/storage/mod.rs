@@ -42,10 +42,44 @@ pub enum StorageError {
 }
 
 impl StorageError {
-    /// The key is gone or does not open the file: the history can never be read again, so it may
-    /// be started over. Any other failure can pass (a denied Keychain prompt, a locked Keychain).
-    pub fn is_key_lost(&self) -> bool {
-        matches!(self, Self::KeyMissing | Self::WrongKey)
+    /// The history can never be opened again as it is, so it may be started over: the key is gone,
+    /// is not a key, or does not open the file, or the file cannot be migrated. Any other failure
+    /// can pass (a denied Keychain prompt, a locked Keychain, a busy or full disk), and a database
+    /// made by a newer version of the app opens again once the app is updated.
+    pub fn is_unrecoverable(&self) -> bool {
+        matches!(
+            self,
+            Self::KeyMissing | Self::WrongKey | Self::KeyStore(KeyStoreError::Malformed)
+        ) || self.is_failed_migration()
+    }
+
+    /// A migration that can never succeed on this file: its schema is not the one the migrations
+    /// expect (an SQL error), it is damaged, or its version is not one this app wrote. A busy,
+    /// locked, full or unreadable database may work later, so it is not one.
+    pub fn is_failed_migration(&self) -> bool {
+        use rusqlite_migration::Error as MigrationError;
+        match self {
+            Self::Migration(MigrationError::RusqliteError { err, .. }) => {
+                // A statement SQLite refused to prepare comes as `SqlInputError`.
+                let (rusqlite::Error::SqliteFailure(error, _)
+                | rusqlite::Error::SqlInputError { error, .. }) = err
+                else {
+                    return false;
+                };
+                matches!(
+                    error.code,
+                    ErrorCode::Unknown
+                        | ErrorCode::DatabaseCorrupt
+                        | ErrorCode::NotADatabase
+                        | ErrorCode::ConstraintViolation
+                        | ErrorCode::TypeMismatch
+                )
+            }
+            Self::Migration(
+                MigrationError::InvalidUserVersion | MigrationError::ForeignKeyCheck(_),
+            ) => true,
+            _ => false,
+        }
     }
 }
 
@@ -194,6 +228,109 @@ mod tests {
     }
 
     #[test]
+    fn open_for_startup_reports_the_code_of_a_malformed_key() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let error = open_for_startup(dir.path(), &FakeKeyStore::malformed()).unwrap_err();
+
+        assert_eq!(error.code, "storage_key_malformed");
+    }
+
+    /// A database created by this app, then given another schema version (`user_version`).
+    fn database_at_version(version: i64) -> (tempfile::TempDir, FakeKeyStore) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::default();
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        db.with_conn(|conn| conn.pragma_update(None, "user_version", version))
+            .unwrap();
+        (dir, store)
+    }
+
+    /// A migration stopped by SQLite with `code`.
+    fn migration_error(code: std::ffi::c_int) -> StorageError {
+        StorageError::Migration(rusqlite_migration::Error::with_sql(
+            rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None),
+            "",
+        ))
+    }
+
+    #[test]
+    fn open_for_startup_reports_the_code_of_a_migration_that_fails() {
+        // Version 1 makes the second migration run again: its tables exist already.
+        let (dir, store) = database_at_version(1);
+
+        let error = open_for_startup(dir.path(), &store).unwrap_err();
+
+        assert_eq!(error.code, "storage_migration_failed");
+    }
+
+    #[test]
+    fn open_for_startup_reports_a_database_from_a_newer_version_of_the_app() {
+        let (dir, store) = database_at_version(99);
+
+        let error = open_for_startup(dir.path(), &store).unwrap_err();
+
+        assert_eq!(error.code, "storage_schema_too_new");
+    }
+
+    #[test]
+    fn a_migration_stopped_by_a_damaged_file_or_a_bad_version_fails_for_good() {
+        let code = |error: StorageError| AppError::from(error).code;
+
+        for sqlite_code in [
+            rusqlite::ffi::SQLITE_ERROR,
+            rusqlite::ffi::SQLITE_CORRUPT,
+            rusqlite::ffi::SQLITE_NOTADB,
+            rusqlite::ffi::SQLITE_CONSTRAINT,
+            rusqlite::ffi::SQLITE_MISMATCH,
+        ] {
+            assert_eq!(
+                code(migration_error(sqlite_code)),
+                "storage_migration_failed"
+            );
+        }
+        for error in [
+            rusqlite_migration::Error::InvalidUserVersion,
+            rusqlite_migration::Error::ForeignKeyCheck(Vec::new()),
+        ] {
+            assert_eq!(
+                code(StorageError::Migration(error)),
+                "storage_migration_failed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_migration_stopped_by_a_failure_that_can_pass_is_a_storage_error() {
+        for sqlite_code in [
+            rusqlite::ffi::SQLITE_BUSY,
+            rusqlite::ffi::SQLITE_LOCKED,
+            rusqlite::ffi::SQLITE_FULL,
+            rusqlite::ffi::SQLITE_IOERR,
+            rusqlite::ffi::SQLITE_READONLY,
+            rusqlite::ffi::SQLITE_CANTOPEN,
+            rusqlite::ffi::SQLITE_NOMEM,
+        ] {
+            let error = migration_error(sqlite_code);
+            assert!(!error.is_unrecoverable());
+            assert_eq!(AppError::from(error).code, "storage_error");
+        }
+    }
+
+    #[test]
+    fn a_keychain_that_fails_for_now_is_not_offered_the_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let error = open_for_startup(dir.path(), &FakeKeyStore::failing()).unwrap_err();
+        let status = status::StorageStatus::unavailable(error.code.clone());
+
+        assert_eq!(error.code, "storage_error");
+        assert!(!status.can_reset);
+    }
+
+    #[test]
     fn open_in_dir_reports_a_wrong_key() {
         let dir = tempfile::tempdir().unwrap();
         open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
@@ -210,6 +347,14 @@ mod tests {
 
         assert_eq!(code(StorageError::KeyMissing), "storage_key_missing");
         assert_eq!(code(StorageError::WrongKey), "storage_wrong_key");
+        assert_eq!(
+            code(StorageError::KeyStore(KeyStoreError::Malformed)),
+            "storage_key_malformed"
+        );
+        assert_eq!(
+            code(StorageError::KeyStore(KeyStoreError::Unavailable)),
+            "storage_error"
+        );
         assert_eq!(
             code(StorageError::Sqlite(rusqlite::Error::InvalidQuery)),
             "storage_error"

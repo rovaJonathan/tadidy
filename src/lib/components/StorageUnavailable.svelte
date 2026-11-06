@@ -4,7 +4,7 @@
   interface Props {
     /** Reset history… was clicked: the host opens the confirmation. */
     onreset: () => void;
-    /** The reset may be offered: the key is lost. Not for a failure that may be temporary. The core decides; no default. */
+    /** The reset may be offered: the history can never be opened again. Not for a failure that may be temporary. The core decides; no default. */
     canReset: boolean;
     /** The last reset did not work. */
     failed?: boolean;

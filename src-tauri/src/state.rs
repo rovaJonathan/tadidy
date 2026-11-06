@@ -162,11 +162,13 @@ impl AppState {
             .unwrap_or_else(PoisonError::into_inner) = Some(code.to_owned());
     }
 
-    /// Starts over with an empty history when its key is gone or does not open it. The database
+    /// Starts over with an empty history when it can never be opened again as it is (key gone,
+    /// malformed or not matching, a file that cannot be migrated). The database
     /// is tried again first, because the startup failure may have passed (a Keychain item
     /// restored while the app ran): then the history is simply opened and nothing moves.
     /// Refused with `invalid_state` when a database is open, or when it fails to open for a
-    /// reason that may pass (a locked Keychain): the history may be intact.
+    /// reason that may pass (a locked Keychain) or was made by a newer version of the app (an
+    /// update opens it): the history may be intact.
     pub fn reset_history(&self) -> Result<(), AppError> {
         let _gate = self
             .reset_gate
@@ -188,7 +190,7 @@ impl AppState {
             Ok(db) => db,
             Err(error) => {
                 // The same rule as the button's `StorageStatus::can_reset`, tied by a test.
-                if !error.is_key_lost() {
+                if !error.is_unrecoverable() {
                     // Nothing is remembered: a prompt that was denied this time must not hide
                     // the reset for good when the key really is gone.
                     return Err(AppError::new(
@@ -196,7 +198,12 @@ impl AppState {
                         "The history database may be only out of reach for now: it cannot be reset.",
                     ));
                 }
-                storage::reset::reset(&reset.dir, reset.store.as_ref())?
+                if error.is_failed_migration() {
+                    // The stored key still opens the file: keeping it keeps the backup readable.
+                    storage::reset::reset_keeping_key(&reset.dir, reset.store.as_ref())?
+                } else {
+                    storage::reset::reset(&reset.dir, reset.store.as_ref())?
+                }
             }
         };
         {
@@ -788,6 +795,93 @@ mod tests {
             );
 
         assert!(state.reset_history().is_ok());
+    }
+
+    #[test]
+    fn the_reset_is_allowed_when_the_stored_key_is_malformed() {
+        let (dir, before) = orphaned_dir();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = state()
+            .with_storage(Err(AppError::new("storage_key_malformed", "not a key")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                Arc::new(FakeKeyStore::malformed()),
+                watcher_services(&events),
+            );
+
+        state.reset_history().unwrap();
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert_eq!(
+            std::fs::read(dir.path().join("tadidy.db.bak")).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn the_reset_is_allowed_when_the_database_cannot_be_migrated() {
+        // The key opens the file, but the second migration runs again on tables that exist.
+        let dir = tempfile::tempdir().unwrap();
+        let old_key = DbKey::from_bytes([7; 32]);
+        let store = FakeKeyStore::with_key(old_key.clone());
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        db.with_conn(|conn| conn.pragma_update(None, "user_version", 1))
+            .unwrap();
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let store = Arc::new(store);
+        let state = state()
+            .with_storage(Err(AppError::new("storage_migration_failed", "no")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                store.clone(),
+                watcher_services(&events),
+            );
+
+        state.reset_history().unwrap();
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        // The key still opened the file: it is kept, so the backup stays readable with it.
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), old_key.as_bytes());
+        // SQLCipher rewrites the header page on every open, so the backup is checked by content:
+        // the old history, under the old key, at the version that failed.
+        let backup = rusqlite::Connection::open(dir.path().join("tadidy.db.bak")).unwrap();
+        backup
+            .execute_batch(&format!("PRAGMA key = \"{}\";", old_key.to_pragma_value()))
+            .unwrap();
+        let version: i64 = backup
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1);
+    }
+
+    #[test]
+    fn the_reset_is_refused_for_a_database_from_a_newer_version_of_the_app() {
+        // An update of the app opens it: a reset would replace the only key that does.
+        let dir = tempfile::tempdir().unwrap();
+        let key = DbKey::from_bytes([7; 32]);
+        let store = FakeKeyStore::with_key(key.clone());
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        db.with_conn(|conn| conn.pragma_update(None, "user_version", 99))
+            .unwrap();
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let store = Arc::new(store);
+        let state = state()
+            .with_storage(Err(AppError::new("storage_schema_too_new", "newer")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                store.clone(),
+                watcher_services(&events),
+            );
+
+        let error = state.reset_history().unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), key.as_bytes());
+        assert!(state.db().is_none());
+        assert!(events.events().is_empty());
     }
 
     #[test]

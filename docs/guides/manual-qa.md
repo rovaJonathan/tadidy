@@ -4,6 +4,18 @@ The macOS layer (`src-tauri/src/macos/`: pasteboard, frontmost app, synthetic �
 
 A ticket that adds behaviour to the macOS layer adds its steps here, under its own heading, in the same pull request.
 
+## How to run: a guided session with the owner
+
+The manual QA is run **together, one step at a time**: the agent drives, the owner clicks and looks.
+
+1. **The agent prepares**: builds and installs the signed build, installs the tools the steps need (after saying which), starts Tadidy from a terminal with the log on, and runs every command of the set-up and of the steps itself (`security`, `sqlcipher`, `ls`, `shasum`, `chmod`, reading the log).
+2. **Before a step that can lose data** (a reset, a deleted or replaced Keychain item, files moved in the data folder), the agent saves the owner's real history first: a copy of `~/Library/Application Support/app.tadidy/` and a copy of the key **in the Keychain** under another service name (never in a file, never printed), and says how it will be restored.
+3. **One step per message**: the agent says what to click or look at, and what to expect. The owner answers with what they see, then says **ready** for the next one. The agent never chains two steps without that answer.
+4. The agent notes each result (✅ / ❌ + what was seen). A ❌ is investigated before going on (`systematic-debugging`), or recorded and skipped if the owner prefers.
+5. **At the end**, the agent restores the saved history and key, checks that Tadidy opens it again, removes the temporary copies, and writes the results table in the pull request (below).
+
+Practical points met on the way: Tadidy writes its log to **stdout**, so redirect it with `> /tmp/tadidy.log 2>&1` (a `2>` alone captures nothing); `security find-generic-password … -w` prints the database key as 64 hex digits, and `security add-generic-password -X <hex>` stores it back; a locked login keychain is unlocked by the owner in Keychain Access (*File › Unlock Keychain "login"*), since `security unlock-keychain` gets no terminal to read the password from in the agent's shell or through `!`.
+
 ## How to report
 
 In the pull request, section *Verification*:
@@ -298,6 +310,19 @@ Set-up for steps 1 to 10: launch once, copy `Tadidy before reset` so the history
 | 19 | Same as step 18, but with the custom shortcut held by another app (e.g. set the same shortcut in a launcher) before the reset. | After the reset, `⌘⇧V` still opens the Quick Panel and the custom shortcut does not; Preferences shows `⌘⇧V` with no error; choosing another shortcut there works. |
 | 20 | Keyboard only, in the error state of step 1: `Tab` to **Reset history…**, `Return`, `Tab` to **Reset history** in the dialog, `Return`. Then repeat with the folder read-only (step 10). | After a success the cursor is in the search field. After a failure the focus is back on **Reset history…** and `Return` opens the dialog again. |
 | 21 | A reset that was stopped: with the set-up of step 1 (key deleted, app quit), run `cp D/tadidy.db D/tadidy.db.bak.new` and note `shasum D/tadidy.db.bak.new` (**L**), launch Tadidy, click **Reset history…** then **Reset history**. | The reset works. `ls D` shows `tadidy.db.bak.1` (hash **L**) and `tadidy.db.bak` (hash **S**): the file that waited as `.bak.new` was not replaced. |
+
+### TAD-027 — Offer the history reset for a malformed key and a database that cannot be migrated
+
+Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`), installed, started from a terminal so the log is visible: `RUST_LOG=tadidy_lib=info /Applications/Tadidy.app/Contents/MacOS/tadidy > /tmp/tadidy.log 2>&1`. Synthetic clips only. Data folder `D` as in TAD-022. Quit Tadidy before each file or Keychain operation. Steps 3 to 5 need the SQLCipher shell (`brew install sqlcipher`) and the key as hex: `security find-generic-password -s app.tadidy -a database-key -w` prints 64 hex digits (**K**); `SQL` below stands for `sqlcipher D/tadidy.db -cmd "PRAGMA key = \"x'K'\";"`.
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Malformed key: copy `Tadidy before reset`, quit, `security delete-generic-password -s app.tadidy -a database-key`, then `security add-generic-password -s app.tadidy -a database-key -w not-a-key`. Launch; if macOS asks to let Tadidy use the item, click **Always Allow**. Open the popover. | The error state of TAD-022 step 1 **with** the **Reset history…** button. The log has `storage_key_malformed`, no path and no key. |
+| 2 | Click **Reset history…**, then **Reset history** (allow the Keychain prompt if one shows). Copy `Tadidy after reset`. | **Nothing copied yet.**, then `Tadidy after reset` at the top. `ls D` shows `tadidy.db.bak`; one Keychain item `app.tadidy` / `database-key`, and `security find-generic-password … -w` prints 64 hex digits again. |
+| 3 | Database that cannot be migrated: quit, note **K**, run `SQL "PRAGMA user_version = 1;"` (the second migration then runs again on tables that exist). Launch, open the popover. | The error state **with** **Reset history…**. The log has `storage_migration_failed`. |
+| 4 | Click **Reset history…**, then **Reset history**. Quit, read the key again (`security find-generic-password … -w`) and run `sqlcipher D/tadidy.db.bak -cmd "PRAGMA key = \"x'K'\";" "PRAGMA user_version;"` with it. | The reset works (**Nothing copied yet.**). The key is still the **K** of step 3 (not replaced), and the `.bak` opens with it and answers `1`: the old history was moved aside, not changed, and stays readable with the Keychain key. |
+| 5 | Database from a newer version of the app: launch, copy `Tadidy newer schema`, quit, note the new **K**, run `SQL "PRAGMA user_version = 99;"`. Launch, open the popover. Then quit, run `SQL "PRAGMA user_version = 2;"` and launch again. | First launch: the error state **without** a **Reset history…** button; the log has `storage_schema_too_new`; `ls D` has no new `.bak`. After the version is put back (what an update of the app would do): the history opens with `Tadidy newer schema` in it. |
+| 6 | Temporary failure: TAD-022 step 13 (locked Keychain). When macOS asks for the password to unlock the login keychain, click **Cancel** without typing it (typing it unlocks the Keychain and the history simply opens). | Still **no** **Reset history…** button; the log has `storage_error`. Afterwards unlock the Keychain in Keychain Access (*File › Unlock Keychain "login"*). |
 
 ### TAD-025 — Make Launch at login work on the signed build
 
