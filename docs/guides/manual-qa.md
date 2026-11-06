@@ -14,6 +14,8 @@ The manual QA is run **together, one step at a time**: the agent drives, the own
 4. The agent notes each result (✅ / ❌ + what was seen). A ❌ is investigated before going on (`systematic-debugging`), or recorded and skipped if the owner prefers.
 5. **At the end**, the agent restores the saved history and key, checks that Tadidy opens it again, removes the temporary copies, and writes the results table in the pull request (below).
 
+Practical points met on the way: Tadidy writes its log to **stdout**, so redirect it with `> /tmp/tadidy.log 2>&1` (a `2>` alone captures nothing); `security find-generic-password … -w` prints the database key as 64 hex digits, and `security add-generic-password -X <hex>` stores it back; a locked login keychain is unlocked by the owner in Keychain Access (*File › Unlock Keychain "login"*), since `security unlock-keychain` gets no terminal to read the password from in the agent's shell or through `!`.
+
 ## How to report
 
 In the pull request, section *Verification*:
@@ -311,7 +313,7 @@ Set-up for steps 1 to 10: launch once, copy `Tadidy before reset` so the history
 
 ### TAD-027 — Offer the history reset for a malformed key and a database that cannot be migrated
 
-Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`), installed, started from a terminal so the log is visible: `RUST_LOG=tadidy_lib=info /Applications/Tadidy.app/Contents/MacOS/tadidy 2> /tmp/tadidy.log`. Synthetic clips only. Data folder `D` as in TAD-022. Quit Tadidy before each file or Keychain operation. Steps 3 to 5 need the SQLCipher shell (`brew install sqlcipher`) and the key as hex: `security find-generic-password -s app.tadidy -a database-key -w` prints 64 hex digits (**K**); `SQL` below stands for `sqlcipher D/tadidy.db -cmd "PRAGMA key = \"x'K'\";"`.
+Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`), installed, started from a terminal so the log is visible: `RUST_LOG=tadidy_lib=info /Applications/Tadidy.app/Contents/MacOS/tadidy > /tmp/tadidy.log 2>&1`. Synthetic clips only. Data folder `D` as in TAD-022. Quit Tadidy before each file or Keychain operation. Steps 3 to 5 need the SQLCipher shell (`brew install sqlcipher`) and the key as hex: `security find-generic-password -s app.tadidy -a database-key -w` prints 64 hex digits (**K**); `SQL` below stands for `sqlcipher D/tadidy.db -cmd "PRAGMA key = \"x'K'\";"`.
 
 | # | Action | Expected |
 |---|---|---|
@@ -320,7 +322,7 @@ Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`)
 | 3 | Database that cannot be migrated: quit, note **K**, run `SQL "PRAGMA user_version = 1;"` (the second migration then runs again on tables that exist). Launch, open the popover. | The error state **with** **Reset history…**. The log has `storage_migration_failed`. |
 | 4 | Click **Reset history…**, then **Reset history**. Quit and run `sqlcipher D/tadidy.db.bak -cmd "PRAGMA key = \"x'K'\";" "PRAGMA user_version;"` with the **K** of step 3. | The reset works (**Nothing copied yet.**). The `.bak` opens with the old key and answers `1`: the old history was moved aside, not changed. |
 | 5 | Database from a newer version of the app: launch, copy `Tadidy newer schema`, quit, note the new **K**, run `SQL "PRAGMA user_version = 99;"`. Launch, open the popover. Then quit, run `SQL "PRAGMA user_version = 2;"` and launch again. | First launch: the error state **without** a **Reset history…** button; the log has `storage_schema_too_new`; `ls D` has no new `.bak`. After the version is put back (what an update of the app would do): the history opens with `Tadidy newer schema` in it. |
-| 6 | Temporary failure: TAD-022 step 13 (locked Keychain, unlock prompt cancelled). | Still **no** **Reset history…** button; the log has `storage_error`. |
+| 6 | Temporary failure: TAD-022 step 13 (locked Keychain). When macOS asks for the password to unlock the login keychain, click **Cancel** without typing it (typing it unlocks the Keychain and the history simply opens). | Still **no** **Reset history…** button; the log has `storage_error`. Afterwards unlock the Keychain in Keychain Access (*File › Unlock Keychain "login"*). |
 
 ### TAD-025 — Make Launch at login work on the signed build
 
