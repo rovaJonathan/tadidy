@@ -812,6 +812,34 @@ mod tests {
     }
 
     #[test]
+    fn the_reset_is_allowed_when_the_database_cannot_be_migrated() {
+        // The key opens the file, but the second migration runs again on tables that exist.
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::default();
+        let db = open_in_dir(dir.path(), &store).unwrap();
+        db.with_conn(|conn| conn.pragma_update(None, "user_version", 1))
+            .unwrap();
+        drop(db);
+        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = state()
+            .with_storage(Err(AppError::new("storage_migration_failed", "no")))
+            .with_storage_reset(
+                dir.path().to_path_buf(),
+                Arc::new(store),
+                watcher_services(&events),
+            );
+
+        state.reset_history().unwrap();
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert_eq!(
+            std::fs::read(dir.path().join("tadidy.db.bak")).unwrap(),
+            before
+        );
+    }
+
+    #[test]
     fn the_reset_never_moves_a_database_that_is_open() {
         let dir = tempfile::tempdir().unwrap();
         let store = FakeKeyStore::default();

@@ -66,6 +66,7 @@ mod tests {
         assert!(StorageStatus::unavailable("storage_key_missing").can_reset);
         assert!(StorageStatus::unavailable("storage_wrong_key").can_reset);
         assert!(StorageStatus::unavailable("storage_key_malformed").can_reset);
+        assert!(StorageStatus::unavailable("storage_migration_failed").can_reset);
         assert!(!StorageStatus::unavailable("storage_error").can_reset);
         assert!(!StorageStatus::unavailable("storage_unavailable").can_reset);
         assert!(!StorageStatus::ready().can_reset);
@@ -81,6 +82,20 @@ mod tests {
             (StorageError::WrongKey, true),
             (StorageError::KeyStore(KeyStoreError::Malformed), true),
             (StorageError::KeyStore(KeyStoreError::Unavailable), false),
+            (
+                StorageError::Migration(rusqlite_migration::Error::InvalidUserVersion),
+                true,
+            ),
+            (
+                StorageError::Migration(rusqlite_migration::Error::with_sql(
+                    rusqlite::Error::SqliteFailure(
+                        rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+                        None,
+                    ),
+                    "",
+                )),
+                false,
+            ),
             (StorageError::InvalidCursor, false),
             (StorageError::Io(std::io::ErrorKind::Other.into()), false),
         ] {
