@@ -308,6 +308,18 @@ mod tests {
     }
 
     #[test]
+    fn a_keychain_that_fails_for_now_is_not_offered_the_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+
+        let error = open_for_startup(dir.path(), &FakeKeyStore::failing()).unwrap_err();
+        let status = status::StorageStatus::unavailable(error.code.clone());
+
+        assert_eq!(error.code, "storage_error");
+        assert!(!status.can_reset);
+    }
+
+    #[test]
     fn open_in_dir_reports_a_wrong_key() {
         let dir = tempfile::tempdir().unwrap();
         open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
