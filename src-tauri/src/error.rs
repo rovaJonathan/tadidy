@@ -41,6 +41,12 @@ impl From<StorageError> for AppError {
                 "storage_key_malformed",
                 "The history key in the Keychain is not a valid key.",
             ),
+            StorageError::Migration(rusqlite_migration::Error::MigrationDefinition(
+                rusqlite_migration::MigrationDefinitionError::DatabaseTooFarAhead,
+            )) => Self::new(
+                "storage_schema_too_new",
+                "The history database was made by a newer version of Tadidy.",
+            ),
             ref error if error.is_failed_migration() => Self::new(
                 "storage_migration_failed",
                 "The history database could not be brought up to date.",
