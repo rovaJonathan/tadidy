@@ -824,17 +824,20 @@ mod tests {
             .unwrap();
         drop(db);
         let events = Arc::new(RecordingEventSink::default());
+        let store = Arc::new(store);
         let state = state()
             .with_storage(Err(AppError::new("storage_migration_failed", "no")))
             .with_storage_reset(
                 dir.path().to_path_buf(),
-                Arc::new(store),
+                store.clone(),
                 watcher_services(&events),
             );
 
         state.reset_history().unwrap();
 
         assert_eq!(state.storage_status(), StorageStatus::ready());
+        // The key still opened the file: it is kept, so the backup stays readable with it.
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), old_key.as_bytes());
         // SQLCipher rewrites the header page on every open, so the backup is checked by content:
         // the old history, under the old key, at the version that failed.
         let backup = rusqlite::Connection::open(dir.path().join("tadidy.db.bak")).unwrap();

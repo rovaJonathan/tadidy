@@ -278,16 +278,27 @@ mod tests {
     fn a_migration_stopped_by_a_damaged_file_or_a_bad_version_fails_for_good() {
         let code = |error: StorageError| AppError::from(error).code;
 
-        assert_eq!(
-            code(migration_error(rusqlite::ffi::SQLITE_CORRUPT)),
-            "storage_migration_failed"
-        );
-        assert_eq!(
-            code(StorageError::Migration(
-                rusqlite_migration::Error::InvalidUserVersion
-            )),
-            "storage_migration_failed"
-        );
+        for sqlite_code in [
+            rusqlite::ffi::SQLITE_ERROR,
+            rusqlite::ffi::SQLITE_CORRUPT,
+            rusqlite::ffi::SQLITE_NOTADB,
+            rusqlite::ffi::SQLITE_CONSTRAINT,
+            rusqlite::ffi::SQLITE_MISMATCH,
+        ] {
+            assert_eq!(
+                code(migration_error(sqlite_code)),
+                "storage_migration_failed"
+            );
+        }
+        for error in [
+            rusqlite_migration::Error::InvalidUserVersion,
+            rusqlite_migration::Error::ForeignKeyCheck(Vec::new()),
+        ] {
+            assert_eq!(
+                code(StorageError::Migration(error)),
+                "storage_migration_failed"
+            );
+        }
     }
 
     #[test]

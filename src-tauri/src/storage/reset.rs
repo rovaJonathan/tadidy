@@ -217,6 +217,40 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_keeping_the_key_never_touches_the_stored_key() {
+        // A database that failed to migrate: the stored key still opens it. The store refuses
+        // `replace`, so the reset can only succeed if it never calls it.
+        let dir = tempfile::tempdir().unwrap();
+        let store = FakeKeyStore::refusing_replace();
+        open_in_dir(dir.path(), &store).unwrap();
+        let key = store.get().unwrap().unwrap();
+        let before = read(dir.path(), DB_FILE_NAME);
+
+        let db = reset_keeping_key(dir.path(), &store).unwrap();
+
+        assert_eq!(read(dir.path(), "tadidy.db.bak"), before);
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), key.as_bytes());
+        assert!(
+            db.with_conn(
+                |conn| conn.query_row("SELECT count(*) FROM clips", [], |r| r.get::<_, i64>(0))
+            )
+            .is_ok()
+        );
+        // The backup still opens with the key the Keychain holds.
+        assert!(open(&dir.path().join("tadidy.db.bak"), &key).is_ok());
+    }
+
+    #[test]
+    fn a_reset_keeping_the_key_needs_a_stored_key() {
+        let (dir, before) = orphaned_database();
+
+        let result = reset_keeping_key(dir.path(), &FakeKeyStore::default());
+
+        assert!(matches!(result, Err(StorageError::KeyMissing)));
+        assert_eq!(read(dir.path(), DB_FILE_NAME), before);
+    }
+
+    #[test]
     fn reset_replaces_an_older_backup_only_after_it_succeeded() {
         let (dir, before) = orphaned_database();
         std::fs::write(dir.path().join("tadidy.db.bak"), b"older").unwrap();
