@@ -33,7 +33,7 @@ For each acceptance criterion, skill **`tdd`**: red test → `test(TAD-xxx)` com
 
 - Run **every** command of the *Verification* section and compare with the expected result.
 - Always: `scripts/check.sh --cov` (lint, typecheck, tests, coverage ≥ 80 % on changed files once TAD-002 is done).
-- macOS layer: run the manual QA steps on a signed build and note the results for the pull request.
+- Manual QA steps (macOS layer, or any step the ticket adds to `docs/guides/manual-qa.md`): run them on a signed build as a **guided session with the owner**, one step per message, the agent running every command and saving the real history first ([docs/guides/manual-qa.md → How to run](../../../docs/guides/manual-qa.md#how-to-run-a-guided-session-with-the-owner)); note the results for the pull request.
 - Skill **`verification-before-completion`**: no "it passes" without the output in front of you.
 - UI ticket: skill **`prototype-parity`**, and fill the DESIGN.md UI checklist.
 

@@ -4,6 +4,16 @@ The macOS layer (`src-tauri/src/macos/`: pasteboard, frontmost app, synthetic �
 
 A ticket that adds behaviour to the macOS layer adds its steps here, under its own heading, in the same pull request.
 
+## How to run: a guided session with the owner
+
+The manual QA is run **together, one step at a time**: the agent drives, the owner clicks and looks.
+
+1. **The agent prepares**: builds and installs the signed build, installs the tools the steps need (after saying which), starts Tadidy from a terminal with the log on, and runs every command of the set-up and of the steps itself (`security`, `sqlcipher`, `ls`, `shasum`, `chmod`, reading the log).
+2. **Before a step that can lose data** (a reset, a deleted or replaced Keychain item, files moved in the data folder), the agent saves the owner's real history first: a copy of `~/Library/Application Support/app.tadidy/` and a copy of the key **in the Keychain** under another service name (never in a file, never printed), and says how it will be restored.
+3. **One step per message**: the agent says what to click or look at, and what to expect. The owner answers with what they see, then says **ready** for the next one. The agent never chains two steps without that answer.
+4. The agent notes each result (✅ / ❌ + what was seen). A ❌ is investigated before going on (`systematic-debugging`), or recorded and skipped if the owner prefers.
+5. **At the end**, the agent restores the saved history and key, checks that Tadidy opens it again, removes the temporary copies, and writes the results table in the pull request (below).
+
 ## How to report
 
 In the pull request, section *Verification*:
