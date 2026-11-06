@@ -198,7 +198,12 @@ impl AppState {
                         "The history database may be only out of reach for now: it cannot be reset.",
                     ));
                 }
-                storage::reset::reset(&reset.dir, reset.store.as_ref())?
+                if error.is_failed_migration() {
+                    // The stored key still opens the file: keeping it keeps the backup readable.
+                    storage::reset::reset_keeping_key(&reset.dir, reset.store.as_ref())?
+                } else {
+                    storage::reset::reset(&reset.dir, reset.store.as_ref())?
+                }
             }
         };
         {

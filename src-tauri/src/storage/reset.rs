@@ -19,18 +19,34 @@ const BACKUP: &str = ".bak";
 /// they were, the stored key was not touched until the new database opened, and an older `.bak`
 /// set is replaced (whole) only once everything else succeeded.
 pub fn reset(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
-    reset_with(dir, store, open)
+    reset_with(dir, store, NewKey::Generate, open)
+}
+
+/// [`reset`] for a database the stored key still opens (it failed to migrate): the new database
+/// gets that same key and the Keychain is not touched, so the `.bak` stays readable with it.
+pub fn reset_keeping_key(dir: &Path, store: &dyn KeyStore) -> Result<Db, StorageError> {
+    let key = store.get()?.ok_or(StorageError::KeyMissing)?;
+    reset_with(dir, store, NewKey::Keep(key), open)
+}
+
+/// The key the new database is created with.
+enum NewKey {
+    /// A new key, stored once the new database opened.
+    Generate,
+    /// The stored key, left where it is.
+    Keep(DbKey),
 }
 
 /// [`reset`] with the way the new database is opened passed in, so a test can make it fail.
 fn reset_with(
     dir: &Path,
     store: &dyn KeyStore,
+    key: NewKey,
     open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
 ) -> Result<Db, StorageError> {
     keep_leftovers(dir)?;
     let staged = stage(dir)?;
-    match start_over(dir, store, open) {
+    match start_over(dir, store, key, open) {
         Ok(db) => {
             promote(dir, &staged);
             Ok(db)
@@ -98,12 +114,18 @@ fn stage(dir: &Path) -> Result<Vec<String>, StorageError> {
 fn start_over(
     dir: &Path,
     store: &dyn KeyStore,
+    key: NewKey,
     open: impl FnOnce(&Path, &DbKey) -> Result<Db, StorageError>,
 ) -> Result<Db, StorageError> {
-    let key = DbKey::generate()?;
-    let db = open(&dir.join(DB_FILE_NAME), &key)?;
-    store.replace(&key)?;
-    Ok(db)
+    match key {
+        NewKey::Generate => {
+            let key = DbKey::generate()?;
+            let db = open(&dir.join(DB_FILE_NAME), &key)?;
+            store.replace(&key)?;
+            Ok(db)
+        }
+        NewKey::Keep(key) => open(&dir.join(DB_FILE_NAME), &key),
+    }
 }
 
 /// Staging names become the backups, replacing the older ones. A backup set never mixes two
@@ -402,7 +424,9 @@ mod tests {
         let stale = DbKey::from_bytes([9; 32]);
         let store = FakeKeyStore::with_key(stale.clone());
 
-        let result = reset_with(dir.path(), &store, |_, _| Err(StorageError::WrongKey));
+        let result = reset_with(dir.path(), &store, NewKey::Generate, |_, _| {
+            Err(StorageError::WrongKey)
+        });
 
         assert!(result.is_err());
         assert_eq!(store.get().unwrap().unwrap().as_bytes(), stale.as_bytes());
