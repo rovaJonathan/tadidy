@@ -224,7 +224,9 @@ export class ClipsStore {
   /**
    * The failure may have passed (a Keychain unlocked since startup): the core opens the history again, never resets it,
    * and announces success with `storage://changed`. A failure that persists leaves the error state as it is. A history
-   * that can only be reset is not asked for: its failure cannot pass.
+   * that can only be reset (`canReset`) is not asked for: its failure cannot pass. A database made by a newer version
+   * of the app (`storage_schema_too_new`, not resettable) is asked for on every show to no effect until an update: a
+   * cheap open that touches nothing, kept rather than a list of codes in the front.
    */
   #retryStorage(): void {
     if (this.#retrying || !this.storageUnavailable || this.storage.canReset) return;
