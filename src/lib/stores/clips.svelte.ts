@@ -9,6 +9,7 @@ import {
   onClipsChanged,
   onStorageChanged,
   resetHistoryDatabase,
+  retryHistoryDatabase,
 } from "../api";
 import type { ClipQuery } from "../bindings/ClipQuery";
 import type { ClipSummary } from "../bindings/ClipSummary";
@@ -63,6 +64,8 @@ export class ClipsStore {
   #frame: number | undefined;
   #unlisten: (() => void) | undefined;
   #unlistenStorage: (() => void) | undefined;
+  /** A retry of the open is on its way: another show does not ask again. */
+  #retrying = false;
   /** A `storage://changed` arrived: it is newer than the status asked for at start. */
   #storageAnnounced = false;
   #markStorageKnown!: () => void;
@@ -127,7 +130,7 @@ export class ClipsStore {
     return this.#loadFirstPage(true);
   }
 
-  /** Back to the state of a fresh window: no search, first row selected. */
+  /** Back to the state of a fresh window: no search, first row selected, and a history only out of reach asked for again. */
   reset(): Promise<void> {
     clearTimeout(this.#debounce);
     this.#debounce = undefined;
@@ -135,6 +138,7 @@ export class ClipsStore {
     this.selectedIndex = 0;
     // An error from an attempt of an earlier session would show before any new attempt.
     this.resetFailed = false;
+    this.#retryStorage();
     return this.#loadFirstPage(false);
   }
 
@@ -215,6 +219,19 @@ export class ClipsStore {
     } finally {
       this.resetting = false;
     }
+  }
+
+  /**
+   * The failure may have passed (a Keychain unlocked since startup): the core opens the history again, never resets it,
+   * and announces success with `storage://changed`. A failure that persists leaves the error state as it is. A history
+   * that can only be reset is not asked for: its failure cannot pass.
+   */
+  #retryStorage(): void {
+    if (this.#retrying || !this.storageUnavailable || this.storage.canReset) return;
+    this.#retrying = true;
+    retryHistoryDatabase()
+      .catch(() => undefined)
+      .finally(() => (this.#retrying = false));
   }
 
   /** Fetches the icon of a source app, once per bundle id. */
