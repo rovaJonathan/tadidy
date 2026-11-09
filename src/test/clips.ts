@@ -30,13 +30,18 @@ export function page(items: ClipSummary[], nextCursor: string | null = null, tot
 
 /**
  * A fake core: records every `list_clips` query, every command and the ids of every `delete_clips`, answers `get_storage_status`
- * with `options.storage` (ready by default), `reset_history_database` with `options.resetError` when set and `list_clips` with
+ * with `options.storage` (ready by default), `reset_history_database` with `options.resetError` when set,
+ * `retry_history_database` with `options.retryError` when set and `list_clips` with
  * whatever `answer` returns and `get_app_icon` with a PNG signature, except for a bundle id
  * ending in `.NoIcon`, which has no cached icon.
  */
 export function fakeCore(
   answer: (q: ClipQuery) => Page<ClipSummary> | Promise<Page<ClipSummary>>,
-  options: { storage?: StorageStatus; resetError?: { code: string; message: string } } = {},
+  options: {
+    storage?: StorageStatus;
+    resetError?: { code: string; message: string };
+    retryError?: { code: string; message: string };
+  } = {},
 ) {
   let storage = options.storage ?? READY;
   const queries: ClipQuery[] = [];
@@ -53,6 +58,7 @@ export function fakeCore(
       }
       if (cmd === "get_storage_status") return storage;
       if (cmd === "reset_history_database" && options.resetError) throw options.resetError;
+      if (cmd === "retry_history_database" && options.retryError) throw options.retryError;
       if (cmd === "get_app_icon") {
         const { bundleId } = args as { bundleId: string };
         if (bundleId.endsWith(".NoIcon")) throw { code: "not_found", message: "No icon is cached for this app." };
