@@ -5,6 +5,7 @@
 
 use std::fmt;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::storage::StorageError;
 
@@ -74,7 +75,8 @@ pub trait KeyStore: Send + Sync {
 #[derive(Debug, Default)]
 pub struct FakeKeyStore {
     key: Mutex<Option<DbKey>>,
-    failing: bool,
+    /// Every call fails, as a locked Keychain would, until [`FakeKeyStore::set_failing`] says.
+    failing: AtomicBool,
     /// Only `replace` fails: a Keychain that reads but refuses to write.
     replace_fails: bool,
     /// The next `get` answers "no key" although one is stored: a launch that lost a race.
@@ -118,15 +120,24 @@ impl FakeKeyStore {
     /// A store whose every call fails, as a locked Keychain would.
     pub fn failing() -> Self {
         Self {
-            failing: true,
+            failing: AtomicBool::new(true),
             ..Self::default()
         }
+    }
+
+    /// Makes every call fail (a Keychain locked again) or work (a Keychain unlocked).
+    pub fn set_failing(&self, failing: bool) {
+        self.failing.store(failing, Ordering::SeqCst);
+    }
+
+    fn is_failing(&self) -> bool {
+        self.failing.load(Ordering::SeqCst)
     }
 }
 
 impl KeyStore for FakeKeyStore {
     fn get(&self) -> Result<Option<DbKey>, KeyStoreError> {
-        if self.failing {
+        if self.is_failing() {
             return Err(KeyStoreError::Unavailable);
         }
         let hidden =
@@ -141,7 +152,7 @@ impl KeyStore for FakeKeyStore {
     }
 
     fn set(&self, key: &DbKey) -> Result<(), KeyStoreError> {
-        if self.failing {
+        if self.is_failing() {
             return Err(KeyStoreError::Unavailable);
         }
         let mut stored = self.key.lock().unwrap_or_else(|e| e.into_inner());
@@ -153,7 +164,7 @@ impl KeyStore for FakeKeyStore {
     }
 
     fn replace(&self, key: &DbKey) -> Result<(), KeyStoreError> {
-        if self.failing || self.replace_fails {
+        if self.is_failing() || self.replace_fails {
             return Err(KeyStoreError::Unavailable);
         }
         *self.malformed.lock().unwrap_or_else(|e| e.into_inner()) = false;
