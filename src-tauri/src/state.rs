@@ -1172,7 +1172,12 @@ mod tests {
         drop(db);
         let events = Arc::new(RecordingEventSink::default());
         let state = out_of_reach_state(dir.path(), store.clone(), &events);
-        // The Keychain was locked at startup; the user unlocked it since.
+        // The Keychain is locked: a first retry (one show) fails and attaches nothing.
+        store.set_failing(true);
+        assert_eq!(state.retry_history().unwrap_err().code, "storage_error");
+        assert!(state.db().is_none());
+        assert!(events.events().is_empty());
+        // The user unlocked it since: the next show opens the history.
         store.set_failing(false);
 
         state.retry_history().unwrap();
