@@ -520,6 +520,26 @@ mod tests {
     }
 
     #[test]
+    fn retry_history_database_is_refused_while_the_database_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let app = tauri::test::mock_app();
+        app.manage(
+            AppState::new(
+                Arc::new(FakeAccessibility::new()),
+                Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
+            )
+            .with_storage(Ok(db)),
+        );
+
+        let error = retry_history_database(app.state()).unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+    }
+
+    #[test]
     fn open_preferences_creates_the_settings_window() {
         let app = tauri::test::mock_app();
         app.manage(PolicyState::default());
