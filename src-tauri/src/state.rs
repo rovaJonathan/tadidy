@@ -206,6 +206,40 @@ impl AppState {
                 }
             }
         };
+        self.attach_and_start(db, reset);
+        Ok(())
+    }
+
+    /// Opens the history database again after a failure that may have passed (a Keychain that
+    /// was locked at startup, say); the windows ask for it each time they are shown. It only
+    /// opens: nothing is moved and no key is written, whatever the failure. A failure is returned
+    /// and not remembered, so the status the webview sees stays the one from startup. Refused with
+    /// `invalid_state` when a database is open.
+    pub fn retry_history(&self) -> Result<(), AppError> {
+        let _gate = self
+            .reset_gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if self.db().is_some() {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database is already open.",
+            ));
+        }
+        let Some(reset) = &self.storage_reset else {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database cannot be opened again here.",
+            ));
+        };
+        let db = storage::open_in_dir(&reset.dir, reset.store.as_ref())?;
+        self.attach_and_start(db, reset);
+        Ok(())
+    }
+
+    /// Makes `db` the history, brings the settings, the login item and the shortcut in line with
+    /// it, starts the watcher and announces the change. Called with `reset_gate` held.
+    fn attach_and_start(&self, db: Db, reset: &StorageReset) {
         {
             // A `set_settings` call must not interleave with the new settings, the login item
             // and the shortcut being brought in line.
@@ -229,7 +263,6 @@ impl AppState {
         let events = &reset.watcher.events;
         events.emit(STORAGE_CHANGED, json!(self.storage_status()));
         events.emit(CLIPS_CHANGED, json!(ClipsChanged::default()));
-        Ok(())
     }
 
     /// Startup registered the default Quick Panel shortcut, having no database to read the stored
