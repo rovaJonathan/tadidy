@@ -1251,6 +1251,7 @@ list_running_apps() -&gt; AppInfo[] ; add_excluded_app(bundleId) ; remove_exclud
 check_accessibility() -&gt; boolean ; open_accessibility_settings()
 get_storage_status() -&gt; { state: &#39;ready&#39;|&#39;unavailable&#39;; code: string|null; canReset: boolean }
 reset_history_database() -&gt; void     // opens the database again first; refused (invalid_state) while it works
+retry_history_database() -&gt; void     // opens the database again only, never resets; refused (invalid_state) while it works
 export_history(path) -&gt; number ; import_history(path) -&gt; number</code></pre>
 <p><strong>Events emitted by Rust</strong>: <code>clips://changed</code>
 (<code>{ added?: id, updated?: id, removed?: id[] }</code>),
@@ -1360,12 +1361,24 @@ opens the history. A database made by a newer version of the app
 (<code>storage_schema_too_new</code>) is not offered the reset either:
 updating the app opens it, and the reset would overwrite its key. The
 status carries <code>canReset</code>, so the front never keeps its own
-list of codes. The key in the Keychain is overwritten in place, only
-once the new database has opened, so a failure leaves the old key where
-it was; the <code>.bak</code> files of an older reset that this one did
-not replace are removed, so a backup set never mixes two databases. A
-staged file left by a reset that was stopped is kept under a numbered
-name (<code>tadidy.db.bak.1</code>, …) and never replaced.</li>
+list of codes. When <code>canReset</code> is false, the open is tried
+again each time the popover or the Quick Panel is shown
+(<code>retry_history_database</code>), so a failure that has passed (a
+Keychain unlocked since) attaches the history without a restart, as the
+reset’s first step does. A retry only opens: it never moves a file and
+never writes a key (except on a first launch with no database yet, where
+it creates both, as a launch would). A failed retry is not remembered:
+the status stays the one seen at startup. With a locked login keychain,
+each retry brings up macOS’s unlock prompt and the window hides as the
+prompt takes the focus; typing the password opens the history at once. A
+database made by a newer version of the app is retried too, to no effect
+until the app is updated. The key in the Keychain is overwritten in
+place, only once the new database has opened, so a failure leaves the
+old key where it was; the <code>.bak</code> files of an older reset that
+this one did not replace are removed, so a backup set never mixes two
+databases. A staged file left by a reset that was stopped is kept under
+a numbered name (<code>tadidy.db.bak.1</code>, …) and never
+replaced.</li>
 <li>The JSON export is <strong>in plain text</strong>, and the export
 dialog says so.</li>
 <li>⚠️ Keychain access is tied to the code signature: see <a href="#permissions-signing">Permissions, signing, distribution</a>

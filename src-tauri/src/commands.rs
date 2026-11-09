@@ -114,6 +114,15 @@ pub fn reset_history_database(state: State<'_, AppState>) -> Result<(), AppError
     state.reset_history()
 }
 
+/// Opens the history database again after a failure that may have passed (a Keychain unlocked
+/// since); never resets. Refused with `invalid_state` while the database works; any other error
+/// is the failure that persists. On success the state announces `storage://changed` and
+/// `clips://changed`. Async: the Keychain may prompt.
+#[tauri::command(async)]
+pub fn retry_history_database(state: State<'_, AppState>) -> Result<(), AppError> {
+    state.retry_history()
+}
+
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
 fn database(state: &AppState) -> Result<Db, AppError> {
     state.db().ok_or_else(|| {
@@ -515,6 +524,26 @@ mod tests {
         );
 
         let error = reset_history_database(app.state()).unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+    }
+
+    #[test]
+    fn retry_history_database_is_refused_while_the_database_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_in_dir(dir.path(), &FakeKeyStore::default()).unwrap();
+        let app = tauri::test::mock_app();
+        app.manage(
+            AppState::new(
+                Arc::new(FakeAccessibility::new()),
+                Arc::new(FakeKeySender::new()),
+                Arc::new(FakePasteboard::new()),
+                Arc::new(FakeWorkspace::new()),
+            )
+            .with_storage(Ok(db)),
+        );
+
+        let error = retry_history_database(app.state()).unwrap_err();
 
         assert_eq!(error.code, "invalid_state");
     }

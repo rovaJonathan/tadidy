@@ -206,6 +206,40 @@ impl AppState {
                 }
             }
         };
+        self.attach_and_start(db, reset);
+        Ok(())
+    }
+
+    /// Opens the history database again after a failure that may have passed (a Keychain that
+    /// was locked at startup, say); the windows ask for it each time they are shown. It only
+    /// opens: nothing is moved and no key is written, whatever the failure. A failure is returned
+    /// and not remembered, so the status the webview sees stays the one from startup. Refused with
+    /// `invalid_state` when a database is open.
+    pub fn retry_history(&self) -> Result<(), AppError> {
+        let _gate = self
+            .reset_gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if self.db().is_some() {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database is already open.",
+            ));
+        }
+        let Some(reset) = &self.storage_reset else {
+            return Err(AppError::new(
+                "invalid_state",
+                "The history database cannot be opened again here.",
+            ));
+        };
+        let db = storage::open_in_dir(&reset.dir, reset.store.as_ref())?;
+        self.attach_and_start(db, reset);
+        Ok(())
+    }
+
+    /// Makes `db` the history, brings the settings, the login item and the shortcut in line with
+    /// it, starts the watcher and announces the change. Called with `reset_gate` held.
+    fn attach_and_start(&self, db: Db, reset: &StorageReset) {
         {
             // A `set_settings` call must not interleave with the new settings, the login item
             // and the shortcut being brought in line.
@@ -229,7 +263,6 @@ impl AppState {
         let events = &reset.watcher.events;
         events.emit(STORAGE_CHANGED, json!(self.storage_status()));
         events.emit(CLIPS_CHANGED, json!(ClipsChanged::default()));
-        Ok(())
     }
 
     /// Startup registered the default Quick Panel shortcut, having no database to read the stored
@@ -1113,5 +1146,162 @@ mod tests {
             before
         );
         assert!(events.events().is_empty());
+    }
+
+    // --- retry on show (TAD-029) ---
+
+    /// A state whose database did not open because the Keychain failed, ready to retry in `dir`.
+    fn out_of_reach_state(
+        dir: &std::path::Path,
+        store: Arc<FakeKeyStore>,
+        events: &Arc<RecordingEventSink>,
+    ) -> AppState {
+        state()
+            .with_storage(Err(AppError::new("storage_error", "locked")))
+            .with_storage_reset(dir.to_path_buf(), store, watcher_services(events))
+    }
+
+    #[test]
+    fn a_retry_opens_the_history_once_the_keychain_answers_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(FakeKeyStore::with_key(DbKey::from_bytes([7; 32])));
+        let db = open_in_dir(dir.path(), store.as_ref()).unwrap();
+        db.with_conn(|conn| {
+            conn.execute("CREATE TABLE marker (n INTEGER)", []).unwrap();
+        });
+        drop(db);
+        let events = Arc::new(RecordingEventSink::default());
+        let state = out_of_reach_state(dir.path(), store.clone(), &events);
+        // The Keychain is locked: a first retry (one show) fails and attaches nothing.
+        store.set_failing(true);
+        assert_eq!(state.retry_history().unwrap_err().code, "storage_error");
+        assert!(state.db().is_none());
+        assert!(events.events().is_empty());
+        // The user unlocked it since: the next show opens the history.
+        store.set_failing(false);
+
+        state.retry_history().unwrap();
+
+        assert_eq!(state.storage_status(), StorageStatus::ready());
+        assert!(state.watcher.lock().unwrap().is_some());
+        let opened = state.db().unwrap();
+        assert!(
+            opened
+                .with_conn(|conn| conn
+                    .query_row("SELECT count(*) FROM marker", [], |r| r.get::<_, i64>(0)))
+                .is_ok()
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert_eq!(
+            events.events(),
+            vec![
+                ("settings://changed", json!(Settings::default())),
+                (
+                    "storage://changed",
+                    json!({ "state": "ready", "code": null, "canReset": false })
+                ),
+                (
+                    CLIPS_CHANGED,
+                    json!({ "added": null, "updated": null, "removed": null })
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_retry_that_still_fails_keeps_the_error_and_moves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = DbKey::from_bytes([7; 32]);
+        let store = Arc::new(FakeKeyStore::with_key(key.clone()));
+        open_in_dir(dir.path(), store.as_ref()).unwrap();
+        let before = std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap();
+        store.set_failing(true);
+        let events = Arc::new(RecordingEventSink::default());
+        let state = out_of_reach_state(dir.path(), store.clone(), &events);
+
+        let error = state.retry_history().unwrap_err();
+
+        assert_eq!(error.code, "storage_error");
+        assert_eq!(
+            state.storage_status(),
+            StorageStatus::unavailable("storage_error")
+        );
+        assert!(state.db().is_none());
+        assert!(state.watcher.lock().unwrap().is_none());
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert!(events.events().is_empty());
+        store.set_failing(false);
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), key.as_bytes());
+    }
+
+    #[test]
+    fn a_retry_never_resets_a_history_whose_key_is_gone() {
+        let (dir, before) = orphaned_dir();
+        let store = Arc::new(FakeKeyStore::default());
+        let events = Arc::new(RecordingEventSink::default());
+        let state = out_of_reach_state(dir.path(), store.clone(), &events);
+
+        let error = state.retry_history().unwrap_err();
+
+        assert_eq!(error.code, "storage_key_missing");
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        // No key was written in place of the lost one.
+        assert!(store.get().unwrap().is_none());
+        assert!(state.db().is_none());
+        assert!(events.events().is_empty());
+    }
+
+    #[test]
+    fn a_retry_never_replaces_a_key_that_does_not_open_the_history() {
+        let (dir, before) = orphaned_dir();
+        let other = DbKey::from_bytes([9; 32]);
+        let store = Arc::new(FakeKeyStore::with_key(other.clone()));
+        let events = Arc::new(RecordingEventSink::default());
+        let state = out_of_reach_state(dir.path(), store.clone(), &events);
+
+        let error = state.retry_history().unwrap_err();
+
+        assert_eq!(error.code, "storage_wrong_key");
+        assert_eq!(
+            std::fs::read(dir.path().join(DB_FILE_NAME)).unwrap(),
+            before
+        );
+        assert!(!dir.path().join("tadidy.db.bak").exists());
+        assert_eq!(store.get().unwrap().unwrap().as_bytes(), other.as_bytes());
+        assert!(events.events().is_empty());
+    }
+
+    #[test]
+    fn a_retry_is_refused_while_the_database_is_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(FakeKeyStore::default());
+        let db = open_in_dir(dir.path(), store.as_ref()).unwrap();
+        let events = Arc::new(RecordingEventSink::default());
+        let state = state().with_storage(Ok(db)).with_storage_reset(
+            dir.path().to_path_buf(),
+            store,
+            watcher_services(&events),
+        );
+
+        let error = state.retry_history().unwrap_err();
+
+        assert_eq!(error.code, "invalid_state");
+        assert!(state.watcher.lock().unwrap().is_none());
+        assert!(events.events().is_empty());
+    }
+
+    #[test]
+    fn a_retry_is_refused_where_it_was_not_set_up() {
+        let state = state().with_storage(Err(AppError::new("storage_error", "locked")));
+
+        assert_eq!(state.retry_history().unwrap_err().code, "invalid_state");
     }
 }

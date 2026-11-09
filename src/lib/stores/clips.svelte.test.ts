@@ -289,6 +289,98 @@ describe("ClipsStore reset", () => {
   });
 });
 
+describe("ClipsStore, a retry when the window is shown", () => {
+  const retries = (commands: string[]) => commands.filter((cmd) => cmd === "retry_history_database");
+
+  it("asks the core to open the history again when the failure may be temporary", async () => {
+    const core = fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE_TEMPORARY });
+    await store.start();
+
+    await store.reset();
+    await flush();
+
+    expect(retries(core.commands)).toHaveLength(1);
+  });
+
+  it("never retries a history that can only be reset", async () => {
+    const core = fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE });
+    await store.start();
+
+    await store.reset();
+    await flush();
+
+    expect(retries(core.commands)).toEqual([]);
+  });
+
+  it("does not retry a history that works", async () => {
+    const core = fakeCore(() => page([clip(1)]));
+    await store.start();
+
+    await store.reset();
+    await flush();
+
+    expect(retries(core.commands)).toEqual([]);
+  });
+
+  it("keeps the error state, quietly, when the failure persists", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const core = fakeCore(() => page([clip(1)]), {
+      storage: UNAVAILABLE_TEMPORARY,
+      retryError: { code: "storage_error", message: "The history database is unavailable." },
+    });
+    await store.start();
+
+    await store.reset();
+    await flush();
+
+    expect(retries(core.commands)).toHaveLength(1);
+    expect(store.storage).toEqual(UNAVAILABLE_TEMPORARY);
+    expect(store.resetFailed).toBe(false);
+    expect(core.queries).toEqual([]);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("asks once while a retry is still running", async () => {
+    const answer = deferred<undefined>();
+    let asked = 0;
+    fakeCore(() => page([clip(1)]), { storage: UNAVAILABLE_TEMPORARY });
+    await store.start();
+    mockIPC(
+      (cmd) => {
+        if (cmd === "retry_history_database") {
+          asked++;
+          return answer.promise;
+        }
+        return undefined;
+      },
+      { shouldMockEvents: true },
+    );
+
+    await store.reset();
+    await store.reset();
+    answer.resolve(undefined);
+    await flush();
+    await store.reset();
+    await flush();
+
+    expect(asked).toBe(2);
+  });
+
+  it("lists the history once the core announces it opened", async () => {
+    const core = fakeCore(() => page([clip(1), clip(2)]), { storage: UNAVAILABLE_TEMPORARY });
+    await store.start();
+
+    await store.reset();
+    core.setStorage(READY);
+    await emit("storage://changed", READY);
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(store.storageUnavailable).toBe(false);
+    expect(store.items.map((c) => c.id)).toEqual(["clip-1", "clip-2"]);
+  });
+});
+
 describe("ClipsStore app icons", () => {
   it("fetches an icon once per bundle id and keeps its object URL", async () => {
     const core = fakeCore(() => page([]));

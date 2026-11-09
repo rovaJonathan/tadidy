@@ -324,6 +324,20 @@ Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`)
 | 5 | Database from a newer version of the app: launch, copy `Tadidy newer schema`, quit, note the new **K**, run `SQL "PRAGMA user_version = 99;"`. Launch, open the popover. Then quit, run `SQL "PRAGMA user_version = 2;"` and launch again. | First launch: the error state **without** a **Reset history…** button; the log has `storage_schema_too_new`; `ls D` has no new `.bak`. After the version is put back (what an update of the app would do): the history opens with `Tadidy newer schema` in it. |
 | 6 | Temporary failure: TAD-022 step 13 (locked Keychain). When macOS asks for the password to unlock the login keychain, click **Cancel** without typing it (typing it unlocks the Keychain and the history simply opens). | Still **no** **Reset history…** button; the log has `storage_error`. Afterwards unlock the Keychain in Keychain Access (*File › Unlock Keychain "login"*). |
 
+### TAD-029 — Retry opening the history database when the failure may be temporary
+
+Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`), installed, started from a terminal so the log is visible: `RUST_LOG=tadidy_lib=info /Applications/Tadidy.app/Contents/MacOS/tadidy > /tmp/tadidy.log 2>&1`. Synthetic clips only. Data folder `D` as in TAD-022. Set-up: launch, copy `Tadidy before lock`, quit; note `ls D`, `shasum D/tadidy.db` (**S**) and the key's hash `security find-generic-password -s app.tadidy -a database-key -w | shasum` (**H**, the key itself is never shown).
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | `security lock-keychain ~/Library/Keychains/login.keychain-db`, launch Tadidy, click **Cancel** on the prompt to unlock the login keychain (do not type the password: the history would simply open). | The log has `storage_error`. |
+| 2 | Click the tray icon, then press `⌘⇧V`; each time click **Cancel** on the unlock prompt. | Each show brings the unlock prompt back (the retry reads the Keychain), and the window hides as the prompt takes the focus (MNU-04). After **Cancel** the prompt stays closed until the next show. `ls D` is unchanged, no `.bak` file, `shasum D/tadidy.db` is **S**. While the login keychain is locked, other apps may show the same prompt: it names the app that asks. |
+| 3 | Click the tray icon and type the password in the unlock prompt (or unlock the keychain in Keychain Access, *File › Unlock Keychain "login"*, then click the icon). | The popover shows the history with `Tadidy before lock` in it, no error state, and `pgrep -x tadidy` prints the same pid as at launch: no relaunch. |
+| 4 | Copy `Tadidy after unlock` in another app, then open the popover and the Quick Panel (`⌘⇧V`). | `Tadidy after unlock` is at the top of both: the history is recorded again without a restart. |
+| 5 | Quit. `ls D`, the key's hash, `/tmp/tadidy.log`. | No `.bak` file; the key's hash is still **H** (no key was written); the log has no path, key or clip text. |
+
+Run 2026-11-09 by the owner on the signed universal build: steps 1 to 5 OK. Step 3 was done by typing the password in the prompt of a show. The error state is not seen while the keychain is locked (step 2): the owner's decision, recorded in `PROGRESS.md`.
+
 ### TAD-025 — Make Launch at login work on the signed build
 
 Signed universal build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`) installed in `/Applications`, started from a terminal so the log is visible: `RUST_LOG=tadidy_lib=debug /Applications/Tadidy.app/Contents/MacOS/tadidy 2> /tmp/tadidy.log`. Start with *Launch at login* off and Tadidy absent from *System Settings → General → Login Items & Extensions*. Open Preferences from the tray menu. The cause was the switch, not the system: in WebKit only its top-left 12 px reacted to a click (`docs/solutions/front/2026-11-05-webkit-checkbox-ignores-inset.md`), so click the switches **on their right half**, never on the label.

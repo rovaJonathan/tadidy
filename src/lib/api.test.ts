@@ -23,6 +23,7 @@ import {
   openPreferences,
   pasteClip,
   resetHistoryDatabase,
+  retryHistoryDatabase,
   setSettings,
 } from "./api";
 import type { AccessibilityChanged } from "./bindings/AccessibilityChanged";
@@ -493,6 +494,27 @@ describe("resetHistoryDatabase", () => {
     });
 
     await expect(resetHistoryDatabase()).rejects.toMatchObject({ code: "invalid_state" });
+  });
+});
+
+describe("retryHistoryDatabase", () => {
+  it("invokes retry_history_database with no argument", async () => {
+    const seen: { cmd: string; args: unknown }[] = [];
+    mockIPC((cmd, args) => {
+      seen.push({ cmd, args });
+    });
+
+    await retryHistoryDatabase();
+
+    expect(seen).toEqual([{ cmd: "retry_history_database", args: {} }]);
+  });
+
+  it("rejects with the code of the failure that persists", async () => {
+    mockIPC(() => {
+      throw { code: "storage_error", message: "The history database is unavailable." };
+    });
+
+    await expect(retryHistoryDatabase()).rejects.toMatchObject({ code: "storage_error" });
   });
 });
 

@@ -9,7 +9,7 @@ import type { ClipQuery } from "../lib/bindings/ClipQuery";
 import type { PasteResult } from "../lib/bindings/PasteResult";
 import type { Settings } from "../lib/bindings/Settings";
 import type { SettingsPatch } from "../lib/bindings/SettingsPatch";
-import { READY, clip, page } from "./clips";
+import { READY, UNAVAILABLE, UNAVAILABLE_TEMPORARY, clip, page } from "./clips";
 import type { StorageStatus } from "../lib/bindings/StorageStatus";
 import { defaultSettings } from "./settings";
 
@@ -227,6 +227,31 @@ export function describeHost(name: string, Window: Component, label: "popover" |
       expect(field.value).toBe("clip");
       expect(selectedIds(container)).toEqual(["clip-2"]);
       expect(field).not.toHaveFocus();
+    });
+
+    it("asks the core to open the history again when it is shown after a failure that may have passed", async () => {
+      const { container, core } = await open({ storage: UNAVAILABLE_TEMPORARY });
+      expect(find(container, "#storage-unavailable")).toBeVisible();
+      expect(core.commands()).not.toContain("retry_history_database");
+
+      await emit("panel://shown", { window: label });
+      await settle();
+      await emit("storage://changed", READY);
+      await settle(20);
+
+      expect(core.commands().filter((cmd) => cmd === "retry_history_database")).toHaveLength(1);
+      expect(core.commands()).not.toContain("reset_history_database");
+      expect(container.querySelector("#storage-unavailable")).toBeNull();
+      expect(find(container, "#clip-count")).toHaveTextContent("4 clips");
+    });
+
+    it("never asks for a retry when it is shown with a history that can only be reset", async () => {
+      const { core } = await open({ storage: UNAVAILABLE });
+
+      await emit("panel://shown", { window: label });
+      await settle();
+
+      expect(core.commands()).not.toContain("retry_history_database");
     });
 
     it("opens the preferences from the ⚙ button and from ⌘,", async () => {

@@ -123,6 +123,7 @@ pub fn run() {
             commands::open_preferences,
             commands::get_storage_status,
             commands::reset_history_database,
+            commands::retry_history_database,
             commands::list_clips,
             commands::delete_clips,
             commands::clear_history,

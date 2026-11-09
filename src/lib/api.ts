@@ -101,6 +101,16 @@ export async function resetHistoryDatabase(): Promise<void> {
   await invoke("reset_history_database");
 }
 
+/**
+ * Opens the history database again after a failure that may have passed (a Keychain unlocked
+ * since); it never resets. On success the core announces `storage://changed` and
+ * `clips://changed`. Rejects with the failure that persists, or `invalid_state` while the
+ * database works.
+ */
+export async function retryHistoryDatabase(): Promise<void> {
+  await invoke("retry_history_database");
+}
+
 /** Runs `callback` each time the history database becomes usable or unusable (`storage://changed`). */
 export function onStorageChanged(callback: (status: StorageStatus) => void): Promise<UnlistenFn> {
   return listen<StorageStatus>("storage://changed", (event) => callback(event.payload));
