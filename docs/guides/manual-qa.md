@@ -330,11 +330,13 @@ Signed build (`pnpm build:universal` with `APPLE_SIGNING_IDENTITY="Tadidy Dev"`)
 
 | # | Action | Expected |
 |---|---|---|
-| 1 | `security lock-keychain ~/Library/Keychains/login.keychain-db`, launch Tadidy, click **Cancel** on the prompt to unlock the login keychain. Click the tray icon. | The error state of TAD-022 step 1 **without** a **Reset history…** button. The log has `storage_error`. |
-| 2 | Close the popover and click the tray icon again, Keychain still locked. If macOS asks to unlock the login keychain, click **Cancel**. Then open the Quick Panel (`⌘⇧V`). | The error state stays in both windows, still without **Reset history…**. Note whether the unlock prompt showed on the click (the retry reads the Keychain). Quit: `ls D` is unchanged, no `.bak` file, `shasum D/tadidy.db` is **S**. |
-| 3 | Launch again, cancel the prompt as in step 1. Unlock the login keychain in Keychain Access (*File › Unlock Keychain "login"*). Without relaunching Tadidy, click the tray icon. | The popover shows the history with `Tadidy before lock` in it, no error state. |
-| 4 | Copy `Tadidy after unlock` in another app, then open the Quick Panel (`⌘⇧V`). | `Tadidy after unlock` is at the top of the popover and of the Quick Panel: the history is recorded again without a restart. |
+| 1 | `security lock-keychain ~/Library/Keychains/login.keychain-db`, launch Tadidy, click **Cancel** on the prompt to unlock the login keychain (do not type the password: the history would simply open). | The log has `storage_error`. |
+| 2 | Click the tray icon, then press `⌘⇧V`; each time click **Cancel** on the unlock prompt. | Each show brings the unlock prompt back (the retry reads the Keychain), and the window hides as the prompt takes the focus (MNU-04). After **Cancel** the prompt stays closed until the next show. `ls D` is unchanged, no `.bak` file, `shasum D/tadidy.db` is **S**. While the login keychain is locked, other apps may show the same prompt: it names the app that asks. |
+| 3 | Click the tray icon and type the password in the unlock prompt (or unlock the keychain in Keychain Access, *File › Unlock Keychain "login"*, then click the icon). | The popover shows the history with `Tadidy before lock` in it, no error state, and `pgrep -x tadidy` prints the same pid as at launch: no relaunch. |
+| 4 | Copy `Tadidy after unlock` in another app, then open the popover and the Quick Panel (`⌘⇧V`). | `Tadidy after unlock` is at the top of both: the history is recorded again without a restart. |
 | 5 | Quit. `ls D`, the key's hash, `/tmp/tadidy.log`. | No `.bak` file; the key's hash is still **H** (no key was written); the log has no path, key or clip text. |
+
+Run 2026-11-09 by the owner on the signed universal build: steps 1 to 5 OK. Step 3 was done by typing the password in the prompt of a show. The error state is not seen while the keychain is locked (step 2): the owner's decision, recorded in `PROGRESS.md`.
 
 ### TAD-025 — Make Launch at login work on the signed build
 
