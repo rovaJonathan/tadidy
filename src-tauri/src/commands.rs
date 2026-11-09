@@ -114,6 +114,15 @@ pub fn reset_history_database(state: State<'_, AppState>) -> Result<(), AppError
     state.reset_history()
 }
 
+/// Opens the history database again after a failure that may have passed (a Keychain unlocked
+/// since); never resets. Refused with `invalid_state` while the database works; any other error
+/// is the failure that persists. On success the state announces `storage://changed` and
+/// `clips://changed`. Async: the Keychain may prompt.
+#[tauri::command(async)]
+pub fn retry_history_database(state: State<'_, AppState>) -> Result<(), AppError> {
+    state.retry_history()
+}
+
 /// The history database, or `storage_unavailable` when it could not be opened at startup.
 fn database(state: &AppState) -> Result<Db, AppError> {
     state.db().ok_or_else(|| {
